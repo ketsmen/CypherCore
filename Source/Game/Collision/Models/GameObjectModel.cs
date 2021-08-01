@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Framework.Constants;
+using System.Numerics;
 
 namespace Game.Collision
 {
@@ -64,7 +65,7 @@ namespace Game.Collision
             iScale = modelOwner.GetScale();
             iInvScale = 1.0f / iScale;
 
-            Matrix3 iRotation = Matrix3.fromEulerAnglesZYX(modelOwner.GetOrientation(), 0, 0);
+            Matrix3x2 iRotation = Matrix3x2.fromEulerAnglesZYX(modelOwner.GetOrientation(), 0, 0);
             iInvRot = iRotation.inverse();
             // transform bounding box:
             mdl_box = new AxisAlignedBox(mdl_box.Lo * iScale, mdl_box.Hi * iScale);
@@ -158,7 +159,7 @@ namespace Game.Collision
 
             iPos = owner.GetPosition();
 
-            Matrix3 iRotation = Matrix3.fromEulerAnglesZYX(owner.GetOrientation(), 0, 0);
+            Matrix3x2 iRotation = Matrix3x2.fromEulerAnglesZYX(owner.GetOrientation(), 0, 0);
             iInvRot = iRotation.inverse();
             // transform bounding box:
             mdl_box = new AxisAlignedBox(mdl_box.Lo * iScale, mdl_box.Hi * iScale);
@@ -223,7 +224,7 @@ namespace Game.Collision
 
         bool _collisionEnabled;
         AxisAlignedBox iBound;
-        Matrix3 iInvRot;
+        Matrix3x2 iInvRot;
         Vector3 iPos;
         float iInvScale;
         float iScale;

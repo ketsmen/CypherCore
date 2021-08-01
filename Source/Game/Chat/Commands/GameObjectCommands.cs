@@ -24,6 +24,7 @@ using Game.Entities;
 using Game.Maps;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Text;
 
 namespace Game.Chat

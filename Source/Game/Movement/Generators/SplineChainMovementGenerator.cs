@@ -20,6 +20,7 @@ using Framework.GameMath;
 using Game.Entities;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.Movement
 {

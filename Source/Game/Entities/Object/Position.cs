@@ -18,6 +18,7 @@
 using Framework.GameMath;
 using Game.Maps;
 using System;
+using System.Numerics;
 
 namespace Game.Entities
 {

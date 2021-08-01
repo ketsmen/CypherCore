@@ -22,6 +22,7 @@ using Game.Entities;
 using Game.Movement;
 using System.Collections.Generic;
 using System;
+using System.Numerics;
 
 namespace Game.Networking.Packets
 {

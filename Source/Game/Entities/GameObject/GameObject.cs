@@ -31,6 +31,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Networking;
+using System.Numerics;
 
 namespace Game.Entities
 {
@@ -246,7 +247,7 @@ namespace Game.Entities
             GameObjectAddon gameObjectAddon = Global.ObjectMgr.GetGameObjectAddon(GetSpawnId());
 
             // For most of gameobjects is (0, 0, 0, 1) quaternion, there are only some transports with not standard rotation
-            Quaternion parentRotation = Quaternion.WAxis;
+            Quaternion parentRotation = Quaternion.Identity;
             if (gameObjectAddon != null)
                 parentRotation = gameObjectAddon.ParentRotation;
 

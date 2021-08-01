@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Game.Collision;
+using System.Numerics;
 
 namespace Game.Maps
 {
@@ -169,7 +170,7 @@ namespace Game.Maps
 
                 _minHeightPlanes = new Plane[8];
                 for (uint quarterIndex = 0; quarterIndex < 8; ++quarterIndex)
-                    _minHeightPlanes[quarterIndex] = new Plane(
+                    _minHeightPlanes[quarterIndex] = Plane.CreateFromVertices(
                         new Vector3(boundGridCoords[indices[quarterIndex][0]][0], boundGridCoords[indices[quarterIndex][0]][1], minHeights[indices[quarterIndex][0]]),
                         new Vector3(boundGridCoords[indices[quarterIndex][1]][0], boundGridCoords[indices[quarterIndex][1]][1], minHeights[indices[quarterIndex][1]]),
                         new Vector3(boundGridCoords[indices[quarterIndex][2]][0], boundGridCoords[indices[quarterIndex][2]][1], minHeights[indices[quarterIndex][2]])
@@ -462,7 +463,7 @@ namespace Game.Maps
                 quarterIndex = gx > gy ? 1u : 0;
 
 
-            Ray ray = new(new Vector3(gx, gy, 0.0f), Vector3.ZAxis);
+            Ray ray = new(new Vector3(gx, gy, 0.0f), Vector3.UnitZ);
             return ray.intersection(_minHeightPlanes[quarterIndex]).Z;
         }
 

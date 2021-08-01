@@ -23,6 +23,8 @@ using Game.DataStorage;
 using Game.Maps;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
+
 namespace Game.Scenarios
 {
     public class ScenarioManager : Singleton<ScenarioManager>

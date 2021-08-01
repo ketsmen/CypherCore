@@ -25,6 +25,7 @@ using Game.Networking;
 using Game.Networking.Packets;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.BattleFields
 {

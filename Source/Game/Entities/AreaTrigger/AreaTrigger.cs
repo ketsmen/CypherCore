@@ -18,14 +18,17 @@
 using Framework.Constants;
 using Framework.Dynamic;
 using Framework.GameMath;
+
 using Game.AI;
 using Game.Maps;
 using Game.Movement;
 using Game.Networking;
 using Game.Networking.Packets;
 using Game.Spells;
+
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.Entities
 {
@@ -135,14 +138,11 @@ namespace Game.Entities
                 Vector2 point = new(GetMiscTemplate().ExtraScale.Structured.Z, GetMiscTemplate().ExtraScale.Structured.W);
                 SetUpdateFieldValue(ref extraScaleCurve.ModifyValue(extraScaleCurve.Points, 1), point);
             }
-            unsafe
-            {
-                if (GetMiscTemplate().ExtraScale.Raw.Data[5] != 0)
-                    SetUpdateFieldValue(extraScaleCurve.ModifyValue(extraScaleCurve.ParameterCurve), GetMiscTemplate().ExtraScale.Raw.Data[5]);
-                if (GetMiscTemplate().ExtraScale.Structured.OverrideActive != 0)
-                    SetUpdateFieldValue(extraScaleCurve.ModifyValue(extraScaleCurve.OverrideActive), GetMiscTemplate().ExtraScale.Structured.OverrideActive != 0);
-            }
 
+            if (GetMiscTemplate().ExtraScale.Raw.Data[5] != 0)
+                SetUpdateFieldValue(extraScaleCurve.ModifyValue(extraScaleCurve.ParameterCurve), GetMiscTemplate().ExtraScale.Raw.Data[5]);
+            if (GetMiscTemplate().ExtraScale.Structured.OverrideActive != 0)
+                SetUpdateFieldValue(extraScaleCurve.ModifyValue(extraScaleCurve.OverrideActive), GetMiscTemplate().ExtraScale.Structured.OverrideActive != 0);
 
             PhasingHandler.InheritPhaseShift(this, caster);
 
@@ -254,7 +254,7 @@ namespace Game.Entities
 
             return true;
         }
-        
+
         public override void Update(uint diff)
         {
             base.Update(diff);
@@ -295,7 +295,7 @@ namespace Game.Entities
 
         public void Remove()
         {
-            if (IsInWorld)           
+            if (IsInWorld)
                 AddObjectToRemoveList();
         }
 
@@ -386,12 +386,9 @@ namespace Game.Entities
             Position boxCenter = GetPosition();
             float extentsX, extentsY, extentsZ;
 
-            unsafe
-            {
-                extentsX = GetTemplate().BoxDatas.Extents[0];
-                extentsY = GetTemplate().BoxDatas.Extents[1];
-                extentsZ = GetTemplate().BoxDatas.Extents[2];
-            }
+            extentsX = GetTemplate().BoxDatas.Extents[0];
+            extentsY = GetTemplate().BoxDatas.Extents[1];
+            extentsZ = GetTemplate().BoxDatas.Extents[2];
 
             targetList.RemoveAll(unit => !unit.IsWithinBox(boxCenter, extentsX, extentsY, extentsZ));
         }
@@ -596,15 +593,15 @@ namespace Game.Entities
             switch (action.TargetType)
             {
                 case AreaTriggerActionUserTypes.Friend:
-                        return caster._IsValidAssistTarget(unit, Global.SpellMgr.GetSpellInfo(action.Param, caster.GetMap().GetDifficultyID()));
+                    return caster._IsValidAssistTarget(unit, Global.SpellMgr.GetSpellInfo(action.Param, caster.GetMap().GetDifficultyID()));
                 case AreaTriggerActionUserTypes.Enemy:
-                        return caster._IsValidAttackTarget(unit, Global.SpellMgr.GetSpellInfo(action.Param, caster.GetMap().GetDifficultyID()));
+                    return caster._IsValidAttackTarget(unit, Global.SpellMgr.GetSpellInfo(action.Param, caster.GetMap().GetDifficultyID()));
                 case AreaTriggerActionUserTypes.Raid:
-                        return caster.IsInRaidWith(unit);
+                    return caster.IsInRaidWith(unit);
                 case AreaTriggerActionUserTypes.Party:
-                        return caster.IsInPartyWith(unit);
+                    return caster.IsInPartyWith(unit);
                 case AreaTriggerActionUserTypes.Caster:
-                        return unit.GetGUID() == caster.GetGUID();
+                    return unit.GetGUID() == caster.GetGUID();
                 case AreaTriggerActionUserTypes.Any:
                 default:
                     break;
@@ -955,7 +952,7 @@ namespace Game.Entities
 
             data.AddUpdateBlock(buffer1);
         }
-        
+
         public override void ClearUpdateMask(bool remove)
         {
             m_values.ClearChangesMask(m_areaTriggerData);
@@ -973,7 +970,7 @@ namespace Game.Entities
 
             return base.IsNeverVisibleFor(seer);
         }
-        
+
         [System.Diagnostics.Conditional("DEBUG")]
         void DebugVisualizePosition()
         {

@@ -21,6 +21,7 @@ using Framework.Database;
 using Framework.Dynamic;
 using Framework.GameMath;
 using Framework.IO;
+
 using Game.Conditions;
 using Game.DataStorage;
 using Game.Entities;
@@ -29,9 +30,11 @@ using Game.Maps;
 using Game.Misc;
 using Game.Scripting;
 using Game.Spells;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace Game
@@ -594,7 +597,7 @@ namespace Game
             uint oldMSTime = Time.GetMSTime();
 
             gossipMenuItemsStorage.Clear();
-            
+
             //                                          0         1              2             3             4                        5             6
             SQLResult result = DB.World.Query("SELECT o.MenuId, o.OptionIndex, o.OptionIcon, o.OptionText, o.OptionBroadcastTextId, o.OptionType, o.OptionNpcFlag, " +
                 //   7                8              9            10           11          12
@@ -1045,7 +1048,7 @@ namespace Game
             SQLResult result = DB.World.Query(
               "SELECT DISTINCT(ScriptName) FROM battleground_template WHERE ScriptName <> '' " +
               "UNION SELECT DISTINCT(ScriptName) FROM conversation_template WHERE ScriptName <> '' " +
-              "UNION SELECT DISTINCT(ScriptName) FROM creature WHERE ScriptName <> '' " +        
+              "UNION SELECT DISTINCT(ScriptName) FROM creature WHERE ScriptName <> '' " +
               "UNION SELECT DISTINCT(ScriptName) FROM creature_template WHERE ScriptName <> '' " +
               "UNION SELECT DISTINCT(ScriptName) FROM criteria_data WHERE ScriptName <> '' AND type = 11 " +
               "UNION SELECT DISTINCT(ScriptName) FROM gameobject WHERE ScriptName <> '' " +
@@ -1147,16 +1150,19 @@ namespace Game
                     tmp.id |= result.Read<uint>(10) << 24;
                 tmp.delay = result.Read<uint>(1);
                 tmp.command = (ScriptCommands)result.Read<uint>(2);
-                unsafe
-                {
-                    tmp.Raw.nData[0] = result.Read<uint>(3);
-                    tmp.Raw.nData[1] = result.Read<uint>(4);
-                    tmp.Raw.nData[2] = (uint)result.Read<int>(5);
-                    tmp.Raw.fData[0] = result.Read<float>(6);
-                    tmp.Raw.fData[1] = result.Read<float>(7);
-                    tmp.Raw.fData[2] = result.Read<float>(8);
-                    tmp.Raw.fData[3] = result.Read<float>(9);
-                }
+
+                // Initialize fields.
+                tmp.Raw.nData = new uint[3];
+                tmp.Raw.fData = new float[4];
+
+                // Assign fields.
+                tmp.Raw.nData[0] = result.Read<uint>(3);
+                tmp.Raw.nData[1] = result.Read<uint>(4);
+                tmp.Raw.nData[2] = (uint)result.Read<int>(5);
+                tmp.Raw.fData[0] = result.Read<float>(6);
+                tmp.Raw.fData[1] = result.Read<float>(7);
+                tmp.Raw.fData[2] = result.Read<float>(8);
+                tmp.Raw.fData[3] = result.Read<float>(9);
 
                 // generic command args check
                 switch (tmp.command)
@@ -3234,7 +3240,7 @@ namespace Game
                 CreatureData data = new();
                 data.spawnId = guid;
                 data.Id = entry;
-                data.spawnPoint = new WorldLocation(result.Read<ushort>(2), result.Read<float>(3), result.Read<float>(4), result.Read<float>(5), result.Read<float>(6));                    
+                data.spawnPoint = new WorldLocation(result.Read<ushort>(2), result.Read<float>(3), result.Read<float>(4), result.Read<float>(5), result.Read<float>(6));
                 data.displayid = result.Read<uint>(7);
                 data.equipmentId = result.Read<sbyte>(8);
                 data.spawntimesecs = result.Read<int>(9);
@@ -3573,7 +3579,7 @@ namespace Game
                 RemoveCreatureFromGrid(guid, data);
                 OnDeleteSpawnData(data);
             }
-            
+
             creatureDataStorage.Remove(guid);
         }
         public CreatureBaseStats GetCreatureBaseStats(uint level, uint unitClass)
@@ -3608,7 +3614,7 @@ namespace Game
                         });
 
                         if (creatureModel != null)
-                           model = creatureModel;
+                            model = creatureModel;
                     }
                     return minfotmp;
                 }
@@ -3639,11 +3645,8 @@ namespace Game
                 go.name = db2go.Name[Global.WorldMgr.GetDefaultDbcLocale()];
                 go.size = db2go.Scale;
 
-                unsafe
-                {
-                    for (byte x = 0; x < db2go.PropValue.Length; ++x)
-                        go.Raw.data[x] = db2go.PropValue[x];
-                }
+                for (byte x = 0; x < db2go.PropValue.Length; ++x)
+                    go.Raw.data[x] = db2go.PropValue[x];
 
                 go.ContentTuningId = 0;
                 go.ScriptId = 0;
@@ -3681,11 +3684,8 @@ namespace Game
                     got.unk1 = result.Read<string>(6);
                     got.size = result.Read<float>(7);
 
-                    unsafe
-                    {
-                        for (byte x = 0; x < SharedConst.MaxGOData; ++x)
-                            got.Raw.data[x] = result.Read<int>(8 + x);
-                    }
+                    for (byte x = 0; x < SharedConst.MaxGOData; ++x)
+                        got.Raw.data[x] = result.Read<int>(8 + x);
 
                     got.ContentTuningId = result.Read<uint>(42);
                     got.AIName = result.Read<string>(43);
@@ -4196,7 +4196,7 @@ namespace Game
                 if (!gameObjectAddon.ParentRotation.isUnit())
                 {
                     Log.outError(LogFilter.Sql, $"GameObject (GUID: {guid}) has invalid parent rotation in `gameobject_addon`, set to default");
-                    gameObjectAddon.ParentRotation = Quaternion.WAxis;
+                    gameObjectAddon.ParentRotation = Quaternion.Identity;
                 }
 
                 if (gameObjectAddon.WorldEffectID != 0 && !CliDB.WorldEffectStorage.ContainsKey(gameObjectAddon.WorldEffectID))
@@ -4395,7 +4395,7 @@ namespace Game
         {
             GameObjectData data = GetGameObjectData(guid);
             if (data != null)
-            { 
+            {
                 RemoveGameObjectFromGrid(guid, data);
                 OnDeleteSpawnData(data);
             }
@@ -5214,8 +5214,8 @@ namespace Game
                                     if (diffInfo != null)
                                         diffInfo.FlagsExtra |= CreatureFlagsExtra.DungeonBoss;
                                 }
-                        }
-                        break;
+                            }
+                            break;
                         }
                     case EncounterCreditType.CastSpell:
                         if (!Global.SpellMgr.HasSpellInfo(creditEntry, Difficulty.None))
@@ -5520,7 +5520,7 @@ namespace Game
             return null;
         }
         public List<InstanceSpawnGroupInfo> GetSpawnGroupsForInstance(uint instanceId) { return _instanceSpawnGroupStorage.LookupByKey(instanceId); }
-        
+
         //Player
         public void LoadPlayerInfo()
         {
@@ -5666,7 +5666,7 @@ namespace Game
                         }
                     }
                 }
-            }            
+            }
             Log.outInfo(LogFilter.ServerLoading, "Loading Player Create Items Override Data...");
             {
                 //                                         0     1      2       3
@@ -7870,8 +7870,8 @@ namespace Game
         public List<uint> GetExclusiveQuestGroupBounds(int exclusiveGroupId)
         {
             return _exclusiveQuestGroups.LookupByKey(exclusiveGroupId);
-        }        
-        
+        }
+
         //Spells /Skills / Phases
         public void LoadPhases()
         {
@@ -7894,7 +7894,7 @@ namespace Game
         public void UnloadPhaseConditions()
         {
             foreach (var pair in _phaseInfoByArea)
-                    pair.Value.Conditions.Clear();
+                pair.Value.Conditions.Clear();
         }
         void LoadTerrainWorldMaps()
         {
@@ -8410,7 +8410,7 @@ namespace Game
             uint oldMSTime = Time.GetMSTime();
 
             _questRequestItemsLocaleStorage.Clear(); // need for reload case
-                                                   //                                               0     1          2
+                                                     //                                               0     1          2
             SQLResult result = DB.World.Query("SELECT Id, locale, CompletionText FROM quest_request_items_locale");
             if (result.IsEmpty())
                 return;
@@ -10062,7 +10062,7 @@ namespace Game
 
         public List<TempSummonData> GetSummonGroup(uint summonerId, SummonerType summonerType, byte group)
         {
-            Tuple<uint, SummonerType,byte> key = Tuple.Create(summonerId, summonerType, group);
+            Tuple<uint, SummonerType, byte> key = Tuple.Create(summonerId, summonerType, group);
             return _tempSummonDataStorage.LookupByKey(key);
         }
 
@@ -10462,10 +10462,10 @@ namespace Game
         }
 
         #region Structs
-        public unsafe struct raw
+        public struct raw
         {
-            public fixed uint nData[3];
-            public fixed float fData[4];
+            public uint[] nData;
+            public float[] fData;
         }
 
         public struct talk                   // TALK (0)
@@ -10689,7 +10689,7 @@ namespace Game
         public uint SpawnGroupId;
         public InstanceSpawnGroupFlags Flags;
     }
-    
+
     public class SpellClickInfo
     {
         public uint spellId;
@@ -10762,7 +10762,7 @@ namespace Game
         public List<QuestPOIBlobPoint> Points;
         public bool AlwaysAllowMergingBlobs;
 
-        public QuestPOIBlobData(int blobIndex, int objectiveIndex, int questObjectiveID, int questObjectID, int mapID, int uiMapID, int priority, int flags, 
+        public QuestPOIBlobData(int blobIndex, int objectiveIndex, int questObjectiveID, int questObjectID, int mapID, int uiMapID, int priority, int flags,
             int worldEffectID, int playerConditionID, int navigationPlayerConditionID, int spawnTrackingID, List<QuestPOIBlobPoint> points, bool alwaysAllowMergingBlobs)
         {
             BlobIndex = blobIndex;
@@ -10779,11 +10779,11 @@ namespace Game
             SpawnTrackingID = spawnTrackingID;
             Points = points;
             AlwaysAllowMergingBlobs = alwaysAllowMergingBlobs;
-        } 
+        }
     }
 
     public class QuestPOIBlobPoint
-    {  
+    {
         public int X;
         public int Y;
         public int Z;

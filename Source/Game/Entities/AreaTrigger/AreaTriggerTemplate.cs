@@ -21,12 +21,13 @@ using Framework.GameMath;
 using Game.Networking;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace Game.Entities
 {
     [StructLayout(LayoutKind.Explicit)]
-    public unsafe class AreaTriggerData
+    public class AreaTriggerData
     {
         [FieldOffset(0)]
         public defaultdatas DefaultDatas;
@@ -45,7 +46,8 @@ namespace Game.Entities
 
         public struct defaultdatas
         {
-            public fixed float Data[SharedConst.MaxAreatriggerEntityData];
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SharedConst.MaxAreatriggerEntityData)]
+            public float[] Data;
         }
 
         // AREATRIGGER_TYPE_SPHERE
@@ -58,8 +60,11 @@ namespace Game.Entities
         // AREATRIGGER_TYPE_BOX
         public struct boxdatas
         {
-            public fixed float Extents[3];
-            public fixed float ExtentsTarget[3];
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public float[] Extents;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public float[] ExtentsTarget;
         }
 
         // AREATRIGGER_TYPE_POLYGON
@@ -132,9 +137,10 @@ namespace Game.Entities
             }
         }
 
-        public unsafe struct RawData
+        public struct RawData
         {
-            public fixed uint Data[SharedConst.MaxAreatriggerScale];
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SharedConst.MaxAreatriggerScale)]
+            public uint[] Data;
         }
     }
 
@@ -220,7 +226,7 @@ namespace Game.Entities
 
     public class AreaTriggerTemplate : AreaTriggerData
     {
-        public unsafe void InitMaxSearchRadius()
+        public void InitMaxSearchRadius()
         {
             switch (TriggerType)
             {
@@ -241,7 +247,7 @@ namespace Game.Entities
 
                         foreach (Vector2 vertice in PolygonVertices)
                         {
-                            float pointDist = vertice.GetLength();
+                            float pointDist = vertice.Length();
 
                             if (pointDist > MaxSearchRadius)
                                 MaxSearchRadius = pointDist;
@@ -277,7 +283,7 @@ namespace Game.Entities
         public List<AreaTriggerAction> Actions = new();
     }
 
-    public unsafe class AreaTriggerMiscTemplate
+    public class AreaTriggerMiscTemplate
     {
         public AreaTriggerMiscTemplate()
         {

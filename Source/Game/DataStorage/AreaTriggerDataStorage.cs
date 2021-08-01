@@ -18,9 +18,12 @@
 using Framework.Constants;
 using Framework.Database;
 using Framework.GameMath;
+
 using Game.Entities;
 using Game.Maps;
+
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.DataStorage
 {
@@ -146,11 +149,8 @@ namespace Game.DataStorage
                         continue;
                     }
 
-                    unsafe
-                    {
-                        for (byte i = 0; i < SharedConst.MaxAreatriggerEntityData; ++i)
-                            areaTriggerTemplate.DefaultDatas.Data[i] = templates.Read<float>(4 + i);
-                    }
+                    for (byte i = 0; i < SharedConst.MaxAreatriggerEntityData; ++i)
+                        areaTriggerTemplate.DefaultDatas.Data[i] = templates.Read<float>(4 + i);
 
                     areaTriggerTemplate.ScriptId = Global.ObjectMgr.GetScriptId(templates.Read<string>(10));
                     if (!areaTriggerTemplate.Id.IsServerSide)
@@ -331,7 +331,7 @@ namespace Game.DataStorage
 
         public AreaTriggerTemplate GetAreaTriggerTemplate(AreaTriggerId areaTriggerId)
         {
-           return _areaTriggerTemplateStore.LookupByKey(areaTriggerId);
+            return _areaTriggerTemplateStore.LookupByKey(areaTriggerId);
         }
 
         public AreaTriggerMiscTemplate GetAreaTriggerMiscTemplate(uint spellMiscValue)

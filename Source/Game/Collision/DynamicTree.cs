@@ -17,6 +17,8 @@
 
 using Framework.GameMath;
 
+using System.Numerics;
+
 namespace Game.Collision
 {
     public class DynamicMapTree

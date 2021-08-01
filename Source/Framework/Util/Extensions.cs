@@ -43,7 +43,7 @@ namespace System
             else
                 return byteArray.Aggregate("", (current, b) => current + b.ToString("X2"));
         }
-        
+
         public static byte[] ToByteArray(this string str)
         {
             str = str.Replace(" ", String.Empty);
@@ -138,7 +138,7 @@ namespace System
         public static uint[] SerializeObject<T>(this T obj)
         {
             //if (obj.GetType()<StructLayoutAttribute>() == null)
-                //return null;
+            //return null;
 
             var size = Marshal.SizeOf(typeof(T));
             var ptr = Marshal.AllocHGlobal(size);
@@ -182,8 +182,60 @@ namespace System
             return list;
         }
 
-        #region Strings
-        public static bool IsEmpty(this string str)
+        public static float GetAt(this Vector3 vector, long index)
+        {
+            switch (index)
+            {
+                case 0:
+                    return vector.X;
+                case 1:
+                    return vector.Y;
+                case 2:
+                    return vector.Z;
+                default:
+                    throw new IndexOutOfRangeException();
+            }
+        }
+
+        public static void SetAt(this ref Vector3 vector, float value, long index)
+        {
+            switch (index)
+            {
+                case 0:
+                    vector.X = value;
+                    break;
+                case 1:
+                    vector.Y = value;
+                    break;
+                case 2:
+                    vector.Z = value;
+                    break;
+                default:
+                    throw new IndexOutOfRangeException();
+            }
+        }
+
+        public static Matrix3x2 fromEulerAnglesZYX(float fYAngle, float fPAngle, float fRAngle)
+        {
+            float fCos, fSin;
+
+            fCos = (float) Math.Cos(fYAngle);
+            fSin = (float) Math.Sin(fYAngle);
+            Matrix3x2 kZMat = new Matrix3x2(fCos, -fSin, 0.0f, fSin, fCos, 0.0f, 0.0f, 0.0f, 1.0f);
+
+            fCos = (float) Math.Cos(fPAngle);
+            fSin = (float) Math.Sin(fPAngle);
+            Matrix3x2 kYMat = new Matrix3x2(fCos, 0.0f, fSin, 0.0f, 1.0f, 0.0f, -fSin, 0.0f, fCos);
+
+            fCos = (float) Math.Cos(fRAngle);
+            fSin = (float) Math.Sin(fRAngle);
+            Matrix3x2 kXMat = new Matrix3x2(1.0f, 0.0f, 0.0f, 0.0f, fCos, -fSin, 0.0f, fSin, fCos);
+
+            return (kZMat* (kYMat* kXMat));
+        }
+
+    #region Strings
+    public static bool IsEmpty(this string str)
         {
             return string.IsNullOrEmpty(str);
         }
@@ -200,7 +252,7 @@ namespace System
         public static string ConvertFormatSyntax(this string str)
         {
             string pattern = @"(%\W*\d*[a-zA-Z]*)";
-            
+
             int count = 0;
             string result = Regex.Replace(str, pattern, m => string.Concat("{", count++, "}"));
 
@@ -255,6 +307,24 @@ namespace System
                 return true;
             return false;
         }
+
+        public static Vector3 ParseVector3(this string value)
+        {
+            Regex r = new Regex(@"\((?<x>.*),(?<y>.*),(?<z>.*)\)", RegexOptions.Singleline);
+            Match m = r.Match(value);
+            if (m.Success)
+            {
+                return new Vector3(
+                    float.Parse(m.Result("${x}")),
+                    float.Parse(m.Result("${y}")),
+                    float.Parse(m.Result("${z}"))
+                    );
+            }
+            else
+            {
+                throw new Exception("Unsuccessful Match.");
+            }
+        }
         #endregion
 
         #region BinaryReader
@@ -289,12 +359,7 @@ namespace System
             T[] result = new T[source.Length / Unsafe.SizeOf<T>()];
 
             if (source.Length > 0)
-            {
-                unsafe
-                {
-                    Unsafe.CopyBlockUnaligned(Unsafe.AsPointer(ref result[0]), Unsafe.AsPointer(ref source[0]), (uint)source.Length);
-                }
-            }
+                Unsafe.CopyBlockUnaligned(ref Unsafe.As<T, byte>(ref result[0]), ref source[0], (uint)source.Length);
 
             return result;
         }

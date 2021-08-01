@@ -21,6 +21,8 @@ using Framework.GameMath;
 using Game.Chat;
 using Game.Entities;
 using Game.Networking.Packets;
+
+using System.Numerics;
 using System.Text;
 
 namespace Game.SupportSystem

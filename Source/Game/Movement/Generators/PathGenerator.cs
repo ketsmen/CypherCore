@@ -20,6 +20,7 @@ using Framework.GameMath;
 using Game.Entities;
 using Game.Maps;
 using System;
+using System.Numerics;
 
 namespace Game.Movement
 {
@@ -481,7 +482,7 @@ namespace Game.Movement
                 Vector3 endVec = new(endPoint[0], endPoint[1], endPoint[2]);
                 Vector3 diffVec = (endVec - startVec);
                 Vector3 prevVec = startVec;
-                float len = diffVec.GetLength();
+                float len = diffVec.Length();
                 diffVec *= 4.0f / len;
                 while (len > 4.0f)
                 {
@@ -861,7 +862,7 @@ namespace Game.Movement
 
         float Dist3DSqr(Vector3 p1, Vector3 p2)
         {
-            return (p1 - p2).GetLengthSquared();
+            return (p1 - p2).LengthSquared();
         }
 
         public void ReducePathLenghtByDist(float dist)
@@ -881,7 +882,7 @@ namespace Game.Movement
             {
                 Vector3 currVec = _pathPoints[--i];
                 Vector3 diffVec = (nextVec - currVec);
-                float len = diffVec.GetLength();
+                float len = diffVec.Length();
                 if (len > dist)
                 {
                     float step = dist / len;

@@ -22,6 +22,7 @@ using Framework.GameMath;
 using Game.DataStorage;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.Entities
 {

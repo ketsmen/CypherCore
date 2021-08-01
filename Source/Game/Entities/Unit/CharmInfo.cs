@@ -21,6 +21,7 @@ using Framework.GameMath;
 using Game.Networking;
 using Game.Spells;
 using System;
+using System.Numerics;
 
 namespace Game.Entities
 {

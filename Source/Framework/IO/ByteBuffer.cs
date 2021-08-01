@@ -18,6 +18,7 @@
 using Framework.GameMath;
 using System;
 using System.IO;
+using System.Numerics;
 using System.Text;
 
 namespace Framework.IO

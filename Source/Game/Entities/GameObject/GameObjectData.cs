@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Game.Networking.Packets;
 using Game.Maps;
+using System.Numerics;
 
 namespace Game.Entities
 {
@@ -594,11 +595,8 @@ namespace Game.Entities
             foreach (uint item in items)
                 stats.QuestItems.Add(item);
 
-            unsafe
-            {
-                for (int i = 0; i < SharedConst.MaxGOData; i++)
-                    stats.Data[i] = Raw.data[i];
-            }
+            for (int i = 0; i < SharedConst.MaxGOData; i++)
+                stats.Data[i] = Raw.data[i];
 
             stats.ContentTuningId = ContentTuningId;
 
@@ -606,9 +604,10 @@ namespace Game.Entities
         }
 
         #region TypeStructs
-        public unsafe struct raw
+        public struct raw
         {
-            public fixed int data[SharedConst.MaxGOData];
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SharedConst.MaxGOData)]
+            public int[] data;
         }
 
         public struct door
@@ -1345,7 +1344,7 @@ namespace Game.Entities
             public uint open;                                    // 1 open, References: Lock_, NoValue = 0
             public uint InteractRadiusOverride;                  // 2 Interact Radius Override (in hundredths), int, Min value: 0, Max value: 2147483647, Default value: 0
         }
-        
+
         public struct clientmodel
         {
             public uint LargeAOI;                                // 0 Large AOI, enum { false, true, }; Default: false

@@ -23,6 +23,7 @@ using Framework.IO;
 using Game.Entities;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.Networking.Packets
 {

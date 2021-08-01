@@ -28,6 +28,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Collections;
+using System.Numerics;
 
 namespace Game.DataStorage
 {

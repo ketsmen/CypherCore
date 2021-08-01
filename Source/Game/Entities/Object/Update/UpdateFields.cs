@@ -24,6 +24,7 @@ using Game.Networking.Packets;
 using Game.Spells;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Game.Entities
 {

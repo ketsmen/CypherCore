@@ -19,6 +19,7 @@ using Framework.Constants;
 using Framework.GameMath;
 using System;
 using System.IO;
+using System.Numerics;
 
 namespace Game.Collision
 {
@@ -85,7 +86,7 @@ namespace Game.Collision
 
     public class ModelInstance : ModelMinimalData
     {
-        Matrix3 iInvRot;
+        Matrix3x2 iInvRot;
         float iInvScale;
         WorldModel iModel;
 
@@ -107,7 +108,7 @@ namespace Game.Collision
 
             iModel = model;
 
-            iInvRot = Matrix3.fromEulerAnglesZYX(MathFunctions.PI * spawn.iRot.Y / 180.0f, MathFunctions.PI * spawn.iRot.X / 180.0f, MathFunctions.PI * spawn.iRot.Z / 180.0f).inverse();
+            iInvRot = Matrix3x2.fromEulerAnglesZYX(MathFunctions.PI * spawn.iRot.Y / 180.0f, MathFunctions.PI * spawn.iRot.X / 180.0f, MathFunctions.PI * spawn.iRot.Z / 180.0f).inverse();
             iInvScale = 1.0f / iScale;
         }
 
