@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\..\default.props" />
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <ApplicationIcon>Blue.ico</ApplicationIcon>
     <StartupObject>WorldServer.Server</StartupObject>
   </PropertyGroup>

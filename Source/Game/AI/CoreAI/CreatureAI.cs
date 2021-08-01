@@ -23,6 +23,8 @@ using Game.Spells;
 using System.Collections.Generic;
 using System.Linq;
 
+using TaskScheduler = Framework.Dynamic.TaskScheduler;
+
 namespace Game.AI
 {
     public class CreatureAI : UnitAI

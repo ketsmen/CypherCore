@@ -304,7 +304,7 @@ namespace Game.Movement
         void C_Evaluate(Span<Vector3> vertice, float t, Matrix4x4 matr, out Vector3 result)
         {
             Vector4 tvec = new(t * t * t, t * t, t, 1.0f);
-            Vector4 weights = (tvec * matr);
+            Vector4 weights = Vector4.Transform(tvec, matr);
 
             result = vertice[0] * weights.X + vertice[1] * weights.Y
                    + vertice[2] * weights.Z + vertice[3] * weights.W;
@@ -312,7 +312,7 @@ namespace Game.Movement
         void C_Evaluate_Derivative(Span<Vector3> vertice, float t, Matrix4x4 matr, out Vector3 result)
         {
             Vector4 tvec = new(3.0f * t * t, 2.0f * t, 1.0f, 0.0f);
-            Vector4 weights = (tvec * matr);
+            Vector4 weights = Vector4.Transform(tvec, matr);
 
             result = vertice[0] * weights.X + vertice[1] * weights.Y
                    + vertice[2] * weights.Z + vertice[3] * weights.W;

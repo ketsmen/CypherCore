@@ -65,13 +65,13 @@ namespace Game.Collision
             iScale = modelOwner.GetScale();
             iInvScale = 1.0f / iScale;
 
-            Matrix3x2 iRotation = Matrix3x2.fromEulerAnglesZYX(modelOwner.GetOrientation(), 0, 0);
-            iInvRot = iRotation.inverse();
+            Matrix4x4 iRotation = Extensions.fromEulerAnglesZYX(modelOwner.GetOrientation(), 0, 0);
+            Matrix4x4.Invert(iRotation, out iInvRot);
             // transform bounding box:
             mdl_box = new AxisAlignedBox(mdl_box.Lo * iScale, mdl_box.Hi * iScale);
             AxisAlignedBox rotated_bounds = new();
             for (int i = 0; i < 8; ++i)
-                rotated_bounds.merge(iRotation * mdl_box.corner(i));
+                rotated_bounds.merge(Vector3.Transform(mdl_box.corner(i), iRotation));
 
             iBound = rotated_bounds + iPos;
             owner = modelOwner;
@@ -101,8 +101,8 @@ namespace Game.Collision
                 return false;
 
             // child bounds are defined in object space:
-            Vector3 p = iInvRot * (ray.Origin - iPos) * iInvScale;
-            Ray modRay = new(p, iInvRot * ray.Direction);
+            Vector3 p = Vector3.Transform((ray.Origin - iPos) * iInvScale, iInvRot);
+            Ray modRay = new Ray(p, Vector3.Transform(ray.Direction, iInvRot));
             float distance = maxDist * iInvScale;
             bool hit = iModel.IntersectRay(modRay, ref distance, stopAtFirstHit, ignoreFlags);
             if (hit)
@@ -125,13 +125,13 @@ namespace Game.Collision
                 return;
 
             // child bounds are defined in object space:
-            Vector3 pModel = iInvRot * (point - iPos) * iInvScale;
-            Vector3 zDirModel = iInvRot * new Vector3(0.0f, 0.0f, -1.0f);
+            Vector3 pModel = Vector3.Transform((point - iPos) * iInvScale, iInvRot);
+            Vector3 zDirModel = Vector3.Transform(new Vector3(0.0f, 0.0f, -1.0f), iInvRot);
             float zDist;
             if (iModel.IntersectPoint(pModel, zDirModel, out zDist, info))
             {
                 Vector3 modelGround = pModel + zDist * zDirModel;
-                float world_Z = ((modelGround * iInvRot) * iScale + iPos).Z;
+                float world_Z = (Vector3.Transform(modelGround, iInvRot) * iScale + iPos).Z;
                 if (info.ground_Z < world_Z)
                 {
                     info.ground_Z = world_Z;
@@ -159,13 +159,13 @@ namespace Game.Collision
 
             iPos = owner.GetPosition();
 
-            Matrix3x2 iRotation = Matrix3x2.fromEulerAnglesZYX(owner.GetOrientation(), 0, 0);
-            iInvRot = iRotation.inverse();
+            Matrix4x4 iRotation = Extensions.fromEulerAnglesZYX(owner.GetOrientation(), 0, 0);
+            Matrix4x4.Invert(iRotation, out iInvRot);
             // transform bounding box:
             mdl_box = new AxisAlignedBox(mdl_box.Lo * iScale, mdl_box.Hi * iScale);
             AxisAlignedBox rotated_bounds = new();
             for (int i = 0; i < 8; ++i)
-                rotated_bounds.merge(iRotation * mdl_box.corner(i));
+                rotated_bounds.merge(Vector3.Transform(mdl_box.corner(i), iRotation));
 
             iBound = rotated_bounds + iPos;
 
@@ -224,7 +224,7 @@ namespace Game.Collision
 
         bool _collisionEnabled;
         AxisAlignedBox iBound;
-        Matrix3x2 iInvRot;
+        Matrix4x4 iInvRot;
         Vector3 iPos;
         float iInvScale;
         float iScale;

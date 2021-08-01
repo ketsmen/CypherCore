@@ -23,6 +23,8 @@ using Game.Scripting;
 using Game.Spells;
 using System;
 
+using TaskScheduler = Framework.Dynamic.TaskScheduler;
+
 namespace Scripts.World.NpcGuard
 {
     struct SpellIds

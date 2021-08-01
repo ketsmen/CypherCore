@@ -20,6 +20,8 @@ using Framework.Dynamic;
 using Game.Entities;
 using Game.Spells;
 
+using TaskScheduler = Framework.Dynamic.TaskScheduler;
+
 namespace Game.AI
 {
     public class GameObjectAI

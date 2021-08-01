@@ -307,61 +307,55 @@ namespace Game.Maps
             y_int &= (MapConst.MapResolution - 1);
             int a, b, c;
 
-            unsafe
+            byte[] V9_h1_ptr = m_ubyte_V9[(x_int * 128 + x_int + y_int)..];
+            if (x + y < 1)
             {
-                fixed (byte* V9 = m_ubyte_V9)
+                if (x > y)
                 {
-                    byte* V9_h1_ptr = &V9[x_int * 128 + x_int + y_int];
-                    if (x + y < 1)
-                    {
-                        if (x > y)
-                        {
-                            // 1 triangle (h1, h2, h5 points)
-                            int h1 = V9_h1_ptr[0];
-                            int h2 = V9_h1_ptr[129];
-                            int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
-                            a = h2 - h1;
-                            b = h5 - h1 - h2;
-                            c = h1;
-                        }
-                        else
-                        {
-                            // 2 triangle (h1, h3, h5 points)
-                            int h1 = V9_h1_ptr[0];
-                            int h3 = V9_h1_ptr[1];
-                            int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
-                            a = h5 - h1 - h3;
-                            b = h3 - h1;
-                            c = h1;
-                        }
-                    }
-                    else
-                    {
-                        if (x > y)
-                        {
-                            // 3 triangle (h2, h4, h5 points)
-                            int h2 = V9_h1_ptr[129];
-                            int h4 = V9_h1_ptr[130];
-                            int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
-                            a = h2 + h4 - h5;
-                            b = h4 - h2;
-                            c = h5 - h4;
-                        }
-                        else
-                        {
-                            // 4 triangle (h3, h4, h5 points)
-                            int h3 = V9_h1_ptr[1];
-                            int h4 = V9_h1_ptr[130];
-                            int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
-                            a = h4 - h3;
-                            b = h3 + h4 - h5;
-                            c = h5 - h4;
-                        }
-                    }
-                    // Calculate height
-                    return ((a * x) + (b * y) + c) * _gridIntHeightMultiplier + _gridHeight;
+                    // 1 triangle (h1, h2, h5 points)
+                    int h1 = V9_h1_ptr[0];
+                    int h2 = V9_h1_ptr[129];
+                    int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
+                    a = h2 - h1;
+                    b = h5 - h1 - h2;
+                    c = h1;
+                }
+                else
+                {
+                    // 2 triangle (h1, h3, h5 points)
+                    int h1 = V9_h1_ptr[0];
+                    int h3 = V9_h1_ptr[1];
+                    int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
+                    a = h5 - h1 - h3;
+                    b = h3 - h1;
+                    c = h1;
                 }
             }
+            else
+            {
+                if (x > y)
+                {
+                    // 3 triangle (h2, h4, h5 points)
+                    int h2 = V9_h1_ptr[129];
+                    int h4 = V9_h1_ptr[130];
+                    int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
+                    a = h2 + h4 - h5;
+                    b = h4 - h2;
+                    c = h5 - h4;
+                }
+                else
+                {
+                    // 4 triangle (h3, h4, h5 points)
+                    int h3 = V9_h1_ptr[1];
+                    int h4 = V9_h1_ptr[130];
+                    int h5 = 2 * m_ubyte_V8[x_int * 128 + y_int];
+                    a = h4 - h3;
+                    b = h3 + h4 - h5;
+                    c = h5 - h4;
+                }
+            }
+            // Calculate height
+            return ((a * x) + (b * y) + c) * _gridIntHeightMultiplier + _gridHeight;
         }
 
         float GetHeightFromUint16(float x, float y)
@@ -379,61 +373,56 @@ namespace Game.Maps
             x_int &= (MapConst.MapResolution - 1);
             y_int &= (MapConst.MapResolution - 1);
             int a, b, c;
-            unsafe
+
+            ushort[] V9_h1_ptr = m_uint16_V9[(x_int * 128 + x_int + y_int)..];
+            if (x + y < 1)
             {
-                fixed (ushort* V9 = m_uint16_V9)
+                if (x > y)
                 {
-                    ushort* V9_h1_ptr = &V9[x_int * 128 + x_int + y_int];
-                    if (x + y < 1)
-                    {
-                        if (x > y)
-                        {
-                            // 1 triangle (h1, h2, h5 points)
-                            int h1 = V9_h1_ptr[0];
-                            int h2 = V9_h1_ptr[129];
-                            int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
-                            a = h2 - h1;
-                            b = h5 - h1 - h2;
-                            c = h1;
-                        }
-                        else
-                        {
-                            // 2 triangle (h1, h3, h5 points)
-                            int h1 = V9_h1_ptr[0];
-                            int h3 = V9_h1_ptr[1];
-                            int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
-                            a = h5 - h1 - h3;
-                            b = h3 - h1;
-                            c = h1;
-                        }
-                    }
-                    else
-                    {
-                        if (x > y)
-                        {
-                            // 3 triangle (h2, h4, h5 points)
-                            int h2 = V9_h1_ptr[129];
-                            int h4 = V9_h1_ptr[130];
-                            int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
-                            a = h2 + h4 - h5;
-                            b = h4 - h2;
-                            c = h5 - h4;
-                        }
-                        else
-                        {
-                            // 4 triangle (h3, h4, h5 points)
-                            int h3 = V9_h1_ptr[1];
-                            int h4 = V9_h1_ptr[130];
-                            int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
-                            a = h4 - h3;
-                            b = h3 + h4 - h5;
-                            c = h5 - h4;
-                        }
-                    }
-                    // Calculate height
-                    return ((a * x) + (b * y) + c) * _gridIntHeightMultiplier + _gridHeight;
+                    // 1 triangle (h1, h2, h5 points)
+                    int h1 = V9_h1_ptr[0];
+                    int h2 = V9_h1_ptr[129];
+                    int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
+                    a = h2 - h1;
+                    b = h5 - h1 - h2;
+                    c = h1;
+                }
+                else
+                {
+                    // 2 triangle (h1, h3, h5 points)
+                    int h1 = V9_h1_ptr[0];
+                    int h3 = V9_h1_ptr[1];
+                    int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
+                    a = h5 - h1 - h3;
+                    b = h3 - h1;
+                    c = h1;
                 }
             }
+            else
+            {
+                if (x > y)
+                {
+                    // 3 triangle (h2, h4, h5 points)
+                    int h2 = V9_h1_ptr[129];
+                    int h4 = V9_h1_ptr[130];
+                    int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
+                    a = h2 + h4 - h5;
+                    b = h4 - h2;
+                    c = h5 - h4;
+                }
+                else
+                {
+                    // 4 triangle (h3, h4, h5 points)
+                    int h3 = V9_h1_ptr[1];
+                    int h4 = V9_h1_ptr[130];
+                    int h5 = 2 * m_uint16_V8[x_int * 128 + y_int];
+                    a = h4 - h3;
+                    b = h3 + h4 - h5;
+                    c = h5 - h4;
+                }
+            }
+            // Calculate height
+            return ((a * x) + (b * y) + c) * _gridIntHeightMultiplier + _gridHeight;
         }
 
         public float GetMinHeight(float x, float y)

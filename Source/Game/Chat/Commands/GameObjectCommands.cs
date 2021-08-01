@@ -612,7 +612,7 @@ namespace Game.Chat
                 Player player = handler.GetPlayer();
                 Map map = player.GetMap();
 
-                GameObject obj = GameObject.CreateGameObject(objectInfo.entry, map, player, Quaternion.fromEulerAnglesZYX(player.GetOrientation(), 0.0f, 0.0f), 255, GameObjectState.Ready);
+                GameObject obj = GameObject.CreateGameObject(objectInfo.entry, map, player, Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(player.GetOrientation(), 0.0f, 0.0f)), 255, GameObjectState.Ready);
                 if (!obj)
                     return false;
 
@@ -656,7 +656,7 @@ namespace Game.Chat
                 if (spawntime != 0)
                     spawntm = spawntime;
 
-                Quaternion rotation = Quaternion.fromEulerAnglesZYX(player.GetOrientation(), 0.0f, 0.0f);
+                Quaternion rotation = Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(player.GetOrientation(), 0.0f, 0.0f));
 
                 if (Global.ObjectMgr.GetGameObjectTemplate(id) == null)
                 {

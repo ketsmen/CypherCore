@@ -66,7 +66,8 @@ namespace Game.Collision
         public bool GetObjectHitPos(Vector3 startPos, Vector3 endPos, ref Vector3 resultHitPos, float modifyDist, PhaseShift phaseShift)
         {
             bool result;
-            float maxDist = (endPos - startPos).magnitude();
+            float maxDist = Vector3.Distance(endPos, startPos);
+            
             // valid map coords should *never ever* produce float overflow, but this would produce NaNs too
             Cypher.Assert(maxDist < float.MaxValue);
             // prevent NaN values which can cause BIH intersection to enter infinite loop
@@ -83,7 +84,7 @@ namespace Game.Collision
                 resultHitPos = startPos + dir * dist;
                 if (modifyDist < 0)
                 {
-                    if ((resultHitPos - startPos).magnitude() > -modifyDist)
+                    if (Vector3.Distance(resultHitPos, startPos) > -modifyDist)
                         resultHitPos += dir * modifyDist;
                     else
                         resultHitPos = startPos;
@@ -103,7 +104,7 @@ namespace Game.Collision
 
         public bool IsInLineOfSight(Vector3 startPos, Vector3 endPos, PhaseShift phaseShift)
         {
-            float maxDist = (endPos - startPos).magnitude();
+            float maxDist = Vector3.Distance(endPos, startPos);
 
             if (!MathFunctions.fuzzyGt(maxDist, 0))
                 return true;

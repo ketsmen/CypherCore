@@ -23,9 +23,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Timers;
 using System.Collections.Concurrent;
 using Framework.Realm;
+using System.Timers;
+using Timer = System.Timers.Timer;
 
 public class RealmManager : Singleton<RealmManager>
 {

@@ -24,6 +24,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 
 namespace System
 {
@@ -215,27 +216,71 @@ namespace System
             }
         }
 
-        public static Matrix3x2 fromEulerAnglesZYX(float fYAngle, float fPAngle, float fRAngle)
+        public static int primaryAxis(this Vector3 vector)
         {
-            float fCos, fSin;
+            var a = 0;
 
-            fCos = (float) Math.Cos(fYAngle);
-            fSin = (float) Math.Sin(fYAngle);
-            Matrix3x2 kZMat = new Matrix3x2(fCos, -fSin, 0.0f, fSin, fCos, 0.0f, 0.0f, 0.0f, 1.0f);
+            double nx = Math.Abs(vector.X);
+            double ny = Math.Abs(vector.Y);
+            double nz = Math.Abs(vector.Z);
 
-            fCos = (float) Math.Cos(fPAngle);
-            fSin = (float) Math.Sin(fPAngle);
-            Matrix3x2 kYMat = new Matrix3x2(fCos, 0.0f, fSin, 0.0f, 1.0f, 0.0f, -fSin, 0.0f, fCos);
+            if (nx > ny)
+            {
+                if (nx > nz)
+                    a = 0;
+                else
+                    a = 2;
+            }
+            else
+            {
+                if (ny > nz)
+                    a = 1;
+                else
+                    a = 2;
+            }
 
-            fCos = (float) Math.Cos(fRAngle);
-            fSin = (float) Math.Sin(fRAngle);
-            Matrix3x2 kXMat = new Matrix3x2(1.0f, 0.0f, 0.0f, 0.0f, fCos, -fSin, 0.0f, fSin, fCos);
+            return a;
+        }
+
+        public static Vector3 directionOrZero(this Vector3 vector)
+        {
+            float mag = vector.Length();
+            if (mag < 0.0000001f)
+            {
+                return Vector3.Zero;
+            }
+            else if (mag < 1.00001f && mag > 0.99999f)
+            {
+                return vector;
+            }
+            else
+            {
+                return vector * (1.0f / mag);
+            }
+        }
+
+        public static Matrix4x4 fromEulerAnglesZYX(float fYAngle, float fPAngle, float fRAngle)
+        {
+            var fCos = MathF.Cos(fYAngle);
+            var fSin = MathF.Sin(fYAngle);
+
+            var kZMat = new Matrix4x4(fCos, -fSin, 0, 0, fSin, fCos, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0);
+
+            fCos = MathF.Cos(fPAngle);
+            fSin = MathF.Sin(fPAngle);
+
+            var kYMat = new Matrix4x4(fCos, 0, fSin, 0, 0, 1, 0, 0, -fSin, 0, fCos, 0, 0, 0, 0, 0);
+
+            fCos = MathF.Cos(fRAngle);
+            fSin = MathF.Sin(fRAngle);
+
+            var kXMat = new Matrix4x4(1, 0, 0, 0, 0, fCos, -fSin, 0, 0, fSin, fCos, 0, 0, 0, 0, 0);
 
             return (kZMat* (kYMat* kXMat));
         }
 
-    #region Strings
-    public static bool IsEmpty(this string str)
+        #region Strings
+        public static bool IsEmpty(this string str)
         {
             return string.IsNullOrEmpty(str);
         }

@@ -4192,8 +4192,8 @@ namespace Game
                     Log.outError(LogFilter.Sql, $"GameObject (GUID: {guid}) has InvisibilityType set but has no InvisibilityValue in `gameobject_addon`, set to 1");
                     gameObjectAddon.invisibilityValue = 1;
                 }
-
-                if (!gameObjectAddon.ParentRotation.isUnit())
+                // Math.Abs(dot(this) - 1.0f) < tolerance
+                if (!(Math.Abs(Quaternion.Dot(gameObjectAddon.ParentRotation, gameObjectAddon.ParentRotation) - 1) < 1e-5))
                 {
                     Log.outError(LogFilter.Sql, $"GameObject (GUID: {guid}) has invalid parent rotation in `gameobject_addon`, set to default");
                     gameObjectAddon.ParentRotation = Quaternion.Identity;

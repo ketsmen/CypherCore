@@ -26,6 +26,7 @@ using Game.Spells;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace Scripts.Spells.Items
 {
@@ -2338,7 +2339,7 @@ namespace Scripts.Spells.Items
             {
                 if (target.IsDead() && !target.IsPet())
                 {
-                    GetCaster().SummonGameObject(ObjectIds.ImprisonedDoomguard, target, Quaternion.fromEulerAnglesZYX(target.GetOrientation(), 0.0f, 0.0f), (uint)(target.GetRespawnTime() - GameTime.GetGameTime()));
+                    GetCaster().SummonGameObject(ObjectIds.ImprisonedDoomguard, target, Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(target.GetOrientation(), 0.0f, 0.0f)), (uint)(target.GetRespawnTime() - GameTime.GetGameTime()));
                     target.DespawnOrUnsummon();
                 }
             }
