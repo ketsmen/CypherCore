@@ -1174,13 +1174,15 @@ namespace Game.AI
                         foreach (var target in targets)
                         {
                             Position pos = target.GetPositionWithOffset(new Position(e.Target.x, e.Target.y, e.Target.z, e.Target.o));
-                            summoner.SummonGameObject(e.Action.summonGO.entry, pos, Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(pos.GetOrientation(), 0.0f, 0.0f)), e.Action.summonGO.despawnTime, (GameObjectSummonType)e.Action.summonGO.summonType);
+                            Quaternion rot = Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(pos.GetOrientation(), 0f, 0f));
+                            summoner.SummonGameObject(e.Action.summonGO.entry, pos, rot, e.Action.summonGO.despawnTime, (GameObjectSummonType)e.Action.summonGO.summonType);
                         }
 
                         if (e.GetTargetType() != SmartTargets.Position)
                             break;
 
-                        summoner.SummonGameObject(e.Action.summonGO.entry, new Position(e.Target.x, e.Target.y, e.Target.z, e.Target.o), Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(e.Target.o, 0.0f, 0.0f)), e.Action.summonGO.despawnTime, (GameObjectSummonType)e.Action.summonGO.summonType);
+                        Quaternion _rot = Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(e.Target.o, 0f, 0f));
+                        summoner.SummonGameObject(e.Action.summonGO.entry, new Position(e.Target.x, e.Target.y, e.Target.z, e.Target.o), _rot, e.Action.summonGO.despawnTime, (GameObjectSummonType)e.Action.summonGO.summonType);
                         break;
                     }
                 case SmartActions.KillUnit:
@@ -1419,19 +1421,18 @@ namespace Game.AI
                         }
                         break;
                     }
-                case SmartActions.RespawnTarget:
+                case SmartActions.EnableTempGobj:
                     {
                         foreach (var target in targets)
                         {
                             if (IsCreature(target))
-                                target.ToCreature().Respawn();
+                                Log.outWarn(LogFilter.Sql, $"Invalid creature target '{target.GetName()}' (entry {target.GetEntry()}, spawnId {target.ToCreature().GetSpawnId()}) specified for SMART_ACTION_ENABLE_TEMP_GOBJ");
                             else if (IsGameObject(target))
                             {
-                                // do not modify respawndelay of already spawned gameobjects
                                 if (target.ToGameObject().IsSpawnedByDefault())
-                                    target.ToGameObject().Respawn();
+                                    Log.outWarn(LogFilter.Sql, $"Invalid gameobject target '{target.GetName()}' (entry {target.GetEntry()}, spawnId {target.ToGameObject().GetSpawnId()}) for SMART_ACTION_ENABLE_TEMP_GOBJ - the object is spawned by default");
                                 else
-                                    target.ToGameObject().SetRespawnTime((int)e.Action.respawnTarget.goRespawnTime);
+                                    target.ToGameObject().SetRespawnTime((int)e.Action.enableTempGO.duration);
                             }
                         }
                         break;
@@ -2306,6 +2307,21 @@ namespace Game.AI
                             }
                         }
 
+                        break;
+                    }
+                case SmartActions.RespawnBySpawnId:
+                    {
+                        Map map = null;
+                        WorldObject obj = GetBaseObject();
+                        if (obj != null)
+                            map = obj.GetMap();
+                        else if (!targets.Empty())
+                            map = targets.First().GetMap();
+
+                        if (map)
+                            map.RemoveRespawnTime((SpawnObjectType)e.Action.respawnData.spawnType, e.Action.respawnData.spawnId, true);
+                        else
+                            Log.outError(LogFilter.Sql, $"SmartScript.ProcessAction: Entry {e.EntryOrGuid} SourceType {e.GetScriptType()}, Event {e.EventId} - tries to respawn by spawnId but does not provide a map");
                         break;
                     }
                 case SmartActions.PlayAnimkit:
@@ -3443,7 +3459,7 @@ namespace Game.AI
                             default:
                                 return;
                         }
-                        
+
                         if (targets == null)
                             return;
 
@@ -4090,7 +4106,7 @@ namespace Game.AI
             return false;
         }
         public bool IsGameObject(WorldObject obj) { return obj != null && obj.IsTypeId(TypeId.GameObject); }
-        
+
         bool IsSmart(Creature creature, bool silent = false)
         {
             if (creature == null)

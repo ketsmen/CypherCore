@@ -27,6 +27,7 @@ using Game.Scenarios;
 using System;
 using System.Collections.Generic;
 using Game.DataStorage;
+using System.Numerics;
 
 namespace Game.Entities
 {
@@ -536,16 +537,13 @@ namespace Game.Entities
 
                 if (hasAreaTriggerBox)
                 {
-                    unsafe
-                    {
-                        data.WriteFloat(areaTriggerTemplate.BoxDatas.Extents[0]);
-                        data.WriteFloat(areaTriggerTemplate.BoxDatas.Extents[1]);
-                        data.WriteFloat(areaTriggerTemplate.BoxDatas.Extents[2]);
+                    data.WriteFloat(areaTriggerTemplate.BoxDatas.Extents[0]);
+                    data.WriteFloat(areaTriggerTemplate.BoxDatas.Extents[1]);
+                    data.WriteFloat(areaTriggerTemplate.BoxDatas.Extents[2]);
 
-                        data.WriteFloat(areaTriggerTemplate.BoxDatas.ExtentsTarget[0]);
-                        data.WriteFloat(areaTriggerTemplate.BoxDatas.ExtentsTarget[1]);
-                        data.WriteFloat(areaTriggerTemplate.BoxDatas.ExtentsTarget[2]);
-                    }
+                    data.WriteFloat(areaTriggerTemplate.BoxDatas.ExtentsTarget[0]);
+                    data.WriteFloat(areaTriggerTemplate.BoxDatas.ExtentsTarget[1]);
+                    data.WriteFloat(areaTriggerTemplate.BoxDatas.ExtentsTarget[2]);
                 }
 
                 if (hasAreaTriggerPolygon)
