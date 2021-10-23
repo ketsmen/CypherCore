@@ -614,12 +614,9 @@ namespace Game.Collision
         uint[] tree;
         uint[] objects;
 
-        [StructLayout(LayoutKind.Explicit)]
         public struct FloatToIntConverter
         {
-            [FieldOffset(0)]
             public uint IntValue;
-            [FieldOffset(0)]
             public float FloatValue;
         }
 

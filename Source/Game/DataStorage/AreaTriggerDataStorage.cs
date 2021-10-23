@@ -149,6 +149,8 @@ namespace Game.DataStorage
                         continue;
                     }
 
+                    areaTriggerTemplate.DefaultDatas.Data = new float[SharedConst.MaxAreatriggerEntityData];
+
                     for (byte i = 0; i < SharedConst.MaxAreatriggerEntityData; ++i)
                         areaTriggerTemplate.DefaultDatas.Data[i] = templates.Read<float>(4 + i);
 

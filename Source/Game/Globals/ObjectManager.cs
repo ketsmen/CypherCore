@@ -3644,6 +3644,7 @@ namespace Game
                 go.displayId = db2go.DisplayID;
                 go.name = db2go.Name[Global.WorldMgr.GetDefaultDbcLocale()];
                 go.size = db2go.Scale;
+                go.Raw = new();
 
                 for (byte x = 0; x < db2go.PropValue.Length; ++x)
                     go.Raw.data[x] = db2go.PropValue[x];
@@ -3683,6 +3684,7 @@ namespace Game
                     got.castBarCaption = result.Read<string>(5);
                     got.unk1 = result.Read<string>(6);
                     got.size = result.Read<float>(7);
+                    got.Raw = new();
 
                     for (byte x = 0; x < SharedConst.MaxGOData; ++x)
                         got.Raw.data[x] = result.Read<int>(8 + x);
@@ -10363,97 +10365,37 @@ namespace Game
         #endregion
     }
 
-    [StructLayout(LayoutKind.Explicit)]
     public struct ScriptInfo
     {
-        [FieldOffset(0)]
         public ScriptsType type;
-
-        [FieldOffset(4)]
         public uint id;
-
-        [FieldOffset(8)]
         public uint delay;
-
-        [FieldOffset(12)]
         public ScriptCommands command;
-
-        [FieldOffset(16)]
         public raw Raw;
-
-        [FieldOffset(16)]
         public talk Talk;
-
-        [FieldOffset(16)]
         public emote Emote;
-
-        [FieldOffset(16)]
         public fieldset FieldSet;
-
-        [FieldOffset(16)]
         public moveto MoveTo;
-
-        [FieldOffset(16)]
         public flagtoggle FlagToggle;
-
-        [FieldOffset(16)]
         public teleportto TeleportTo;
-
-        [FieldOffset(16)]
         public questexplored QuestExplored;
-
-        [FieldOffset(16)]
         public killcredit KillCredit;
-
-        [FieldOffset(16)]
         public respawngameobject RespawnGameObject;
-
-        [FieldOffset(16)]
         public tempsummoncreature TempSummonCreature;
-
-        [FieldOffset(16)]
         public toggledoor ToggleDoor;
-
-        [FieldOffset(16)]
         public removeaura RemoveAura;
-
-        [FieldOffset(16)]
         public castspell CastSpell;
-
-        [FieldOffset(16)]
         public playsound PlaySound;
-
-        [FieldOffset(16)]
         public createitem CreateItem;
-
-        [FieldOffset(16)]
         public despawnself DespawnSelf;
-
-        [FieldOffset(16)]
         public loadpath LoadPath;
-
-        [FieldOffset(16)]
         public callscript CallScript;
-
-        [FieldOffset(16)]
         public kill Kill;
-
-        [FieldOffset(16)]
         public orientation Orientation;
-
-        [FieldOffset(16)]
         public equip Equip;
-
-        [FieldOffset(16)]
         public model Model;
-
-        [FieldOffset(16)]
         public playmovie PlayMovie;
-
-        [FieldOffset(16)]
         public movement Movement;
-
-        [FieldOffset(16)]
         public playanimkit PlayAnimKit;
 
         public string GetDebugInfo()

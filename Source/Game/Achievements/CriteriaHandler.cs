@@ -3984,67 +3984,27 @@ namespace Game.Achievements
         public bool Changed;
     }
 
-    [StructLayout(LayoutKind.Explicit)]
     public class CriteriaData
     { 
-        [FieldOffset(0)]
         public CriteriaDataType DataType;
-
-        [FieldOffset(4)]
         public CreatureStruct Creature;
-
-        [FieldOffset(4)]
         public ClassRaceStruct ClassRace;
-
-        [FieldOffset(4)]
         public HealthStruct Health;
-
-        [FieldOffset(4)]
         public AuraStruct Aura;
-
-        [FieldOffset(4)]
         public ValueStruct Value;
-
-        [FieldOffset(4)]
         public LevelStruct Level;
-
-        [FieldOffset(4)]
         public GenderStruct Gender;
-
-        [FieldOffset(4)]
         public MapPlayersStruct MapPlayers;
-
-        [FieldOffset(4)]
         public TeamStruct TeamId;
-
-        [FieldOffset(4)]
         public DrunkStruct Drunk;
-
-        [FieldOffset(4)]
         public HolidayStruct Holiday;
-
-        [FieldOffset(4)]
         public BgLossTeamScoreStruct BattlegroundScore;
-
-        [FieldOffset(4)]
         public EquippedItemStruct EquippedItem;
-
-        [FieldOffset(4)]
         public MapIdStruct MapId;
-
-        [FieldOffset(4)]
         public KnownTitleStruct KnownTitle;
-
-        [FieldOffset(4)]
         public GameEventStruct GameEvent;
-
-        [FieldOffset(4)]
         public ItemQualityStruct itemQuality;
-
-        [FieldOffset(4)]
         public RawStruct Raw;
-
-        [FieldOffset(12)]
         public uint ScriptId;
 
         public CriteriaData()

@@ -1865,145 +1865,53 @@ namespace Game.AI
         }
     }
 
-    [StructLayout(LayoutKind.Explicit)]
     public struct SmartEvent
     {
-        [FieldOffset(0)]
         public SmartEvents type;
-
-        [FieldOffset(4)]
         public uint event_phase_mask;
-
-        [FieldOffset(8)]
         public uint event_chance;
-
-        [FieldOffset(12)]
         public SmartEventFlags event_flags;
-
-        [FieldOffset(16)]
         public MinMaxRepeat minMaxRepeat;
-
-        [FieldOffset(16)]
         public Kill kill;
-
-        [FieldOffset(16)]
         public SpellHit spellHit;
-
-        [FieldOffset(16)]
         public Los los;
-
-        [FieldOffset(16)]
         public Respawn respawn;
-
-        [FieldOffset(16)]
         public MinMax minMax;
-
-        [FieldOffset(16)]
         public TargetCasting targetCasting;
-
-        [FieldOffset(16)]
         public FriendlyHealt friendlyHealth;
-
-        [FieldOffset(16)]
         public FriendlyCC friendlyCC;
-
-        [FieldOffset(16)]
         public MissingBuff missingBuff;
-
-        [FieldOffset(16)]
         public Summoned summoned;
-
-        [FieldOffset(16)]
         public Quest quest;
-
-        [FieldOffset(16)]
         public QuestObjective questObjective;
-
-        [FieldOffset(16)]
         public Emote emote;
-
-        [FieldOffset(16)]
         public Aura aura;
-
-        [FieldOffset(16)]
         public Charm charm;
-
-        [FieldOffset(16)]
         public TargetAura targetAura;
-
-        [FieldOffset(16)]
         public MovementInform movementInform;
-
-        [FieldOffset(16)]
         public DataSet dataSet;
-
-        [FieldOffset(16)]
         public Waypoint waypoint;
-
-        [FieldOffset(16)]
         public TransportAddCreature transportAddCreature;
-
-        [FieldOffset(16)]
         public TransportRelocate transportRelocate;
-
-        [FieldOffset(16)]
         public InstancePlayerEnter instancePlayerEnter;
-
-        [FieldOffset(16)]
         public Areatrigger areatrigger;
-
-        [FieldOffset(16)]
         public TextOver textOver;
-
-        [FieldOffset(16)]
         public TimedEvent timedEvent;
-
-        [FieldOffset(16)]
         public GossipHello gossipHello;
-
-        [FieldOffset(16)]
         public Gossip gossip;
-
-        [FieldOffset(16)]
         public Dummy dummy;
-
-        [FieldOffset(16)]
         public EventPhaseChange eventPhaseChange;
-
-        [FieldOffset(16)]
         public BehindTarget behindTarget;
-
-        [FieldOffset(16)]
         public GameEvent gameEvent;
-
-        [FieldOffset(16)]
         public GoLootStateChanged goLootStateChanged;
-
-        [FieldOffset(16)]
         public EventInform eventInform;
-
-        [FieldOffset(16)]
         public DoAction doAction;
-
-        [FieldOffset(16)]
         public FriendlyHealthPct friendlyHealthPct;
-
-        [FieldOffset(16)]
         public Distance distance;
-
-        [FieldOffset(16)]
         public Counter counter;
-
-        [FieldOffset(16)]
         public Scene scene;
-
-        [FieldOffset(16)]
         public Spell spell;
-
-        [FieldOffset(16)]
         public Raw raw;
-
-        [FieldOffset(40)]
         public string param_string;
 
         #region Structs
@@ -2234,307 +2142,107 @@ namespace Game.AI
         #endregion
     }
 
-    [StructLayout(LayoutKind.Explicit)]
     public struct SmartAction
     {
-        [FieldOffset(0)]
         public SmartActions type;
-
-        [FieldOffset(4)]
         public Talk talk;
-
-        [FieldOffset(4)]
         public Faction faction;
-
-        [FieldOffset(4)]
         public MorphOrMount morphOrMount;
-
-        [FieldOffset(4)]
         public Sound sound;
-
-        [FieldOffset(4)]
         public Emote emote;
-
-        [FieldOffset(4)]
         public Quest quest;
-
-        [FieldOffset(4)]
         public QuestOffer questOffer;
-
-        [FieldOffset(4)]
         public React react;
-
-        [FieldOffset(4)]
         public RandomEmote randomEmote;
-
-        [FieldOffset(4)]
         public Cast cast;
-
-        [FieldOffset(4)]
         public CrossCast crossCast;
-
-        [FieldOffset(4)]
         public SummonCreature summonCreature;
-
-        [FieldOffset(4)]
         public ThreatPCT threatPCT;
-
-        [FieldOffset(4)]
         public CastCreatureOrGO castCreatureOrGO;
-
-        [FieldOffset(4)]
         public AddUnitFlag addUnitFlag;
-
-        [FieldOffset(4)]
         public RemoveUnitFlag removeUnitFlag;
-
-        [FieldOffset(4)]
         public AutoAttack autoAttack;
-
-        [FieldOffset(4)]
         public CombatMove combatMove;
-
-        [FieldOffset(4)]
         public SetEventPhase setEventPhase;
-
-        [FieldOffset(4)]
         public IncEventPhase incEventPhase;
-
-        [FieldOffset(4)]
         public CastedCreatureOrGO castedCreatureOrGO;
-
-        [FieldOffset(4)]
         public RemoveAura removeAura;
-
-        [FieldOffset(4)]
         public Follow follow;
-
-        [FieldOffset(4)]
         public RandomPhase randomPhase;
-
-        [FieldOffset(4)]
         public RandomPhaseRange randomPhaseRange;
-
-        [FieldOffset(4)]
         public KilledMonster killedMonster;
-
-        [FieldOffset(4)]
         public SetInstanceData setInstanceData;
-
-        [FieldOffset(4)]
         public SetInstanceData64 setInstanceData64;
-
-        [FieldOffset(4)]
         public UpdateTemplate updateTemplate;
-
-        [FieldOffset(4)]
         public CallHelp callHelp;
-
-        [FieldOffset(4)]
         public SetSheath setSheath;
-
-        [FieldOffset(4)]
         public ForceDespawn forceDespawn;
-
-        [FieldOffset(4)]
         public InvincHP invincHP;
-
-        [FieldOffset(4)]
         public IngamePhaseId ingamePhaseId;
-
-        [FieldOffset(4)]
         public IngamePhaseGroup ingamePhaseGroup;
-
-        [FieldOffset(4)]
         public SetData setData;
-
-        [FieldOffset(4)]
         public MoveRandom moveRandom;
-
-        [FieldOffset(4)]
         public Visibility visibility;
-
-        [FieldOffset(4)]
         public SummonGO summonGO;
-
-        [FieldOffset(4)]
         public Active active;
-
-        [FieldOffset(4)]
         public Taxi taxi;
-
-        [FieldOffset(4)]
         public WpStart wpStart;
-
-        [FieldOffset(4)]
         public WpPause wpPause;
-
-        [FieldOffset(4)]
         public WpStop wpStop;
-
-        [FieldOffset(4)]
         public Item item;
-
-        [FieldOffset(4)]
         public InstallTtemplate installTtemplate;
-
-        [FieldOffset(4)]
         public SetRun setRun;
-
-        [FieldOffset(4)]
         public SetDisableGravity setDisableGravity;
-
-        [FieldOffset(4)]
         public SetFly setFly;
-
-        [FieldOffset(4)]
         public SetSwim setSwim;
-
-        [FieldOffset(4)]
         public Teleport teleport;
-
-        [FieldOffset(4)]
         public SetCounter setCounter;
-
-        [FieldOffset(4)]
         public StoreVar storeVar;
-
-        [FieldOffset(4)]
         public StoreTargets storeTargets;
-
-        [FieldOffset(4)]
         public TimeEvent timeEvent;
-
-        [FieldOffset(4)]
         public Movie movie;
-
-        [FieldOffset(4)]
         public Equip equip;
-
-        [FieldOffset(4)]
         public UnitFlag unitFlag;
-
-        [FieldOffset(4)]
         public SetunitByte setunitByte;
-
-        [FieldOffset(4)]
         public DelunitByte delunitByte;
-
-        [FieldOffset(4)]
         public EnterVehicle enterVehicle;
-
-        [FieldOffset(4)]
         public TimedActionList timedActionList;
-
-        [FieldOffset(4)]
         public RandTimedActionList randTimedActionList;
-
-        [FieldOffset(4)]
         public InterruptSpellCasting interruptSpellCasting;
-
-        [FieldOffset(4)]
         public SendGoCustomAnim sendGoCustomAnim;
-
-        [FieldOffset(4)]
         public Jump jump;
-
-        [FieldOffset(4)]
         public FleeAssist fleeAssist;
-
-        [FieldOffset(4)]
         public Flee flee;
-
-        [FieldOffset(4)]
         public EnableTempGO enableTempGO;
-
-        [FieldOffset(4)]
         public MoveToPos moveToPos;
-
-        [FieldOffset(4)]
         public SendGossipMenu sendGossipMenu;
-
-        [FieldOffset(4)]
         public SetGoLootState setGoLootState;
-
-        [FieldOffset(4)]
         public SendTargetToTarget sendTargetToTarget;
-
-        [FieldOffset(4)]
         public SetRangedMovement setRangedMovement;
-
-        [FieldOffset(4)]
         public SetHealthRegen setHealthRegen;
-
-        [FieldOffset(4)]
         public SetRoot setRoot;
-
-        [FieldOffset(4)]
         public GoFlag goFlag;
-
-        [FieldOffset(4)]
         public GoState goState;
-
-        [FieldOffset(4)]
         public CreatureGroup creatureGroup;
-
-        [FieldOffset(4)]
         public Power power;
-
-        [FieldOffset(4)]
         public GameEventStop gameEventStop;
-
-        [FieldOffset(4)]
         public GameEventStart gameEventStart;
-
-        [FieldOffset(4)]
         public ClosestWaypointFromList closestWaypointFromList;
-
-        [FieldOffset(4)]
         public RandomSound randomSound;
-
-        [FieldOffset(4)]
         public CorpseDelay corpseDelay;
-
-        [FieldOffset(4)]
         public DisableEvade disableEvade;
-
-        [FieldOffset(4)]
         public GroupSpawn groupSpawn;
-
-        [FieldOffset(4)]
         public AuraType auraType;
-
-        [FieldOffset(4)]
         public SightDistance sightDistance;
-
-        [FieldOffset(4)]
         public LoadEquipment loadEquipment;
-
-        [FieldOffset(4)]
         public RandomTimedEvent randomTimedEvent;
-
-        [FieldOffset(4)]
         public StopMotion stopMotion;
-
-        [FieldOffset(4)]
         public RespawnData respawnData;
-
-        [FieldOffset(4)]
         public AnimKit animKit;
-
-        [FieldOffset(4)]
         public Scene scene;
-
-        [FieldOffset(4)]
         public MovementSpeed movementSpeed;
-
-        [FieldOffset(4)]
         public SpellVisualKit spellVisualKit;
-
-        [FieldOffset(4)]
         public Conversation conversation;
-
-        [FieldOffset(4)]
         public Raw raw;
 
         #region Stucts
@@ -3068,76 +2776,30 @@ namespace Game.AI
         #endregion
     }
 
-    [StructLayout(LayoutKind.Explicit)]
     public struct SmartTarget
     {
-        [FieldOffset(0)]
         public SmartTargets type;
-
-        [FieldOffset(4)]
         public float x;
-
-        [FieldOffset(8)]
         public float y;
-
-        [FieldOffset(12)]
         public float z;
-
-        [FieldOffset(16)]
         public float o;
-
-        [FieldOffset(20)]
         public HostilRandom hostilRandom;
-
-        [FieldOffset(20)]
         public Farthest farthest;
-
-        [FieldOffset(20)]
         public UnitRange unitRange;
-
-        [FieldOffset(20)]
         public UnitGUID unitGUID;
-
-        [FieldOffset(20)]
         public UnitDistance unitDistance;
-
-        [FieldOffset(20)]
         public PlayerDistance playerDistance;
-
-        [FieldOffset(20)]
         public PlayerRange playerRange;
-
-        [FieldOffset(20)]
         public Stored stored;
-
-        [FieldOffset(20)]
         public GoRange goRange;
-
-        [FieldOffset(20)]
         public GoGUID goGUID;
-
-        [FieldOffset(20)]
         public GoDistance goDistance;
-
-        [FieldOffset(20)]
         public Position postion;
-
-        [FieldOffset(20)]
         public Closest closest;
-
-        [FieldOffset(20)]
         public ClosestAttackable closestAttackable;
-
-        [FieldOffset(20)]
         public ClosestFriendly closestFriendly;
-
-        [FieldOffset(20)]
         public Owner owner;
-
-        [FieldOffset(20)]
         public Vehicle vehicle;
-
-        [FieldOffset(20)]
         public Raw raw;
 
         #region Structs

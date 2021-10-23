@@ -3115,11 +3115,9 @@ namespace Game.Entities
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
     public class ItemDynamicFieldGems
     {
         public uint ItemId;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
         public ushort[] BonusListIDs = new ushort[16];
         public byte Context;
     }

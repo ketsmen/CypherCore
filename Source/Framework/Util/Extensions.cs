@@ -136,53 +136,6 @@ namespace System
             right = temp;
         }
 
-        public static uint[] SerializeObject<T>(this T obj)
-        {
-            //if (obj.GetType()<StructLayoutAttribute>() == null)
-            //return null;
-
-            var size = Marshal.SizeOf(typeof(T));
-            var ptr = Marshal.AllocHGlobal(size);
-            byte[] array = new byte[size];
-
-            Marshal.StructureToPtr(obj, ptr, true);
-            Marshal.Copy(ptr, array, 0, size);
-
-            Marshal.FreeHGlobal(ptr);
-
-            uint[] result = new uint[size / 4];
-            Buffer.BlockCopy(array, 0, result, 0, array.Length);
-
-            return result;
-        }
-
-        public static List<T> DeserializeObjects<T>(this ICollection<uint> data)
-        {
-            List<T> list = new List<T>();
-
-            if (data.Count == 0)
-                return list;
-
-            if (typeof(T).GetCustomAttribute<StructLayoutAttribute>() == null)
-                return list;
-
-            byte[] result = new byte[data.Count * sizeof(uint)];
-            Buffer.BlockCopy(data.ToArray(), 0, result, 0, result.Length);
-
-            var typeSize = Marshal.SizeOf(typeof(T));
-            var objCount = data.Count / (typeSize / sizeof(uint));
-
-            for (var i = 0; i < objCount; ++i)
-            {
-                var ptr = Marshal.AllocHGlobal(typeSize);
-                Marshal.Copy(result, typeSize * i, ptr, typeSize);
-                list.Add((T)Marshal.PtrToStructure(ptr, typeof(T)));
-                Marshal.FreeHGlobal(ptr);
-            }
-
-            return list;
-        }
-
         public static float GetAt(this Vector3 vector, long index)
         {
             switch (index)

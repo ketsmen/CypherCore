@@ -26,27 +26,16 @@ using System.Runtime.InteropServices;
 
 namespace Game.Entities
 {
-    [StructLayout(LayoutKind.Explicit)]
     public class AreaTriggerData
     {
-        [FieldOffset(0)]
         public defaultdatas DefaultDatas;
-
-        [FieldOffset(0)]
         public spheredatas SphereDatas;
-
-        [FieldOffset(0)]
         public boxdatas BoxDatas;
-
-        [FieldOffset(0)]
         public polygondatas PolygonDatas;
-
-        [FieldOffset(0)]
         public cylinderdatas CylinderDatas;
 
         public struct defaultdatas
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SharedConst.MaxAreatriggerEntityData)]
             public float[] Data;
         }
 
@@ -60,10 +49,7 @@ namespace Game.Entities
         // AREATRIGGER_TYPE_BOX
         public struct boxdatas
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
             public float[] Extents;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
             public float[] ExtentsTarget;
         }
 
@@ -93,37 +79,19 @@ namespace Game.Entities
     //  5 is packed curve information (has_no_data & 1) | ((interpolation_mode & 0x7) << 1) | ((first_point_offset & 0x7FFFFF) << 4) | ((point_count & 0x1F) << 27)
     /// 6 bool is_override, only valid for AREATRIGGER_OVERRIDE_SCALE_CURVE, if true then use data from AREATRIGGER_OVERRIDE_SCALE_CURVE instead of ScaleCurveId from CreateObject
     /// </summary>
-    [StructLayout(LayoutKind.Explicit)]
     public class AreaTriggerScaleInfo
     {
-        [FieldOffset(0)]
         public StructuredData Structured;
-
-        [FieldOffset(0)]
         public RawData Raw;
 
-        [StructLayout(LayoutKind.Explicit)]
         public struct StructuredData
         {
-            [FieldOffset(0)]
             public uint StartTimeOffset;
-
-            [FieldOffset(4)]
             public float X;
-
-            [FieldOffset(8)]
             public float Y;
-
-            [FieldOffset(12)]
             public float Z;
-
-            [FieldOffset(16)]
             public float W;
-
-            [FieldOffset(20)]
             public uint CurveParameters;
-
-            [FieldOffset(24)]
             public uint OverrideActive;
 
             public struct curveparameters
@@ -139,8 +107,7 @@ namespace Game.Entities
 
         public struct RawData
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SharedConst.MaxAreatriggerScale)]
-            public uint[] Data;
+            public uint[] Data = new uint[SharedConst.MaxAreatriggerScale];
         }
     }
 

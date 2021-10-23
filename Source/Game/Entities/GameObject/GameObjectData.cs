@@ -26,217 +26,77 @@ using System.Numerics;
 
 namespace Game.Entities
 {
-    [StructLayout(LayoutKind.Explicit)]
     public class GameObjectTemplate
     {
-        [FieldOffset(0)]
         public uint entry;
-
-        [FieldOffset(4)]
         public GameObjectTypes type;
-
-        [FieldOffset(8)]
         public uint displayId;
-
-        [FieldOffset(16)]
         public string name;
-
-        [FieldOffset(24)]
         public string IconName;
-
-        [FieldOffset(32)]
         public string castBarCaption;
-
-        [FieldOffset(40)]
         public string unk1;
-
-        [FieldOffset(48)]
         public float size;
-
-        [FieldOffset(52)]
         public uint ContentTuningId;
-
-        [FieldOffset(56)]
         public string AIName;
-
-        [FieldOffset(64)]
         public uint ScriptId;
-
-        [FieldOffset(68)]
         public door Door;
-
-        [FieldOffset(68)]
         public button Button;
-
-        [FieldOffset(68)]
         public questgiver QuestGiver;
-
-        [FieldOffset(68)]
         public chest Chest;
-
-        [FieldOffset(68)]
         public binder Binder;
-
-        [FieldOffset(68)]
         public generic Generic;
-
-        [FieldOffset(68)]
         public trap Trap;
-
-        [FieldOffset(68)]
         public chair Chair;
-
-        [FieldOffset(68)]
         public spellFocus SpellFocus;
-
-        [FieldOffset(68)]
         public text Text;
-
-        [FieldOffset(68)]
         public goober Goober;
-
-        [FieldOffset(68)]
         public transport Transport;
-
-        [FieldOffset(68)]
         public areadamage AreaDamage;
-
-        [FieldOffset(68)]
         public camera Camera;
-
-        [FieldOffset(68)]
         public moTransport MoTransport;
-
-        [FieldOffset(68)]
         public duelflag DuelFlag;
-
-        [FieldOffset(68)]
         public fishingnode FishingNode;
-
-        [FieldOffset(68)]
         public ritual Ritual;
-
-        [FieldOffset(68)]
         public mailbox MailBox;
-
-        [FieldOffset(68)]
         public guardpost GuardPost;
-
-        [FieldOffset(68)]
         public spellcaster SpellCaster;
-
-        [FieldOffset(68)]
         public meetingstone MeetingStone;
-
-        [FieldOffset(68)]
         public flagstand FlagStand;
-
-        [FieldOffset(68)]
         public fishinghole FishingHole;
-
-        [FieldOffset(68)]
         public flagdrop FlagDrop;
-
-        [FieldOffset(68)]
         public controlzone ControlZone;
-
-        [FieldOffset(68)]
         public auraGenerator AuraGenerator;
-
-        [FieldOffset(68)]
         public dungeonDifficulty DungeonDifficulty;
-
-        [FieldOffset(68)]
         public barberChair BarberChair;
-
-        [FieldOffset(68)]
         public destructiblebuilding DestructibleBuilding;
-
-        [FieldOffset(68)]
         public guildbank GuildBank;
-
-        [FieldOffset(68)]
         public trapDoor TrapDoor;
-
-        [FieldOffset(68)]
         public newflag NewFlag;
-
-        [FieldOffset(68)]
         public newflagdrop NewFlagDrop;
-
-        [FieldOffset(68)]
         public Garrisonbuilding garrisonBuilding;
-
-        [FieldOffset(68)]
         public garrisonplot GarrisonPlot;
-
-        [FieldOffset(68)]
         public clientcreature ClientCreature;
-
-        [FieldOffset(68)]
         public clientitem ClientItem;
-
-        [FieldOffset(68)]
         public capturepoint CapturePoint;
-
-        [FieldOffset(68)]
         public phaseablemo PhaseableMO;
-
-        [FieldOffset(68)]
         public garrisonmonument GarrisonMonument;
-
-        [FieldOffset(68)]
         public garrisonshipment GarrisonShipment;
-
-        [FieldOffset(68)]
         public garrisonmonumentplaque GarrisonMonumentPlaque;
-
-        [FieldOffset(68)]
         public itemforge ItemForge;
-
-        [FieldOffset(68)]
         public uilink UILink;
-
-        [FieldOffset(68)]
         public keystonereceptacle KeystoneReceptacle;
-
-        [FieldOffset(68)]
         public gatheringnode GatheringNode;
-
-        [FieldOffset(68)]
         public challengemodereward ChallengeModeReward;
-
-        [FieldOffset(68)]
         public multi Multi;
-
-        [FieldOffset(68)]
         public siegeableMulti SiegeableMulti;
-
-        [FieldOffset(68)]
         public siegeableMO SiegeableMO;
-
-        [FieldOffset(68)]
         public pvpReward PvpReward;
-
-        [FieldOffset(68)]
         public playerchoicechest PlayerChoiceChest;
-
-        [FieldOffset(68)]
         public legendaryforge LegendaryForge;
-
-        [FieldOffset(68)]
         public garrtalenttree GarrTalentTree;
-
-        [FieldOffset(68)]
         public weeklyrewardchest WeeklyRewardChest;
-
-        [FieldOffset(68)]
         public clientmodel ClientModel;
-
-        [FieldOffset(68)]
         public raw Raw;
-
-        [FieldOffset(208)]
         public QueryGameObjectResponse QueryData;
 
         // helpers
@@ -606,8 +466,7 @@ namespace Game.Entities
         #region TypeStructs
         public struct raw
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = SharedConst.MaxGOData)]
-            public int[] data;
+            public int[] data = new int[SharedConst.MaxGOData];
         }
 
         public struct door
