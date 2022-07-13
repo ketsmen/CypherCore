@@ -584,9 +584,16 @@ namespace Game.Maps
 
         public Dictionary<int, int> GetWorldStateValues() { return _worldStateValues; }
 
-        public void SetWorldStateValue(int worldStateId, int value)
+        public void SetWorldStateValue(int worldStateId, int value, bool hidden)
         {
-            int oldValue = _worldStateValues.LookupByKey(worldStateId);
+            int oldValue = 0;
+            if (!_worldStateValues.TryAdd(worldStateId, 0))
+            {
+                oldValue = _worldStateValues[worldStateId];
+                if (oldValue == value)
+                    return;
+            }
+
             _worldStateValues[worldStateId] = value;
 
             WorldStateTemplate worldStateTemplate = Global.WorldStateMgr.GetWorldStateTemplate(worldStateId);
@@ -597,6 +604,7 @@ namespace Game.Maps
             UpdateWorldState updateWorldState = new();
             updateWorldState.VariableID = (uint)worldStateId;
             updateWorldState.Value = value;
+            updateWorldState.Hidden = hidden;
             updateWorldState.Write();
 
             foreach (var player in GetPlayers())

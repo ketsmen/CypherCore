@@ -52,21 +52,24 @@ namespace Game
                 worldState.DefaultValue = result.Read<int>(1);
 
                 string mapIds = result.Read<string>(2);
-                foreach (string mapIdToken in new StringArray(mapIds, ','))
+                if (!mapIds.IsEmpty())
                 {
-                    if (!uint.TryParse(mapIdToken, out uint mapId))
+                    foreach (string mapIdToken in new StringArray(mapIds, ','))
                     {
-                        Log.outError(LogFilter.Sql, $"Table `world_state` contains a world state {id} with non-integer MapID ({mapIdToken}), map ignored");
-                        continue;
-                    }
+                        if (!uint.TryParse(mapIdToken, out uint mapId))
+                        {
+                            Log.outError(LogFilter.Sql, $"Table `world_state` contains a world state {id} with non-integer MapID ({mapIdToken}), map ignored");
+                            continue;
+                        }
 
-                    if (!CliDB.MapStorage.ContainsKey(mapId))
-                    {
-                        Log.outError(LogFilter.Sql, $"Table `world_state` contains a world state {id} with invalid MapID ({mapId}), map ignored");
-                        continue;
-                    }
+                        if (!CliDB.MapStorage.ContainsKey(mapId))
+                        {
+                            Log.outError(LogFilter.Sql, $"Table `world_state` contains a world state {id} with invalid MapID ({mapId}), map ignored");
+                            continue;
+                        }
 
-                    worldState.MapIds.Add(mapId);
+                        worldState.MapIds.Add(mapId);
+                    }
                 }
 
                 if (!mapIds.IsEmpty() && worldState.MapIds.Empty())
@@ -157,22 +160,29 @@ namespace Game
             return map.GetWorldStateValue(worldStateId);
         }
 
-        public void SetValue(WorldStates worldStateId, int value, Map map)
+        public void SetValue(WorldStates worldStateId, int value, bool hidden, Map map)
         {
-            SetValue((int)worldStateId, value, map);
+            SetValue((int)worldStateId, value, hidden, map);
         }
 
-        public void SetValue(uint worldStateId, int value, Map map)
+        public void SetValue(uint worldStateId, int value, bool hidden, Map map)
         {
-            SetValue((int)worldStateId, value, map);
+            SetValue((int)worldStateId, value, hidden, map);
         }
 
-        public void SetValue(int worldStateId, int value, Map map)
+        public void SetValue(int worldStateId, int value, bool hidden, Map map)
         {
             WorldStateTemplate worldStateTemplate = GetWorldStateTemplate(worldStateId);
             if (worldStateTemplate == null || worldStateTemplate.MapIds.Empty())
             {
-                int oldValue = _realmWorldStateValues.LookupByKey(worldStateId);
+                int oldValue = 0;
+                if (!_realmWorldStateValues.TryAdd(worldStateId, 0))
+                {
+                    oldValue = _realmWorldStateValues[worldStateId];
+                    if (oldValue == value)
+                        return;
+                }
+
                 _realmWorldStateValues[worldStateId] = value;
 
                 if (worldStateTemplate != null)
@@ -182,6 +192,7 @@ namespace Game
                 UpdateWorldState updateWorldState = new();
                 updateWorldState.VariableID = (uint)worldStateId;
                 updateWorldState.Value = value;
+                updateWorldState.Hidden = hidden;
                 Global.WorldMgr.SendGlobalMessage(updateWorldState);
                 return;
             }
@@ -189,7 +200,7 @@ namespace Game
             if (!worldStateTemplate.MapIds.Contains(map.GetId()))
                 return;
 
-            map.SetWorldStateValue(worldStateId, value);
+            map.SetWorldStateValue(worldStateId, value, hidden);
         }
 
         public Dictionary<int, int> GetInitialWorldStatesForMap(Map map)
