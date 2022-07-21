@@ -82,7 +82,7 @@ namespace Game.Maps
             if (GetId() != mapId || player == null)
                 return null;
 
-            Map map;
+            Map map = null;
             uint newInstanceId;                       // instanceId of the resulting map
 
             if (IsBattlegroundOrArena())
@@ -106,7 +106,7 @@ namespace Game.Maps
                     }
                 }
             }
-            else if(!IsGarrison())
+            else if(IsDungeon())
             {
                 InstanceBind pBind = player.GetBoundInstance(GetId(), player.GetDifficultyID(GetEntry()));
                 InstanceSave pSave = pBind != null ? pBind.save : null;
@@ -162,7 +162,7 @@ namespace Game.Maps
                         map = CreateInstance(newInstanceId, null, diff, player.GetTeamId());
                 }
             }
-            else
+            else if (IsGarrison())
             {
                 newInstanceId = (uint)player.GetGUID().GetCounter();
                 map = FindInstanceMap(newInstanceId);
@@ -182,12 +182,6 @@ namespace Game.Maps
                 if (entry == null)
                 {
                     Log.outError(LogFilter.Maps, "CreateInstance: no record for map {0}", GetId());
-                    Cypher.Assert(false);
-                }
-                InstanceTemplate iTemplate = Global.ObjectMgr.GetInstanceTemplate(GetId());
-                if (iTemplate == null)
-                {
-                    Log.outError(LogFilter.Maps, "CreateInstance: no instance template for map {0}", GetId());
                     Cypher.Assert(false);
                 }
 

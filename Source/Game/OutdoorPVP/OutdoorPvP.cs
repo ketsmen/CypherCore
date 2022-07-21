@@ -35,10 +35,10 @@ namespace Game.PvP
     // base class for specific outdoor pvp handlers
     public class OutdoorPvP : ZoneScript
     {
-        public OutdoorPvP()
+        public OutdoorPvP(Map map)
         {
             m_TypeId = 0;
-            m_sendUpdate = true;
+            m_map = map;
             m_players[0] = new List<ObjectGuid>();
             m_players[1] = new List<ObjectGuid>();
         }
@@ -285,21 +285,10 @@ namespace Game.PvP
 
         public Map GetMap() { return m_map; }
 
-        // Hack to store map because this code is just shit
-        public void SetMapFromZone(uint zone)
-        {
-            AreaTableRecord areaTable = CliDB.AreaTableStorage.LookupByKey(zone);
-            Cypher.Assert(areaTable != null);
-            Map map = Global.MapMgr.CreateBaseMap(areaTable.ContinentID);
-            Cypher.Assert(!map.Instanceable());
-            m_map = map;
-        }
-
         // the map of the objectives belonging to this outdoorpvp
         public Dictionary<ulong, OPvPCapturePoint> m_capturePoints = new();
         List<ObjectGuid>[] m_players = new List<ObjectGuid>[2];
         public OutdoorPvPTypes m_TypeId;
-        bool m_sendUpdate;
 
         Map m_map;
     }
@@ -348,51 +337,7 @@ namespace Game.PvP
             SendUpdateWorldState(m_capturePoint.GetGoInfo().ControlZone.worldstate3, m_neutralValuePct);
         }
 
-        void AddGO(uint type, ulong guid)
-        {
-            GameObjectData data = Global.ObjectMgr.GetGameObjectData(guid);
-            if (data == null)
-                return;
-
-            m_Objects[type] = guid;
-            m_ObjectTypes[guid] = type;
-        }
-
-        void AddCre(uint type, ulong guid)
-        {
-            CreatureData data = Global.ObjectMgr.GetCreatureData(guid);
-            if (data == null)
-                return;
-
-            m_Creatures[type] = guid;
-            m_CreatureTypes[guid] = type;
-        }
-
-        public bool AddObject(uint type, uint entry, uint map, Position pos, Quaternion rot)
-        {
-            ulong guid = Global.ObjectMgr.AddGameObjectData(entry, map, pos, rot, 0);
-            if (guid != 0)
-            {
-                AddGO(type, guid);
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool AddCreature(uint type, uint entry, uint map, Position pos, uint team, uint spawntimedelay)
-        {
-            ulong guid = Global.ObjectMgr.AddCreatureData(entry, map, pos, spawntimedelay);
-            if (guid != 0)
-            {
-                AddCre(type, guid);
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool SetCapturePointData(uint entry, uint map, Position pos, Quaternion rot)
+        public bool SetCapturePointData(uint entry)
         {
             Log.outDebug(LogFilter.Outdoorpvp, "Creating capture point {0}", entry);
 
@@ -404,71 +349,12 @@ namespace Game.PvP
                 return false;
             }
 
-            m_capturePointSpawnId = Global.ObjectMgr.AddGameObjectData(entry, map, pos, rot, 0);
-            if (m_capturePointSpawnId == 0)
-                return false;
-
             // get the needed values from goinfo
             m_maxValue = goinfo.ControlZone.maxTime;
             m_maxSpeed = m_maxValue / (goinfo.ControlZone.minTime != 0 ? goinfo.ControlZone.minTime : 60);
             m_neutralValuePct = goinfo.ControlZone.neutralPercent;
             m_minValue = MathFunctions.CalculatePct(m_maxValue, m_neutralValuePct);
-
             return true;
-        }
-
-        public bool DelCreature(uint type)
-        {
-            if (!m_Creatures.ContainsKey(type))
-            {
-                Log.outDebug(LogFilter.Outdoorpvp, "opvp creature type {0} was already deleted", type);
-                return false;
-            }
-            ulong spawnId = m_Creatures[type];
-
-            Log.outDebug(LogFilter.Outdoorpvp, "deleting opvp creature type {0}", type);
-
-            m_CreatureTypes.Remove(spawnId);
-            m_Creatures.Remove(type);
-
-            return Creature.DeleteFromDB(spawnId);
-        }
-
-        public bool DelObject(uint type)
-        {
-            ulong spawnId = m_Objects[type];
-            if (spawnId == 0)
-                return false;
-
-            m_ObjectTypes.Remove(spawnId);
-            m_Objects.Remove(type);
-
-            return GameObject.DeleteFromDB(spawnId);
-        }
-
-        bool DelCapturePoint()
-        {
-            Global.ObjectMgr.DeleteGameObjectData(m_capturePointSpawnId);
-            m_capturePointSpawnId = 0;
-
-            if (m_capturePoint)
-            {
-                m_capturePoint.SetRespawnTime(0);                                 // not save respawn time
-                m_capturePoint.Delete();
-            }
-
-            return true;
-        }
-
-        public virtual void DeleteSpawns()
-        {
-            foreach (var type in m_Objects.Keys)
-                DelObject(type);
-
-            foreach (var type in m_Creatures.Keys)
-                DelCreature(type);
-
-            DelCapturePoint();
         }
 
         public virtual bool Update(uint diff)
@@ -657,10 +543,6 @@ namespace Game.PvP
 
         public virtual int HandleOpenGo(Player player, GameObject go)
         {
-            var value = m_ObjectTypes.LookupByKey(go.GetSpawnId());
-            if (value != 0)
-                return (int)value;
-
             return -1;
         }
 
@@ -687,11 +569,6 @@ namespace Game.PvP
         public uint m_neutralValuePct;
         // pointer to the OutdoorPvP this objective belongs to
         public OutdoorPvP PvP { get; set; }
-
-        public Dictionary<uint, ulong> m_Objects = new();
-        public Dictionary<uint, ulong> m_Creatures = new();
-        Dictionary<ulong, uint> m_ObjectTypes = new();
-        Dictionary<ulong, uint> m_CreatureTypes = new();
     }
 
     class DefenseMessageBuilder : MessageBuilder

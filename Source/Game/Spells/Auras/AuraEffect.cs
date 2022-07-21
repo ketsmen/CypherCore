@@ -1706,7 +1706,7 @@ namespace Game.Spells
 
                 target.SetUnitFlag(UnitFlags.PreventEmotesFromChatText);
                 target.SetUnitFlag2(UnitFlags2.FeignDeath);
-                target.SetDynamicFlag(UnitDynFlags.Dead);
+                target.SetUnitFlag3(UnitFlags3.FakeDead);
                 target.AddUnitState(UnitState.Died);
 
                 Creature creature = target.ToCreature();
@@ -1717,7 +1717,7 @@ namespace Game.Spells
             {
                 target.RemoveUnitFlag(UnitFlags.PreventEmotesFromChatText);
                 target.RemoveUnitFlag2(UnitFlags2.FeignDeath);
-                target.RemoveDynamicFlag(UnitDynFlags.Dead);
+                target.RemoveUnitFlag3(UnitFlags3.FakeDead);
                 target.ClearUnitState(UnitState.Died);
 
                 Creature creature = target.ToCreature();
@@ -4275,7 +4275,7 @@ namespace Game.Spells
                                         Battleground bg = target.ToPlayer().GetBattleground();
                                         if (bg)
                                             bg.RemovePlayerFromResurrectQueue(target.GetGUID());
-                                        BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(target.GetZoneId());
+                                        BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(target.GetMap(), target.GetZoneId());
                                         if (bf != null)
                                             bf.RemovePlayerFromResurrectQueue(target.GetGUID());
                                     }

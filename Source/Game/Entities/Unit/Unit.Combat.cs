@@ -250,6 +250,9 @@ namespace Game.Entities
                     return;
             }
 
+            if (!extraAttacksTargets.ContainsKey(targetGUID))
+                extraAttacksTargets[targetGUID] = 0;
+
             extraAttacksTargets[targetGUID] += count;
         }
 
@@ -967,7 +970,7 @@ namespace Game.Entities
                 if (pvp != null)
                     pvp.HandleKill(player, victim);
 
-                BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetZoneId());
+                BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());
                 if (bf != null)
                     bf.HandleKill(player, victim);
             }

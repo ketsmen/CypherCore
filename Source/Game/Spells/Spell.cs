@@ -3372,7 +3372,7 @@ namespace Game.Spells
                 return;
 
             Unit unitCaster = m_caster.ToUnit();
-            if (unitCaster != null)
+            if (unitCaster == null)
                 return;
 
             // successful cast of the initial autorepeat spell is moved to idle state so that it is not deleted as long as autorepeat is active
@@ -4587,7 +4587,7 @@ namespace Game.Spells
             destTarget = m_destTargets[spellEffectInfo.EffectIndex].Position;
             effectInfo = spellEffectInfo;
 
-            damage = CalculateDamage(spellEffectInfo, unitTarget, out _variance);
+            damage = CalculateDamage(spellEffectInfo, unitTarget, out variance);
 
             bool preventDefault = CallScriptEffectHandlers(spellEffectInfo.EffectIndex, mode);
 
@@ -5435,9 +5435,6 @@ namespace Game.Spells
                                             return SpellCastResult.TargetLockedToRaidInstance;
                                 }
                             }
-                            InstanceTemplate instance = Global.ObjectMgr.GetInstanceTemplate(mapId);
-                            if (instance == null)
-                                return SpellCastResult.TargetNotInInstance;
                             if (!target.Satisfy(Global.ObjectMgr.GetAccessRequirement(mapId, difficulty), mapId))
                                 return SpellCastResult.BadTargets;
                         }
@@ -5734,7 +5731,7 @@ namespace Game.Spells
                         // allow always ghost flight spells
                         if (m_originalCaster != null && m_originalCaster.IsTypeId(TypeId.Player) && m_originalCaster.IsAlive())
                         {
-                            BattleField Bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(m_originalCaster.GetZoneId());
+                            BattleField Bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(m_originalCaster.GetMap(), m_originalCaster.GetZoneId());
                             var area = CliDB.AreaTableStorage.LookupByKey(m_originalCaster.GetAreaId());
                             if (area != null)
                                 if (area.HasFlag(AreaFlags.NoFlyZone) || (Bf != null && !Bf.CanFlyIn()))
@@ -8001,7 +7998,7 @@ namespace Game.Spells
         public WorldLocation destTarget;
         public int damage;
         public SpellMissInfo targetMissInfo;
-        float _variance;
+        public float variance;
         SpellEffectHandleMode effectHandleMode;
         public SpellEffectInfo effectInfo;
         // used in effects handlers

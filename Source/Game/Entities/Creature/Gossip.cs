@@ -456,7 +456,7 @@ namespace Game.Misc
 
             for (int i = 0; i < SharedConst.QuestEmoteCount; ++i)
             {
-                var emote = new QuestDescEmote(quest.DetailsEmote[i], quest.DetailsEmoteDelay[i]);
+                var emote = new QuestDescEmote((int)quest.DetailsEmote[i], quest.DetailsEmoteDelay[i]);
                 packet.DescEmotes.Add(emote);
             }
 

@@ -1434,11 +1434,11 @@ namespace Game.Entities
                     return (ZoneScript)instanceMap.GetInstanceScript();
                 else if (!map.IsBattlegroundOrArena())
                 {
-                    BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(GetZoneId());
+                    BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(map, GetZoneId());
                     if (bf != null)
                         return bf;
                     else
-                        return Global.OutdoorPvPMgr.GetZoneScript(GetZoneId());
+                        return Global.OutdoorPvPMgr.GetOutdoorPvPToZoneId(map, GetZoneId());
                 }
             }
 

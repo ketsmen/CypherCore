@@ -765,14 +765,14 @@ namespace Game.Chat
                 return false;
             }
 
-            uint offset = (uint)area.AreaBit / 64;
+            uint offset = (uint)(area.AreaBit / ActivePlayerData.ExploredZonesBits);
             if (offset >= PlayerConst.ExploredZonesSize)
             {
                 handler.SendSysMessage(CypherStrings.BadValue);
                 return false;
             }
 
-            uint val = (1u << (area.AreaBit % 64));
+            uint val = 1u << (area.AreaBit % ActivePlayerData.ExploredZonesBits);
             playerTarget.RemoveExploredZones(offset, val);
 
             handler.SendSysMessage(CypherStrings.UnexploreArea);
@@ -1750,14 +1750,14 @@ namespace Game.Chat
                 return false;
             }
 
-            uint offset = (uint)area.AreaBit / 64;
+            uint offset = (uint)(area.AreaBit / ActivePlayerData.ExploredZonesBits);
             if (offset >= PlayerConst.ExploredZonesSize)
             {
                 handler.SendSysMessage(CypherStrings.BadValue);
                 return false;
             }
 
-            ulong val = 1ul << (area.AreaBit % 64);
+            ulong val = 1ul << (area.AreaBit % ActivePlayerData.ExploredZonesBits);
             playerTarget.AddExploredZones(offset, val);
 
             handler.SendSysMessage(CypherStrings.ExploreArea);
@@ -1816,7 +1816,7 @@ namespace Game.Chat
                     if (!target.GetMap().IsBattlegroundOrArena())
                         target.SetBattlegroundEntryPoint();
                 }
-                else if (map.Instanceable())
+                else if (map.IsDungeon())
                 {
                     Map targetMap = target.GetMap();
 
@@ -2124,7 +2124,7 @@ namespace Game.Chat
 
             if (args[0] == '[')                                        // [name] manual form
             {
-                string itemName = args.NextString("]");
+                string itemName = args.NextString("]").Substring(1);
 
                 if (!string.IsNullOrEmpty(itemName))
                 {

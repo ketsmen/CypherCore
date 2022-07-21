@@ -3754,57 +3754,6 @@ namespace Game
             RemoveSpawnDataFromGrid(data);
         }
 
-        public ulong AddCreatureData(uint entry, uint mapId, Position pos, uint spawntimedelay)
-        {
-            CreatureTemplate cInfo = GetCreatureTemplate(entry);
-            if (cInfo == null)
-                return 0;
-
-            uint level = cInfo.Minlevel == cInfo.Maxlevel ? (uint)cInfo.Minlevel : RandomHelper.URand(cInfo.Minlevel, cInfo.Maxlevel); // Only used for extracting creature base stats
-            CreatureBaseStats stats = GetCreatureBaseStats(level, cInfo.UnitClass);
-            Map map = Global.MapMgr.CreateBaseMap(mapId);
-            if (!map)
-                return 0;
-
-            CreatureLevelScaling scaling = cInfo.GetLevelScaling(map.GetDifficultyID());
-
-            ulong spawnId = GenerateCreatureSpawnId();
-            CreatureData data = NewOrExistCreatureData(spawnId);
-            data.SpawnId = spawnId;
-            data.Id = entry;
-            data.MapId = mapId;
-            data.SpawnPoint.Relocate(pos);
-            data.displayid = 0;
-            data.equipmentId = 0;
-
-            data.spawntimesecs = (int)spawntimedelay;
-            data.WanderDistance = 0;
-            data.currentwaypoint = 0;
-            data.curhealth = (uint)(Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureHealth, level, cInfo.HealthScalingExpansion, scaling.ContentTuningID, (Class)cInfo.UnitClass) * cInfo.ModHealth * cInfo.ModHealthExtra);
-            data.curmana = stats.GenerateMana(cInfo);
-            data.movementType = (byte)cInfo.MovementType;
-            data.SpawnDifficulties.Add(Difficulty.None);
-            data.dbData = false;
-            data.npcflag = (uint)cInfo.Npcflag;
-            data.unit_flags = (uint)cInfo.UnitFlags;
-            data.dynamicflags = cInfo.DynamicFlags;
-            data.spawnGroupData = GetLegacySpawnGroup();
-
-            AddCreatureToGrid(data);
-
-            // We use spawn coords to spawn
-            if (!map.Instanceable() && !map.IsRemovalGrid(data.SpawnPoint))
-            {
-                Creature creature = Creature.CreateCreatureFromDB(spawnId, map, true, true);
-                if (!creature)
-                {
-                    Log.outError(LogFilter.Server, "AddCreature: Cannot add creature entry {0} to map", entry);
-                    return 0;
-                }
-            }
-
-            return spawnId;
-        }
         public List<uint> GetCreatureQuestItemList(uint id)
         {
             return creatureQuestItemStorage.LookupByKey(id);
@@ -4684,49 +4633,6 @@ namespace Game
         {
             RemoveSpawnDataFromGrid(data);
         }
-        public ulong AddGameObjectData(uint entry, uint mapId, Position pos, Quaternion rot, uint spawntimedelay)
-        {
-            GameObjectTemplate goinfo = GetGameObjectTemplate(entry);
-            if (goinfo == null)
-                return 0;
-
-            Map map = Global.MapMgr.CreateBaseMap(mapId);
-            if (map == null)
-                return 0;
-
-            ulong spawnId = GenerateGameObjectSpawnId();
-            GameObjectData data = NewOrExistGameObjectData(spawnId);
-            data.SpawnId = spawnId;
-            data.Id = entry;
-            data.MapId = mapId;
-            data.SpawnPoint.Relocate(pos);
-            data.rotation = rot;
-            data.spawntimesecs = (int)spawntimedelay;
-            data.animprogress = 100;
-            data.SpawnDifficulties.Add(Difficulty.None);
-            data.goState = GameObjectState.Ready;
-            data.artKit = (byte)(goinfo.type == GameObjectTypes.ControlZone ? 21 : 0);
-            data.dbData = false;
-            data.spawnGroupData = GetLegacySpawnGroup();
-
-            AddGameObjectToGrid(data);
-
-            // Spawn if necessary (loaded grids only)
-            // We use spawn coords to spawn
-            if (!map.Instanceable() && map.IsGridLoaded(data.SpawnPoint))
-            {
-                GameObject go = GameObject.CreateGameObjectFromDB(spawnId, map);
-                if (!go)
-                {
-                    Log.outError(LogFilter.Server, "AddGameObjectData: cannot add gameobject entry {0} to map", entry);
-                    return 0;
-                }
-            }
-
-            Log.outDebug(LogFilter.Maps, $"AddGameObjectData: dbguid:{spawnId} entry:{entry} map:{mapId} pos:{data.SpawnPoint}");
-
-            return spawnId;
-        }
 
         public GameObjectAddon GetGameObjectAddon(ulong lowguid)
         {
@@ -5294,7 +5200,7 @@ namespace Game
             {
                 uint mapID = result.Read<uint>(0);
 
-                if (!Global.MapMgr.IsValidMAP(mapID, true))
+                if (!Global.MapMgr.IsValidMAP(mapID))
                 {
                     Log.outError(LogFilter.Sql, "ObjectMgr.LoadInstanceTemplate: bad mapid {0} for template!", mapID);
                     continue;
@@ -10549,8 +10455,7 @@ namespace Game
         }
         public AreaTriggerStruct GetGoBackTrigger(uint Map)
         {
-            bool useParentDbValue = false;
-            uint parentId = 0;
+            uint? parentId = null;
             MapRecord mapEntry = CliDB.MapStorage.LookupByKey(Map);
             if (mapEntry == null || mapEntry.CorpseMapID < 0)
                 return null;
@@ -10558,18 +10463,14 @@ namespace Game
             if (mapEntry.IsDungeon())
             {
                 InstanceTemplate iTemplate = GetInstanceTemplate(Map);
-
-                if (iTemplate == null)
-                    return null;
-
-                parentId = iTemplate.Parent;
-                useParentDbValue = true;
+                if (iTemplate != null)
+                    parentId = iTemplate.Parent;
             }
 
-            uint entrance_map = (uint)mapEntry.CorpseMapID;
+            uint entrance_map = parentId.GetValueOrDefault((uint)mapEntry.CorpseMapID);
             foreach (var pair in _areaTriggerStorage)
             {
-                if ((!useParentDbValue && pair.Value.target_mapId == entrance_map) || (useParentDbValue && pair.Value.target_mapId == parentId))
+                if (pair.Value.target_mapId == entrance_map)
                 {
                     AreaTriggerRecord atEntry = CliDB.AreaTriggerStorage.LookupByKey(pair.Key);
                     if (atEntry != null && atEntry.ContinentID == Map)

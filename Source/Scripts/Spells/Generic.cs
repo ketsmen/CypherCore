@@ -1848,7 +1848,7 @@ namespace Scripts.Spells.Generic
         void HandleEffectApply(AuraEffect aurEff, AuraEffectHandleModes mode)
         {
             Unit target = GetTarget();
-            target.SetDynamicFlag(UnitDynFlags.Dead);
+            target.SetUnitFlag3(UnitFlags3.FakeDead);
             target.SetUnitFlag2(UnitFlags2.FeignDeath);
             target.SetUnitFlag(UnitFlags.PreventEmotesFromChatText);
 
@@ -1860,7 +1860,7 @@ namespace Scripts.Spells.Generic
         void OnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
         {
             Unit target = GetTarget();
-            target.RemoveDynamicFlag(UnitDynFlags.Dead);
+            target.RemoveUnitFlag3(UnitFlags3.FakeDead);
             target.RemoveUnitFlag2(UnitFlags2.FeignDeath);
             target.RemoveUnitFlag(UnitFlags.PreventEmotesFromChatText);
 
@@ -1915,7 +1915,7 @@ namespace Scripts.Spells.Generic
         void HandleEffectApply(AuraEffect aurEff, AuraEffectHandleModes mode)
         {
             Unit target = GetTarget();
-            target.SetDynamicFlag(UnitDynFlags.Dead);
+            target.SetUnitFlag3(UnitFlags3.FakeDead);
             target.SetUnitFlag2(UnitFlags2.FeignDeath);
 
             Creature creature = target.ToCreature();
@@ -1926,7 +1926,7 @@ namespace Scripts.Spells.Generic
         void OnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
         {
             Unit target = GetTarget();
-            target.RemoveDynamicFlag(UnitDynFlags.Dead);
+            target.RemoveUnitFlag3(UnitFlags3.FakeDead);
             target.RemoveUnitFlag2(UnitFlags2.FeignDeath);
 
             Creature creature = target.ToCreature();
@@ -4695,6 +4695,44 @@ namespace Scripts.Spells.Generic
         }
     }
 
+    [Script] // 147066 - (Serverside/Non-DB2) Generic - Mount Check Aura
+    class spell_gen_mount_check_aura : AuraScript
+    {
+        void OnPeriodic(AuraEffect aurEff)
+        {
+            Unit target = GetTarget();
+            uint mountDisplayId = 0;
+
+            TempSummon tempSummon = target.ToTempSummon();
+            if (tempSummon == null)
+                return;
+
+            Player summoner = tempSummon.GetSummoner()?.ToPlayer();
+            if (summoner == null)
+                return;
+
+            if (summoner.IsMounted() && (!summoner.IsInCombat() || summoner.IsFlying()))
+            {
+                CreatureSummonedData summonedData = Global.ObjectMgr.GetCreatureSummonedData(tempSummon.GetEntry());
+                if (summonedData != null)
+                {
+                    if (summoner.IsFlying() && summonedData.FlyingMountDisplayID.HasValue)
+                        mountDisplayId = summonedData.FlyingMountDisplayID.Value;
+                    else if (summonedData.GroundMountDisplayID.HasValue)
+                        mountDisplayId = summonedData.GroundMountDisplayID.Value;
+                }
+            }
+
+            if (mountDisplayId != target.GetMountDisplayId())
+                target.SetMountDisplayId(mountDisplayId);
+        }
+
+        public override void Register()
+        {
+            OnEffectPeriodic.Add(new EffectPeriodicHandler(OnPeriodic, 0, AuraType.PeriodicDummy));
+        }
+    }
+    
     // 40307 - Stasis Field
     class StasisFieldSearcher : ICheck<Unit>
     {

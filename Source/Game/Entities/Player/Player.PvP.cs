@@ -374,7 +374,7 @@ namespace Game.Entities
                     if (area.HasFlag(AreaFlags.Arena))
                         return true;
 
-                    if (Global.BattleFieldMgr.GetBattlefieldToZoneId(area.Id) != null)
+                    if (Global.BattleFieldMgr.IsWorldPvpArea(area.Id))
                         return true;
 
                     area = CliDB.AreaTableStorage.LookupByKey(area.ParentAreaID);
@@ -765,7 +765,7 @@ namespace Game.Entities
         }
         public OutdoorPvP GetOutdoorPvP()
         {
-            return Global.OutdoorPvPMgr.GetOutdoorPvPToZoneId(GetZoneId());
+            return Global.OutdoorPvPMgr.GetOutdoorPvPToZoneId(GetMap(), GetZoneId());
         }
     }
 }

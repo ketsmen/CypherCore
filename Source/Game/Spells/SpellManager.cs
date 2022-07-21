@@ -4336,6 +4336,12 @@ namespace Game.Entities
                 });
             });
 
+            // Ray of Frost (Fingers of Frost charges)
+            ApplySpellFix(new []{ 269748 }, spellInfo =>
+            {
+                spellInfo.AttributesEx &= ~SpellAttr1.IsChannelled;
+            });
+
             foreach (var spellInfo in mSpellInfoMap.Values)
             {
                 // Fix range for trajectory triggered spell
@@ -4916,7 +4922,7 @@ namespace Game.Entities
                     if (!player)
                         return false;
 
-                    BattleField Bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetZoneId());
+                    BattleField Bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());
                     if (Bf == null || Bf.CanFlyIn() || (!player.HasAuraType(AuraType.ModIncreaseMountedFlightSpeed) && !player.HasAuraType(AuraType.Fly)))
                         return false;
                     break;
@@ -4927,7 +4933,7 @@ namespace Game.Entities
                     if (!player)
                         return false;
 
-                    BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetZoneId());
+                    BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());
 
                     if (bf == null || bf.GetTypeId() != (int)BattleFieldTypes.WinterGrasp)
                         return false;
@@ -4947,7 +4953,7 @@ namespace Game.Entities
                     if (!player)
                         return false;
 
-                    BattleField battlefieldWG = Global.BattleFieldMgr.GetBattlefieldByBattleId(1);
+                    BattleField battlefieldWG = Global.BattleFieldMgr.GetBattlefieldByBattleId(player.GetMap(), 1);
                     if (battlefieldWG != null)
                         return battlefieldWG.IsEnabled() && (player.GetTeamId() == battlefieldWG.GetDefenderTeam()) && !battlefieldWG.IsWarTime();
                     break;
@@ -4957,7 +4963,7 @@ namespace Game.Entities
                     if (!player)
                         return false;
 
-                    BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetZoneId());
+                    BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());
                     if (bf != null)
                         return bf.IsWarTime();
                     break;

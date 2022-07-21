@@ -89,6 +89,9 @@ namespace Game.Maps
 
             _worldStateValues = Global.WorldStateMgr.GetInitialWorldStatesForMap(this);
 
+            Global.OutdoorPvPMgr.CreateOutdoorPvPForMap(this);
+            Global.BattleFieldMgr.CreateBattlefieldsForMap(this);
+
             Global.ScriptMgr.OnCreateMap(this);
         }
 
@@ -110,6 +113,9 @@ namespace Game.Maps
 
             if (!m_scriptSchedule.Empty())
                 Global.MapMgr.DecreaseScheduledScriptCount((uint)m_scriptSchedule.Count);
+
+            Global.OutdoorPvPMgr.DestroyOutdoorPvPForMap(this);
+            Global.BattleFieldMgr.DestroyBattlefieldsForMap(this);
 
             if (m_parentMap == this)
                 m_childTerrainMaps = null;
@@ -2969,7 +2975,7 @@ namespace Game.Maps
                 if (shouldBeActive)
                     SpawnGroupSpawn(spawnGroupId);
                 else if (GetSpawnGroupData(spawnGroupId).flags.HasFlag(SpawnGroupFlags.DespawnOnConditionFailure))
-                    SpawnGroupDespawn(spawnGroupId);
+                    SpawnGroupDespawn(spawnGroupId, true);
                 else
                     SetSpawnGroupInactive(spawnGroupId);
             }

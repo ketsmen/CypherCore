@@ -952,7 +952,7 @@ namespace Game.Movement
                 return;
 
             // check if we even need to do anything
-            if ((_pathPoints[0] - target).LengthSquared() >= distSq)
+            if ((_pathPoints[_pathPoints.Length - 1] - target).LengthSquared() >= distSq)
                 return;
 
             int i = _pathPoints.Length - 1;
@@ -991,7 +991,7 @@ namespace Game.Movement
             // ok, _pathPoints[i] is too close, _pathPoints[i-1] is not, so our target point is somewhere between the two...
             //   ... settle for a guesstimate since i'm not confident in doing trig on every chase motion tick...
             // (@todo review this)
-            _pathPoints[i] += (_pathPoints[i - 1] - _pathPoints[i]).directionOrZero() * (dist - (_pathPoints[i] - target).Length());
+            _pathPoints[i] += (_pathPoints[i - 1] - _pathPoints[i]).direction() * (dist - (_pathPoints[i] - target).Length());
             Array.Resize(ref _pathPoints, i + 1);
         }
 
