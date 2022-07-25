@@ -552,23 +552,23 @@ namespace Game
             return obj.GetPhaseShift().CanSee(phaseShift);
         }
 
-        public static uint GetTerrainMapId(PhaseShift phaseShift, Map map, float x, float y)
+        public static uint GetTerrainMapId(PhaseShift phaseShift, TerrainInfo terrain, float x, float y)
         {
             if (phaseShift.VisibleMapIds.Empty())
-                return map.GetId();
+                return terrain.GetId();
 
             if (phaseShift.VisibleMapIds.Count == 1)
                 return phaseShift.VisibleMapIds.First().Key;
 
             GridCoord gridCoord = GridDefines.ComputeGridCoord(x, y);
-            uint gx = ((MapConst.MaxGrids - 1) - gridCoord.X_coord);
-            uint gy = ((MapConst.MaxGrids - 1) - gridCoord.Y_coord);
+            int gx = (int)((MapConst.MaxGrids - 1) - gridCoord.X_coord);
+            int gy = (int)((MapConst.MaxGrids - 1) - gridCoord.Y_coord);
 
             foreach (var visibleMap in phaseShift.VisibleMapIds)
-                if (map.HasChildMapGridFile(visibleMap.Key, gx, gy))
+                if (terrain.HasChildTerrainGridFile(visibleMap.Key, gx, gy))
                     return visibleMap.Key;
 
-            return map.GetId();
+            return terrain.GetId();
         }
 
         public static void SetAlwaysVisible(WorldObject obj, bool apply, bool updateVisibility)
@@ -618,9 +618,9 @@ namespace Game
                     phases.Append("   ");
                     phases.Append($"{pair.Key} ({Global.ObjectMgr.GetPhaseName(pair.Key)})'");
                     if (pair.Value.Flags.HasFlag(PhaseFlags.Cosmetic))
-                        phases.Append(' ' + '(' + cosmetic + ')');
+                        phases.Append($" ({cosmetic})");
                     if (pair.Value.Flags.HasFlag(PhaseFlags.Personal))
-                        phases.Append(' ' + '(' + personal + ')');
+                        phases.Append($" ({personal})");
                 }
 
                 chat.SendSysMessage(CypherStrings.PhaseshiftPhases, phases.ToString());
@@ -639,7 +639,7 @@ namespace Game
             {
                 StringBuilder uiWorldMapAreaIdSwaps = new();
                 foreach (var uiWorldMapAreaIdSwap in phaseShift.UiMapPhaseIds)
-                    uiWorldMapAreaIdSwaps.Append(uiWorldMapAreaIdSwap.Key + ',' + ' ');
+                    uiWorldMapAreaIdSwaps.AppendFormat($"{uiWorldMapAreaIdSwap.Key}, ");
 
                 chat.SendSysMessage(CypherStrings.PhaseshiftUiWorldMapAreaSwaps, uiWorldMapAreaIdSwaps.ToString());
             }
@@ -705,7 +705,7 @@ namespace Game
             {
                 if (!summonGuid.IsEmpty())
                 {
-                    Creature summon = unit.GetMap().GetCreature(summonGuid);
+                    Creature summon = ObjectAccessor.GetCreature(unit, summonGuid);
                     if (summon != null)
                         if (_visited.Add(summon))
                             func(summon);
