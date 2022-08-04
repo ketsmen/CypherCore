@@ -2505,18 +2505,7 @@ namespace Game.Spells
             // Prepare data for triggers
             PrepareDataForTriggerSystem();
 
-            if (m_caster.IsTypeId(TypeId.Player))
-            {
-                if (!m_caster.ToPlayer().GetCommandStatus(PlayerCommandStates.Casttime))
-                {
-                    // calculate cast time (calculated after first CheckCast check to prevent charge counting for first CheckCast fail)
-                    m_casttime = m_spellInfo.CalcCastTime(this);
-                }
-                else
-                    m_casttime = 0;
-            }
-            else
-                m_casttime = m_spellInfo.CalcCastTime(this);
+            m_casttime = CallScriptCalcCastTimeHandlers(m_spellInfo.CalcCastTime(this));
 
             if (m_caster.IsUnit() && m_caster.ToUnit().IsMoving())
             {
@@ -2540,10 +2529,10 @@ namespace Game.Spells
                     m_caster.ToCreature().SetSpellFocus(this, null);
             }
 
+            CallScriptOnPrecastHandler();
+
             // set timer base at cast time
             ReSetTimer();
-
-            CallScriptOnPrecastHandler();
 
             Log.outDebug(LogFilter.Spells, "Spell.prepare: spell id {0} source {1} caster {2} customCastFlags {3} mask {4}", m_spellInfo.Id, m_caster.GetEntry(), m_originalCaster != null ? (int)m_originalCaster.GetEntry() : -1, _triggeredCastFlags, m_targets.GetTargetMask());
 
@@ -7460,6 +7449,17 @@ namespace Game.Spells
                 script._FinishScriptCall();
             }
             return retVal;
+        }
+
+        int CallScriptCalcCastTimeHandlers(int castTime)
+        {
+            foreach (var script in m_loadedScripts)
+            {
+                script._PrepareScriptCall(SpellScriptHookType.CalcCastTime);
+                castTime = script.CalcCastTime(castTime);
+                script._FinishScriptCall();
+            }
+            return castTime;
         }
 
         bool CallScriptEffectHandlers(uint effIndex, SpellEffectHandleMode mode)

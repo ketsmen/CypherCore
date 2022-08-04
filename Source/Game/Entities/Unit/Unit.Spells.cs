@@ -1780,7 +1780,8 @@ namespace Game.Entities
         {
             while (!m_removedAuras.Empty())
             {
-                m_removedAuras.Remove(m_removedAuras.First());
+                m_removedAuras.First().Dispose();
+                m_removedAuras.RemoveAt(0);
             }
 
             m_removedAurasCount = 0;
@@ -3392,11 +3393,11 @@ namespace Game.Entities
             // we want to have all auras removed, so use your brain when linking events
             for (int counter = 0; !m_appliedAuras.Empty() || !m_ownedAuras.Empty(); counter++)
             {
-                foreach (var aurAppIter in GetAppliedAuras())
-                    _UnapplyAura(aurAppIter, AuraRemoveMode.Default);
+                while (!m_appliedAuras.Empty())
+                    _UnapplyAura(m_appliedAuras.First(), AuraRemoveMode.Default);
 
-                foreach (var aurIter in GetOwnedAuras())
-                    RemoveOwnedAura(aurIter);
+                while (!m_ownedAuras.Empty())
+                    RemoveOwnedAura(m_ownedAuras.First());
 
                 const int maxIteration = 50;
                 // give this loop a few tries, if there are still auras then log as much information as possible

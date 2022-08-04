@@ -2610,7 +2610,6 @@ namespace Game.Entities
                         if (currentAbsorb < 0)
                             currentAbsorb = 0;
 
-
                         uint tempAbsorb = (uint)currentAbsorb;
 
                         // This aura type is used both by Spirit of Redemption (death not really prevented, must grant all credit immediately) and Cheat Death (death prevented)
@@ -3382,17 +3381,15 @@ namespace Game.Entities
             vSchoolAbsorbCopy.Sort(new AbsorbAuraOrderPred());
 
             // absorb without mana cost
-            for (var i = 0; i < vSchoolAbsorbCopy.Count; ++i)
+            for (var i = 0; i < vSchoolAbsorbCopy.Count && (damageInfo.GetDamage() > 0); ++i)
             {
                 var absorbAurEff = vSchoolAbsorbCopy[i];
-                if (damageInfo.GetDamage() == 0)
-                    break;
 
                 // Check if aura was removed during iteration - we don't need to work on such auras
                 AuraApplication aurApp = absorbAurEff.GetBase().GetApplicationOfTarget(damageInfo.GetVictim().GetGUID());
                 if (aurApp == null)
                     continue;
-                if (!Convert.ToBoolean(absorbAurEff.GetMiscValue() & (int)damageInfo.GetSchoolMask()))
+                if ((absorbAurEff.GetMiscValue() & (int)damageInfo.GetSchoolMask()) == 0)
                     continue;
 
                 // get amount which can be still absorbed by the aura
@@ -3598,36 +3595,63 @@ namespace Game.Entities
 
             // absorb without mana cost
             var vHealAbsorb = healInfo.GetTarget().GetAuraEffectsByType(AuraType.SchoolHealAbsorb);
-            for (var i = 0; i < vHealAbsorb.Count; ++i)
+            for (var i = 0; i < vHealAbsorb.Count && healInfo.GetHeal() > 0; ++i)
             {
-                var eff = vHealAbsorb[i];
-                if (healInfo.GetHeal() <= 0)
-                    break;
-
-                if (!Convert.ToBoolean(eff.GetMiscValue() & (int)healInfo.GetSpellInfo().SchoolMask))
+                AuraEffect absorbAurEff = vHealAbsorb[i];
+                // Check if aura was removed during iteration - we don't need to work on such auras
+                AuraApplication aurApp = absorbAurEff.GetBase().GetApplicationOfTarget(healInfo.GetTarget().GetGUID());
+                if (aurApp == null)
                     continue;
 
-                // Max Amount can be absorbed by this aura
-                int currentAbsorb = eff.GetAmount();
+                if ((absorbAurEff.GetMiscValue() & (int)healInfo.GetSchoolMask()) == 0)
+                    continue;
 
-                // Found empty aura (impossible but..)
-                if (currentAbsorb <= 0)
+                // get amount which can be still absorbed by the aura
+                int currentAbsorb = absorbAurEff.GetAmount();
+                // aura with infinite absorb amount - let the scripts handle absorbtion amount, set here to 0 for safety
+                if (currentAbsorb < 0)
+                    currentAbsorb = 0;
+
+                uint tempAbsorb = (uint)currentAbsorb;
+
+                bool defaultPrevented = false;
+
+                absorbAurEff.GetBase().CallScriptEffectAbsorbHandlers(absorbAurEff, aurApp, healInfo, ref tempAbsorb, ref defaultPrevented);
+                currentAbsorb = (int)tempAbsorb;
+
+                if (!defaultPrevented)
                 {
-                    existExpired = true;
-                    continue;
+                    // absorb must be smaller than the heal itself
+                    currentAbsorb = MathFunctions.RoundToInterval(ref currentAbsorb, 0, healInfo.GetHeal());
+
+                    healInfo.AbsorbHeal((uint)currentAbsorb);
+
+                    tempAbsorb = (uint)currentAbsorb;
+                    absorbAurEff.GetBase().CallScriptEffectAfterAbsorbHandlers(absorbAurEff, aurApp, healInfo, ref tempAbsorb);
+
+                    // Check if our aura is using amount to count heal
+                    if (absorbAurEff.GetAmount() >= 0)
+                    {
+                        // Reduce shield amount
+                        absorbAurEff.ChangeAmount(absorbAurEff.GetAmount() - currentAbsorb);
+                        // Aura cannot absorb anything more - remove it
+                        if (absorbAurEff.GetAmount() <= 0)
+                            absorbAurEff.GetBase().Remove(AuraRemoveMode.EnemySpell);
+                    }
                 }
 
-                // currentAbsorb - damage can be absorbed by shield
-                // If need absorb less damage
-                currentAbsorb = (int)Math.Min(healInfo.GetHeal(), currentAbsorb);
-
-                healInfo.AbsorbHeal((uint)currentAbsorb);
-
-                // Reduce shield amount
-                eff.ChangeAmount(eff.GetAmount() - currentAbsorb);
-                // Need remove it later
-                if (eff.GetAmount() <= 0)
-                    existExpired = true;
+                if (currentAbsorb != 0)
+                {
+                    SpellHealAbsorbLog absorbLog = new();
+                    absorbLog.Healer = healInfo.GetHealer() ? healInfo.GetHealer().GetGUID() : ObjectGuid.Empty;
+                    absorbLog.Target = healInfo.GetTarget().GetGUID();
+                    absorbLog.AbsorbCaster = absorbAurEff.GetBase().GetCasterGUID();
+                    absorbLog.AbsorbedSpellID = (int)(healInfo.GetSpellInfo() != null ? healInfo.GetSpellInfo().Id : 0);
+                    absorbLog.AbsorbSpellID = (int)absorbAurEff.GetId();
+                    absorbLog.Absorbed = currentAbsorb;
+                    absorbLog.OriginalHeal = (int)healInfo.GetOriginalHeal();
+                    healInfo.GetTarget().SendMessageToSet(absorbLog, true);
+                }
             }
 
             // Remove all expired absorb auras

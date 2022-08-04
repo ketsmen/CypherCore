@@ -287,7 +287,7 @@ namespace Game.Spells
                     // When sending EstimatedPoints all effects (at least up to the last one that uses GetEstimatedAmount) must have proper value in packet
                     foreach (AuraEffect effect in GetBase().GetAuraEffects())
                         if (effect != null && HasEffect(effect.GetEffIndex()))       // Not all of aura's effects have to be applied on every target
-                            auraData.EstimatedPoints[(int)effect.GetEffIndex()] = effect.GetEstimatedAmount().GetValueOrDefault(effect.GetAmount());
+                            auraData.EstimatedPoints.Add(effect.GetEstimatedAmount().GetValueOrDefault(effect.GetAmount()));
                 }
             }
         }
@@ -400,7 +400,17 @@ namespace Game.Spells
                     _effects[spellEffectInfo.EffectIndex] = new AuraEffect(this, spellEffectInfo, baseAmount != null ? baseAmount[spellEffectInfo.EffectIndex] : null, caster);
             }
         }
-        
+
+        public virtual void Dispose()
+        {
+            // unload scripts
+            foreach (var itr in m_loadedScripts.ToList())
+                itr._Unload();
+
+            Cypher.Assert(m_applications.Empty());
+            _DeleteRemovedApplications();
+        }
+
         public Unit GetCaster()
         {
             if (m_owner.GetGUID() == m_casterGuid)
@@ -507,27 +517,26 @@ namespace Game.Spells
             // mark all auras as ready to remove
             foreach (var app in m_applications)
             {
-                var existing = targets.FirstOrDefault(p => p.Key == app.Value.GetTarget());
                 // not found in current area - remove the aura
-                if (existing.Key == null)
+                if (!targets.TryGetValue(app.Value.GetTarget(), out uint existing))
                     targetsToRemove.Add(app.Value.GetTarget());
                 else
                 {
                     // needs readding - remove now, will be applied in next update cycle
                     // (dbcs do not have auras which apply on same type of targets but have different radius, so this is not really needed)
-                    if (!CanBeAppliedOn(existing.Key))
+                    if (!CanBeAppliedOn(app.Value.GetTarget()))
                     {
                         targetsToRemove.Add(app.Value.GetTarget());
                         continue;
                     }
 
                     // needs to add/remove effects from application, don't remove from map so it gets updated
-                    if (app.Value.GetEffectMask() != existing.Value)
+                    if (app.Value.GetEffectMask() != existing)
                         continue;
 
                     // nothing to do - aura already applied
                     // remove from auras to register list
-                    targets.Remove(existing.Key);
+                    targets.Remove(app.Value.GetTarget());
                 }
             }
             // register auras for units
@@ -542,7 +551,6 @@ namespace Game.Spells
                     if (unit.IsImmunedToSpellEffect(GetSpellInfo(), spellEffectInfo, caster))
                         value &= ~(1u << (int)spellEffectInfo.EffectIndex);
                 }
-
                 
                 if (value == 0 || unit.IsImmunedToSpell(GetSpellInfo(), caster) || !CanBeAppliedOn(unit))
                     addUnit = false;
@@ -2156,6 +2164,33 @@ namespace Game.Spells
             }
         }
 
+        public void CallScriptEffectAbsorbHandlers(AuraEffect aurEff, AuraApplication aurApp, HealInfo healInfo, ref uint absorbAmount, ref bool defaultPrevented)
+        {
+            foreach (var auraScript in m_loadedScripts)
+            {
+                auraScript._PrepareScriptCall(AuraScriptHookType.EffectAbsorb, aurApp);
+                foreach (var eff in auraScript.OnEffectAbsorbHeal)
+                    if (eff.IsEffectAffected(m_spellInfo, aurEff.GetEffIndex()))
+                        eff.Call(aurEff, healInfo, ref absorbAmount);
+
+                defaultPrevented = auraScript._IsDefaultActionPrevented();
+                auraScript._FinishScriptCall();
+            }
+        }
+
+        public void CallScriptEffectAfterAbsorbHandlers(AuraEffect aurEff, AuraApplication aurApp, HealInfo healInfo, ref uint absorbAmount)
+        {
+            foreach (var auraScript in m_loadedScripts)
+            {
+                auraScript._PrepareScriptCall(AuraScriptHookType.EffectAfterAbsorb, aurApp);
+                foreach (var eff in auraScript.AfterEffectAbsorbHeal)
+                    if (eff.IsEffectAffected(m_spellInfo, aurEff.GetEffIndex()))
+                        eff.Call(aurEff, healInfo, ref absorbAmount);
+
+                auraScript._FinishScriptCall();
+            }
+        }
+        
         public void CallScriptEffectManaShieldHandlers(AuraEffect aurEff, AuraApplication aurApp, DamageInfo dmgInfo, ref uint absorbAmount, ref bool defaultPrevented)
         {
             foreach (var auraScript in m_loadedScripts)
