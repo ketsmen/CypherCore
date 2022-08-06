@@ -16,14 +16,17 @@
  */
 
 using Framework.Constants;
+using Framework.Dynamic;
 using Game.AI;
 using Game.Entities;
+using Game.Maps;
+using Game.Movement;
 using Game.Scripting;
 using Game.Spells;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Game.Maps;
+using System.Numerics;
 
 namespace Scripts.Spells.Priest
 {
@@ -40,6 +43,8 @@ namespace Scripts.Spells.Priest
         public const uint BodyAndSoul = 64129;
         public const uint BodyAndSoulSpeed = 65081;
         public const uint DivineBlessing = 40440;
+        public const uint DivineStarDamage = 122128;
+        public const uint DivineStarHeal = 110745;
         public const uint DivineWrath = 40441;
         public const uint FlashHeal = 2061;
         public const uint GuardianSpiritHeal = 48153;
@@ -60,6 +65,10 @@ namespace Scripts.Spells.Priest
         public const uint Penance = 47540;
         public const uint PenanceChannelDamage = 47758;
         public const uint PenanceChannelHealing = 47757;
+        public const uint PenanceDamage = 47666;
+        public const uint SPELL_PRIEST_PENANCE_HEALING = 47750;
+        public const uint PowerOfTheDarkSide = 198069;
+        public const uint PowerOfTheDarkSideTint = 225795;
         public const uint PowerWordShield = 17;
         public const uint PowerWordSolaceEnergize = 129253;
         public const uint PrayerOfMendingAura = 41635;
@@ -74,6 +83,7 @@ namespace Scripts.Spells.Priest
         public const uint ShadowMendPeriodicDummy = 187464;
         public const uint ShieldDisciplineEnergize = 47755;
         public const uint ShieldDisciplinePassive = 197045;
+        public const uint SinsOfTheMany = 280398;
         public const uint Smite = 585;
         public const uint SpiritOfRedemption = 27827;
         public const uint StrengthOfSoul = 197535;
@@ -191,7 +201,9 @@ namespace Scripts.Spells.Priest
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.AtonementHeal) && spellInfo.GetEffects().Count > 1;
+            return ValidateSpellInfo(SpellIds.AtonementHeal, SpellIds.SinsOfTheMany)
+            && spellInfo.GetEffects().Count > 1
+            && Global.SpellMgr.GetSpellInfo(SpellIds.SinsOfTheMany, Difficulty.None).GetEffects().Count > 2;
         }
 
         bool CheckProc(ProcEventInfo eventInfo)
@@ -227,11 +239,27 @@ namespace Scripts.Spells.Priest
         public void AddAtonementTarget(ObjectGuid target)
         {
             _appliedAtonements.Add(target);
+
+            UpdateSinsOfTheManyValue();
         }
 
         public void RemoveAtonementTarget(ObjectGuid target)
         {
             _appliedAtonements.Remove(target);
+
+            UpdateSinsOfTheManyValue();
+        }
+
+        void UpdateSinsOfTheManyValue()
+        {
+            float[] damageByStack = { 12.0f, 12.0f, 10.0f, 8.0f, 7.0f, 6.0f, 5.0f, 5.0f, 4.0f, 4.0f, 3.0f };
+
+            foreach (uint effectIndex in new[] { 0, 1, 2 })
+            {
+                AuraEffect sinOfTheMany = GetTarget().GetAuraEffect(SpellIds.SinsOfTheMany, effectIndex);
+                if (sinOfTheMany != null)
+                    sinOfTheMany.ChangeAmount((int)damageByStack[Math.Min(_appliedAtonements.Count, damageByStack.Length - 1)]);
+            }
         }
     }
 
@@ -309,6 +337,118 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    [Script] // 110744 - Divine Star
+    class areatrigger_pri_divine_star : AreaTriggerAI
+    {
+        TaskScheduler _scheduler = new();
+        Position _casterCurrentPosition = new();
+        List<ObjectGuid> _affectedUnits = new();
+
+        public areatrigger_pri_divine_star(AreaTrigger areatrigger) : base(areatrigger) { }
+
+        public override void OnInitialize()
+        {
+            Unit caster = at.GetCaster();
+            if (caster != null)
+            {
+                _casterCurrentPosition = caster.GetPosition();
+
+                // Note: max. distance at which the Divine Star can travel to is 24 yards.
+                float divineStarXOffSet = 24.0f;
+
+                Position destPos = _casterCurrentPosition;
+                at.MovePositionToFirstCollision(destPos, divineStarXOffSet, 0.0f);
+
+                PathGenerator firstPath = new(at);
+                firstPath.CalculatePath(destPos.GetPositionX(), destPos.GetPositionY(), destPos.GetPositionZ(), false);
+
+                Vector3 endPoint = firstPath.GetPath().Last();
+
+                // Note: it takes 1000ms to reach 24 yards, so it takes 41.67ms to run 1 yard.
+                at.InitSplines(firstPath.GetPath().ToList(), (uint)(at.GetDistance(endPoint.X, endPoint.Y, endPoint.Z) * 41.67f));
+            }
+        }
+
+        public override void OnUpdate(uint diff)
+        {
+            _scheduler.Update(diff);
+        }
+
+        public override void OnUnitEnter(Unit unit)
+        {
+            Unit caster = at.GetCaster();
+            if (caster != null)
+            {
+                if (!_affectedUnits.Contains(unit.GetGUID()))
+                {
+                    if (caster.IsValidAttackTarget(unit))
+                        caster.CastSpell(unit, SpellIds.DivineStarDamage, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+                    else if (caster.IsValidAssistTarget(unit))
+                        caster.CastSpell(unit, SpellIds.DivineStarHeal, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+
+                    _affectedUnits.Add(unit.GetGUID());
+                }
+            }
+        }
+
+        public override void OnUnitExit(Unit unit)
+        {
+            // Note: this ensures any unit receives a second hit if they happen to be inside the AT when Divine Star starts its return path.
+            Unit caster = at.GetCaster();
+            if (caster != null)
+            {
+                if (!_affectedUnits.Contains(unit.GetGUID()))
+                {
+                    if (caster.IsValidAttackTarget(unit))
+                        caster.CastSpell(unit, SpellIds.DivineStarDamage, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+                    else if (caster.IsValidAssistTarget(unit))
+                        caster.CastSpell(unit, SpellIds.DivineStarHeal, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+
+                    _affectedUnits.Add(unit.GetGUID());
+                }
+            }
+        }
+
+        public override void OnDestinationReached()
+        {
+            Unit caster = at.GetCaster();
+            if (caster == null)
+                return;
+
+            if (at.GetDistance(_casterCurrentPosition) > 0.05f)
+            {
+                _affectedUnits.Clear();
+
+                ReturnToCaster();
+            }
+            else
+                at.Remove();
+        }
+
+        void ReturnToCaster()
+        {
+            _scheduler.Schedule(TimeSpan.FromMilliseconds(0), task =>
+                {
+                    Unit caster = at.GetCaster();
+                    if (caster != null)
+                    {
+                        _casterCurrentPosition = caster.GetPosition();
+
+                        List<Vector3> returnSplinePoints = new();
+
+                        returnSplinePoints.Add(at.GetPosition());
+                        returnSplinePoints.Add(at.GetPosition());
+                        returnSplinePoints.Add(caster.GetPosition());
+                        returnSplinePoints.Add(caster.GetPosition());
+
+                        at.InitSplines(returnSplinePoints, (uint)at.GetDistance(caster) / 24 * 1000);
+
+                        task.Repeat(TimeSpan.FromMilliseconds(250));
+                    }
+                });
+        }
+    }
+    
     [Script] // 47788 - Guardian Spirit
     class spell_pri_guardian_spirit : AuraScript
     {
@@ -560,6 +700,114 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    [Script] // 47758 - Penance (Channel Damage), 47757 - Penance (Channel Healing)
+    class spell_pri_penance_channeled : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.PowerOfTheDarkSide);
+        }
+
+        void HandleOnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit caster = GetCaster();
+            if (caster != null)
+                caster.RemoveAura(SpellIds.PowerOfTheDarkSide);
+        }
+
+        public override void Register()
+        {
+            OnEffectRemove.Add(new EffectApplyHandler(HandleOnRemove, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+        }
+    }
+
+    [Script] // 198069 - Power of the Dark Side
+    class spell_pri_power_of_the_dark_side : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.PowerOfTheDarkSideTint);
+        }
+
+        void HandleOnApply(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit caster = GetCaster();
+            if (caster != null)
+                caster.CastSpell(caster, SpellIds.PowerOfTheDarkSideTint, true);
+        }
+
+        void HandleOnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit caster = GetCaster();
+            if (caster != null)
+                caster.RemoveAura(SpellIds.PowerOfTheDarkSideTint);
+        }
+
+        public override void Register()
+        {
+            OnEffectApply.Add(new EffectApplyHandler(HandleOnApply, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+            OnEffectRemove.Add(new EffectApplyHandler(HandleOnRemove, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+        }
+    }
+
+    [Script] // 47666 - Penance (Damage)
+    class spell_pri_power_of_the_dark_side_damage_bonus : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.PowerOfTheDarkSide);
+        }
+
+        void HandleLaunchTarget(uint effIndex)
+        {
+            AuraEffect powerOfTheDarkSide = GetCaster().GetAuraEffect(SpellIds.PowerOfTheDarkSide, 0);
+            if (powerOfTheDarkSide != null)
+            {
+                PreventHitDefaultEffect(effIndex);
+
+                float damageBonus = GetCaster().SpellDamageBonusDone(GetHitUnit(), GetSpellInfo(), (uint)GetEffectValue(), DamageEffectType.SpellDirect, GetEffectInfo());
+                float value = damageBonus + damageBonus * GetEffectVariance();
+                value *= 1.0f + (powerOfTheDarkSide.GetAmount() / 100.0f);
+                value = GetHitUnit().SpellDamageBonusTaken(GetCaster(), GetSpellInfo(), (uint)value, DamageEffectType.SpellDirect);
+                SetHitDamage((int)value);
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectLaunchTarget.Add(new EffectHandler(HandleLaunchTarget, 0, SpellEffectName.SchoolDamage));
+        }
+    }
+
+    [Script] // 47750 - Penance (Healing)
+    class spell_pri_power_of_the_dark_side_healing_bonus : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.PowerOfTheDarkSide);
+        }
+
+        void HandleLaunchTarget(uint effIndex)
+        {
+            AuraEffect powerOfTheDarkSide = GetCaster().GetAuraEffect(SpellIds.PowerOfTheDarkSide, 0);
+            if (powerOfTheDarkSide != null)
+            {
+                PreventHitDefaultEffect(effIndex);
+
+                float healingBonus = GetCaster().SpellHealingBonusDone(GetHitUnit(), GetSpellInfo(), (uint)GetEffectValue(), DamageEffectType.Heal, GetEffectInfo());
+                float value = healingBonus + healingBonus * GetEffectVariance();
+                value *= 1.0f + (powerOfTheDarkSide.GetAmount() / 100.0f);
+                value = GetHitUnit().SpellHealingBonusTaken(GetCaster(), GetSpellInfo(), (uint)value, DamageEffectType.Heal);
+                SetHitHeal((int)value);
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectLaunchTarget.Add(new EffectHandler(HandleLaunchTarget, 0, SpellEffectName.Heal));
+        }
+    }
+    
     [Script] // 194509 - Power Word: Radiance
     class spell_pri_power_word_radiance : SpellScript
     {
@@ -925,6 +1173,31 @@ namespace Scripts.Spells.Priest
         {
             OnEffectHitTarget.Add(new EffectHandler(HandleEffectDummy, 0, SpellEffectName.Dummy));
             AfterCast.Add(new CastHandler(HandleAfterCast));
+        }
+    }
+
+    [Script] // 280391 - Sins of the Many
+    class spell_pri_sins_of_the_many : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.SinsOfTheMany);
+        }
+
+        void HandleOnApply(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            GetTarget().CastSpell(GetTarget(), SpellIds.SinsOfTheMany, true);
+        }
+
+        void HandleOnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            GetTarget().RemoveAura(SpellIds.SinsOfTheMany);
+        }
+
+        public override void Register()
+        {
+            OnEffectApply.Add(new EffectApplyHandler(HandleOnApply, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+            OnEffectRemove.Add(new EffectApplyHandler(HandleOnRemove, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
         }
     }
     
