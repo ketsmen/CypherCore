@@ -1483,9 +1483,7 @@ namespace Game.Groups
 
                 playerInfos.FactionGroup = Player.GetFactionGroupForRace(member.race);
 
-                playerInfos.Status = GroupMemberOnlineStatus.Offline;
-                if (memberPlayer && memberPlayer.GetSession() && !memberPlayer.GetSession().PlayerLogout())
-                    playerInfos.Status = GroupMemberOnlineStatus.Online | (IsBGGroup() || IsBFGroup() ? GroupMemberOnlineStatus.PVP : 0);
+                playerInfos.Connected = memberPlayer?.GetSession() != null && !memberPlayer.GetSession().PlayerLogout();
 
                 playerInfos.Subgroup = member.group;         // groupid
                 playerInfos.Flags = (byte)member.flags;            // See enum GroupMemberFlags

@@ -1078,10 +1078,10 @@ namespace Game.Networking.Packets
         {
             data.WriteBits(Name.GetByteCount(), 6);
             data.WriteBits(VoiceStateID.GetByteCount() + 1, 6);
-            data.WriteBit(FromSocialQueue);
+            data.WriteBit(Connected);
             data.WriteBit(VoiceChatSilenced);
+            data.WriteBit(FromSocialQueue);
             data.WritePackedGuid(GUID);
-            data.WriteUInt8((byte)Status);
             data.WriteUInt8(Subgroup);
             data.WriteUInt8(Flags);
             data.WriteUInt8(RolesAssigned);
@@ -1096,13 +1096,13 @@ namespace Game.Networking.Packets
         public string Name;
         public string VoiceStateID;   // same as bgs.protocol.club.v1.MemberVoiceState.id
         public byte Class;
-        public GroupMemberOnlineStatus Status;
         public byte Subgroup;
         public byte Flags;
         public byte RolesAssigned;
         public byte FactionGroup;
         public bool FromSocialQueue;
         public bool VoiceChatSilenced;
+        public bool Connected;
     }
 
     struct PartyLFGInfo
