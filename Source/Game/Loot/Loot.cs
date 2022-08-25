@@ -171,7 +171,6 @@ namespace Game.Loots
             unlootedCount = 0;
             loot_type = LootType.None;
             maxDuplicates = 1;
-            containerID = ObjectGuid.Empty;
         }
 
         // Inserts the item into the loot (called by LootTemplate processors)
@@ -309,30 +308,6 @@ namespace Game.Loots
             questItemList = PlayerNonQuestNonFFAConditionalItems.LookupByKey(plguid);
             if (questItemList.Empty())
                 FillNonQuestNonFFAConditionalLoot(player, presentAtLooting);
-
-            // if not auto-processed player will have to come and pick it up manually
-            if (!presentAtLooting)
-                return;
-
-            // Process currency items
-            uint max_slot = GetMaxSlotInLootFor(player);
-            LootItem item;
-            int itemsSize = items.Count;
-            for (byte i = 0; i < max_slot; ++i)
-            {
-                if (i < items.Count)
-                    item = items[i];
-                else
-                    item = quest_items[i - itemsSize];
-
-                if (!item.is_looted && item.freeforall && item.AllowedForPlayer(player))
-                {
-                    ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(item.itemid);
-                    if (proto != null)
-                        if (proto.IsCurrencyToken())
-                            player.StoreLootItem(i, this);
-                }
-            }
         }
 
         List<NotNormalLootItem> FillFFALoot(Player player)
@@ -875,8 +850,6 @@ namespace Game.Loots
         ObjectGuid lootOwnerGUID;
         public LootType loot_type;                                     // required for achievement system
         public byte maxDuplicates;                                    // Max amount of items with the same entry that can drop (default is 1; on 25 man raid mode 3)
-
-        public ObjectGuid containerID;
 
         List<ObjectGuid> PlayersLooting = new();
         MultiMap<ObjectGuid, NotNormalLootItem> PlayerQuestItems = new();
