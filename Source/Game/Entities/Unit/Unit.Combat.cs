@@ -95,10 +95,10 @@ namespace Game.Entities
 
         public bool IsPetInCombat() { return HasUnitFlag(UnitFlags.PetInCombat); }
 
-        public void SetInCombatWith(Unit enemy)
+        public void SetInCombatWith(Unit enemy, bool addSecondUnitSuppressed = false)
         {
             if (enemy != null)
-                m_combatManager.SetInCombatWith(enemy);
+                m_combatManager.SetInCombatWith(enemy, addSecondUnitSuppressed);
         }
 
         public void EngageWithTarget(Unit enemy)

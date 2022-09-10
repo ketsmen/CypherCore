@@ -7181,6 +7181,9 @@ namespace Game.Spells
 
             PrepareTargetProcessing();
 
+            foreach (TargetInfo  target in m_UniqueTargetInfo)
+                PreprocessSpellLaunch(target);
+
             foreach (var spellEffectInfo in m_spellInfo.GetEffects())
             {
                 float multiplier = 1.0f;
@@ -7200,6 +7203,37 @@ namespace Game.Spells
             FinishTargetProcessing();
         }
 
+        void PreprocessSpellLaunch(TargetInfo targetInfo)
+        {
+            Unit targetUnit = m_caster.GetGUID() == targetInfo.TargetGUID ? m_caster.ToUnit() : Global.ObjAccessor.GetUnit(m_caster, targetInfo.TargetGUID);
+            if (targetUnit == null)
+                return;
+
+            // This will only cause combat - the target will engage once the projectile hits (in Spell::TargetInfo::PreprocessTarget)
+            if (m_originalCaster && targetInfo.MissCondition != SpellMissInfo.Evade && !m_originalCaster.IsFriendlyTo(targetUnit) && (!m_spellInfo.IsPositive() || m_spellInfo.HasEffect(SpellEffectName.Dispel)) && (m_spellInfo.HasInitialAggro() || targetUnit.IsEngaged()))
+                m_originalCaster.SetInCombatWith(targetUnit, true);
+
+            Unit unit = null;
+            // In case spell hit target, do all effect on that target
+            if (targetInfo.MissCondition == SpellMissInfo.None)
+                unit = targetUnit;
+            // In case spell reflect from target, do all effect on caster (if hit)
+            else if (targetInfo.MissCondition == SpellMissInfo.Reflect && targetInfo.ReflectResult == SpellMissInfo.None)
+                unit = m_caster.ToUnit();
+            if (unit == null)
+                return;
+
+            float critChance = m_spellValue.CriticalChance;
+            if (m_originalCaster)
+            {
+                if (critChance == 0)
+                    critChance = m_originalCaster.SpellCritChanceDone(this, null, m_spellSchoolMask, m_attackType);
+                critChance = unit.SpellCritChanceTaken(m_originalCaster, this, null, m_spellSchoolMask, critChance, m_attackType);
+            }
+
+            targetInfo.IsCrit = RandomHelper.randChance(critChance);
+        }
+
         void DoEffectOnLaunchTarget(TargetInfo targetInfo, float multiplier, SpellEffectInfo spellEffectInfo)
         {
             Unit unit = null;
@@ -7209,12 +7243,9 @@ namespace Game.Spells
             // In case spell reflect from target, do all effect on caster (if hit)
             else if (targetInfo.MissCondition == SpellMissInfo.Reflect && targetInfo.ReflectResult == SpellMissInfo.None)
                 unit = m_caster.ToUnit();
-            if (unit == null)
-                return;
 
-            // This will only cause combat - the target will engage once the projectile hits (in DoAllEffectOnTarget)
-            if (m_originalCaster != null && targetInfo.MissCondition != SpellMissInfo.Evade && !m_originalCaster.IsFriendlyTo(unit) && (!m_spellInfo.IsPositive() || m_spellInfo.HasEffect(SpellEffectName.Dispel)) && (m_spellInfo.HasInitialAggro() || unit.IsEngaged()))
-                m_originalCaster.SetInCombatWith(unit);
+            if (!unit)
+                return;
 
             m_damage = 0;
             m_healing = 0;
@@ -7248,16 +7279,6 @@ namespace Game.Spells
 
             targetInfo.Damage += m_damage;
             targetInfo.Healing += m_healing;
-
-            float critChance = m_spellValue.CriticalChance;
-            if (m_originalCaster != null)
-            {
-                if (critChance == 0)
-                    critChance = m_originalCaster.SpellCritChanceDone(this, null, m_spellSchoolMask, m_attackType);
-                critChance = unit.SpellCritChanceTaken(m_originalCaster, this, null, m_spellSchoolMask, critChance, m_attackType);
-            }
-
-            targetInfo.IsCrit = RandomHelper.randChance(critChance);
         }
 
         SpellCastResult CanOpenLock(SpellEffectInfo effect, uint lockId, ref SkillType skillId, ref int reqSkillValue, ref int skillValue)
@@ -8264,9 +8285,8 @@ namespace Game.Spells
             else if (MissCondition == SpellMissInfo.Reflect && ReflectResult == SpellMissInfo.None)
                 _spellHitTarget = spell.GetCaster().ToUnit();
 
-            // Ensure that a player target is put in combat by a taunt, even if they result immune clientside
-            if ((MissCondition == SpellMissInfo.Immune || MissCondition == SpellMissInfo.Immune2) && spell.GetCaster().IsPlayer() && unit.IsPlayer() && spell.GetCaster().IsValidAttackTarget(unit, spell.GetSpellInfo()))
-                unit.SetInCombatWith(spell.GetCaster().ToPlayer());
+            if (spell.GetOriginalCaster() && MissCondition != SpellMissInfo.Evade && !spell.GetOriginalCaster().IsFriendlyTo(unit) && (!spell.m_spellInfo.IsPositive() || spell.m_spellInfo.HasEffect(SpellEffectName.Dispel)) && (spell.m_spellInfo.HasInitialAggro() || unit.IsEngaged()))
+                unit.SetInCombatWith(spell.GetOriginalCaster());
 
             // if target is flagged for pvp also flag caster if a player
             // but respect current pvp rules (buffing/healing npcs flagged for pvp only flags you if they are in combat)
@@ -8552,7 +8572,7 @@ namespace Game.Spells
                         }
                     }
 
-                if (!spell.m_spellInfo.HasAttribute(SpellAttr3.DoNotTriggerTargetStand) && !unit.IsStandState())
+                    if (!spell.m_spellInfo.HasAttribute(SpellAttr3.DoNotTriggerTargetStand) && !unit.IsStandState())
                         unit.SetStandState(UnitStandStateType.Stand);
                 }
 
@@ -8596,7 +8616,7 @@ namespace Game.Spells
                 // Needs to be called after dealing damage/healing to not remove breaking on damage auras
                 spell.DoTriggersOnSpellHit(_spellHitTarget);
             }
-            
+
             if (_enablePVP)
                 spell.GetCaster().ToPlayer().UpdatePvP(true);
 
@@ -9100,7 +9120,7 @@ namespace Game.Spells
 
         Spell m_Spell;
     }
-
+    
     class ProcReflectDelayed : BasicEvent
     {
         public ProcReflectDelayed(Unit owner, ObjectGuid casterGuid)

@@ -3087,15 +3087,6 @@ namespace Game.Entities
                         spellEffectInfo.ApplyAuraName = AuraType.PeriodicTriggerSpell;
                     });
                 });
-
-                // Lich Pet
-                ApplySpellFix(new [] { 70050 }, spellInfo =>
-                {
-                    ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
-                    {
-                        spellEffectInfo.TriggerSpell = 70049;
-                    });
-                });
             }
 
             // Allows those to crit
@@ -3240,14 +3231,17 @@ namespace Game.Entities
                 38762, // Force of Neltharaku
                 51122, // Fierce Lightning Stike
                 71848, // Toxic Wasteling Find Target
-                36146  // Chains of Naberius
+                36146, // Chains of Naberius
+                33711, // Murmur's Touch
+                38794  // Murmur's Touch
             }, spellInfo =>
             {
                 spellInfo.MaxAffectedTargets = 1;
             });
 
             ApplySpellFix(new[] {
-                36384  // Skartax Purple Beam
+                36384, // Skartax Purple Beam
+                47731  // Critter
             }, spellInfo =>
             {
                 spellInfo.MaxAffectedTargets = 2;
@@ -3292,18 +3286,13 @@ namespace Game.Entities
                 spellInfo.MaxAffectedTargets = 5;
             });
 
-            // Curse of the Plaguebringer - Noth (H)
-            ApplySpellFix(new[] { 54835 }, spellInfo =>
-            {
-                spellInfo.MaxAffectedTargets = 8;
-            });
-
             ApplySpellFix(new[] {
                 40827, // Sinful Beam
                 40859, // Sinister Beam
                 40860, // Vile Beam
                 40861, // Wicked Beam
-                54098  // Poison Bolt Volly - Faerlina (H)
+                54098, // Poison Bolt Volly - Faerlina (H)
+                54835  // Curse of the Plaguebringer - Noth (H)
             }, spellInfo =>
             {
                 spellInfo.MaxAffectedTargets = 10;
@@ -3313,16 +3302,6 @@ namespace Game.Entities
             ApplySpellFix(new[] { 50312 }, spellInfo =>
             {
                 spellInfo.MaxAffectedTargets = 15;
-            });
-
-            // Murmur's Touch
-            ApplySpellFix(new[] { 33711, 38794 }, spellInfo =>
-            {
-                spellInfo.MaxAffectedTargets = 1;
-                ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
-                {
-                    spellEffectInfo.TriggerSpell = 33760;
-                });
             });
 
             // Fingers of Frost

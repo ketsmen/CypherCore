@@ -117,6 +117,24 @@ namespace Scripts.Spells.Generic
         public const uint CreateToken = 50063;
         public const uint StealEssenceVisual = 50101;
 
+        // Feast
+        public const uint GreatFeast = 57337;
+        public const uint FishFeast = 57397;
+        public const uint GiganticFeast = 58466;
+        public const uint SmallFeast = 58475;
+        public const uint BountifulFeast = 66477;
+
+        public const uint FeastFood = 45548;
+        public const uint FeastDrink = 57073;
+        public const uint BountifulFeastDrink = 66041;
+        public const uint BountifulFeastFood = 66478;
+
+        public const uint GreatFeastRefreshment = 57338;
+        public const uint FishFeastRefreshment = 57398;
+        public const uint GiganticFeastRefreshment = 58467;
+        public const uint SmallFeastRefreshment = 58477;
+        public const uint BountifulFeastRefreshment = 66622;
+
         //FuriousRage
         public const uint Exhaustion = 35492;
 
@@ -135,10 +153,6 @@ namespace Scripts.Spells.Generic
 
         // Interrupt
         public const uint GenThrowInterrupt = 32747;
-
-        // LichPet
-        public const uint LichPetAura = 69732;
-        public const uint LichPetAuraOnkill = 69731;
 
         // Genericlifebloomspells        
         public const uint HexlordMalacrass = 43422;
@@ -370,9 +384,6 @@ namespace Scripts.Spells.Generic
         public const uint Trollbane = 161707;
         public const uint Whitemane = 161708;
         public const uint Morgaine = 161709;
-
-        // LichPet
-        public const uint LichPet = 36979;
     }
 
     struct ModelIds
@@ -729,41 +740,6 @@ namespace Scripts.Spells.Generic
         public override void Register()
         {
             OnEffectPeriodic.Add(new EffectPeriodicHandler(PeriodicTick, 0, AuraType.PeriodicTriggerSpell));
-        }
-    }
-
-    [Script]
-    class spell_gen_aura_service_uniform : AuraScript
-    {
-        public override bool Validate(SpellInfo spellInfo)
-        {
-            return ValidateSpellInfo(SpellIds.ServiceUniform);
-        }
-
-        void OnApply(AuraEffect aurEff, AuraEffectHandleModes mode)
-        {
-            // Apply model goblin
-            Unit target = GetTarget();
-            if (target.IsTypeId(TypeId.Player))
-            {
-                if (target.GetNativeGender() == Gender.Male)
-                    target.SetDisplayId(ModelIds.GoblinMale);
-                else
-                    target.SetDisplayId(ModelIds.GoblinFemale);
-            }
-        }
-
-        void OnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
-        {
-            Unit target = GetTarget();
-            if (target.IsTypeId(TypeId.Player))
-                target.RestoreDisplayId();
-        }
-
-        public override void Register()
-        {
-            AfterEffectApply.Add(new EffectApplyHandler(OnApply, 0, AuraType.Transform, AuraEffectHandleModes.Real));
-            AfterEffectRemove.Add(new EffectApplyHandler(OnRemove, 0, AuraType.Transform, AuraEffectHandleModes.Real));
         }
     }
 
@@ -1836,6 +1812,62 @@ namespace Scripts.Spells.Generic
         }
     }
 
+    /* 57337 - Great Feast
+   57397 - Fish Feast
+   58466 - Gigantic Feast
+   58475 - Small Feast
+   66477 - Bountiful Feast */
+    [Script]
+    class spell_gen_feast : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.FeastFood, SpellIds.FeastDrink, SpellIds.BountifulFeastDrink, SpellIds.BountifulFeastFood, SpellIds.GreatFeastRefreshment,
+                SpellIds.FishFeastRefreshment, SpellIds.GiganticFeastRefreshment, SpellIds.SmallFeastRefreshment, SpellIds.BountifulFeastRefreshment);
+        }
+
+        void HandleScript(uint effIndex)
+        {
+            Unit target = GetHitUnit();
+
+            switch (GetSpellInfo().Id)
+            {
+                case SpellIds.GreatFeast:
+                    target.CastSpell(target, SpellIds.FeastFood);
+                    target.CastSpell(target, SpellIds.FeastDrink);
+                    target.CastSpell(target, SpellIds.GreatFeastRefreshment);
+                    break;
+                case SpellIds.FishFeast:
+                    target.CastSpell(target, SpellIds.FeastFood);
+                    target.CastSpell(target, SpellIds.FeastDrink);
+                    target.CastSpell(target, SpellIds.FishFeastRefreshment);
+                    break;
+                case SpellIds.GiganticFeast:
+                    target.CastSpell(target, SpellIds.FeastFood);
+                    target.CastSpell(target, SpellIds.FeastDrink);
+                    target.CastSpell(target, SpellIds.GiganticFeastRefreshment);
+                    break;
+                case SpellIds.SmallFeast:
+                    target.CastSpell(target, SpellIds.FeastFood);
+                    target.CastSpell(target, SpellIds.FeastDrink);
+                    target.CastSpell(target, SpellIds.SmallFeastRefreshment);
+                    break;
+                case SpellIds.BountifulFeast:
+                    target.CastSpell(target, SpellIds.BountifulFeastRefreshment);
+                    target.CastSpell(target, SpellIds.BountifulFeastDrink);
+                    target.CastSpell(target, SpellIds.BountifulFeastFood);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+
     /*
      * There are only 3 possible flags Feign Death auras can apply: UNIT_DYNFLAG_DEAD, UnitFlags2.FeignDeath
      * and UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT. Some auras can apply only 2 flags
@@ -1979,7 +2011,7 @@ namespace Scripts.Spells.Generic
             AfterEffectRemove.Add(new EffectApplyHandler(AfterRemove, 0, AuraType.ModDamagePercentDone, AuraEffectHandleModes.Real));
         }
     }
-    
+
     [Script] // 46642 - 5,000 Gold
     class spell_gen_5000_gold : SpellScript
     {
@@ -2121,6 +2153,77 @@ namespace Scripts.Spells.Generic
         }
     }
 
+    /* 9204 - Hate to Zero(Melee)
+     * 20538 - Hate to Zero(AoE)
+     * 26569 - Hate to Zero(AoE)
+     * 26637 - Hate to Zero(AoE, Unique)
+     * 37326 - Hate to Zero(AoE)
+     * 40410 - Hate to Zero(Should be added, AoE)
+     * 40467 - Hate to Zero(Should be added, AoE)
+     * 41582 - Hate to Zero(Should be added, Melee) */
+    [Script]
+    class spell_gen_hate_to_zero : SpellScript
+    {
+        void HandleDummy(uint effIndex)
+        {
+            if (GetCaster().CanHaveThreatList())
+                GetCaster().GetThreatManager().ModifyThreatByPercent(GetHitUnit(), -100);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+
+    // This spell is used by both player and creature, but currently works only if used by player
+    [Script] // 63984 - Hate to Zero
+    class spell_gen_hate_to_zero_caster_target : SpellScript
+    {
+        void HandleDummy(uint effIndex)
+        {
+            Unit target = GetHitUnit();
+            if (target != null)
+                if (target.CanHaveThreatList())
+                    target.GetThreatManager().ModifyThreatByPercent(GetCaster(), -100);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+
+    [Script] // 19707 - Hate to 50%
+    class spell_gen_hate_to_50 : SpellScript
+    {
+        void HandleDummy(uint effIndex)
+        {
+            if (GetCaster().CanHaveThreatList())
+                GetCaster().GetThreatManager().ModifyThreatByPercent(GetHitUnit(), -50);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+
+    [Script] // 26886 - Hate to 75%
+    class spell_gen_hate_to_75 : SpellScript
+    {
+        void HandleDummy(uint effIndex)
+        {
+            if (GetCaster().CanHaveThreatList())
+                GetCaster().GetThreatManager().ModifyThreatByPercent(GetHitUnit(), -25);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+
     [Script]
     class spell_gen_interrupt : AuraScript
     {
@@ -2162,66 +2265,6 @@ namespace Scripts.Spells.Generic
         }
     }
 
-    [Script] // 69732 - Lich Pet Aura
-    class spell_gen_lich_pet_aura : AuraScript
-    {
-        bool CheckProc(ProcEventInfo eventInfo)
-        {
-            return eventInfo.GetProcTarget().IsPlayer();
-        }
-
-        void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
-        {
-            PreventDefaultAction();
-
-            List<TempSummon> minionList = new();
-            GetUnitOwner().GetAllMinionsByEntry(minionList, CreatureIds.LichPet);
-            foreach (Creature minion in minionList)
-                if (minion.IsAIEnabled())
-                    minion.GetAI().DoCastSelf(SpellIds.LichPetAuraOnkill);
-        }
-
-        public override void Register()
-        {
-            DoCheckProc.Add(new CheckProcHandler(CheckProc));
-            OnEffectProc.Add(new EffectProcHandler(HandleProc, 0, AuraType.ProcTriggerSpell));
-        }
-    }
-
-    [Script] // 69735 - Lich Pet OnSummon
-    class spell_gen_lich_pet_onsummon : SpellScript
-    {
-        public override bool Validate(SpellInfo spellInfo)
-        {
-            return ValidateSpellInfo(SpellIds.LichPetAura);
-        }
-
-        void HandleScriptEffect(uint effIndex)
-        {
-            Unit target = GetHitUnit();
-            target.CastSpell(target, SpellIds.LichPetAura, true);
-        }
-
-        public override void Register()
-        {
-            OnEffectHitTarget.Add(new EffectHandler(HandleScriptEffect, 0, SpellEffectName.ScriptEffect));
-        }
-    }
-
-    [Script] // 69736 - Lich Pet Aura Remove
-    class spell_gen_lich_pet_aura_remove : SpellScript
-    {
-        void HandleScriptEffect(uint effIndex)
-        {
-            GetHitUnit().RemoveAurasDueToSpell(SpellIds.LichPetAura);
-        }
-
-        public override void Register()
-        {
-            OnEffectHitTarget.Add(new EffectHandler(HandleScriptEffect, 0, SpellEffectName.ScriptEffect));
-        }
-    }
-    
     [Script("spell_hexlord_lifebloom", SpellIds.HexlordMalacrass)]
     [Script("spell_tur_ragepaw_lifebloom", SpellIds.TurragePaw)]
     [Script("spell_cenarion_scout_lifebloom", SpellIds.CenarionScout)]
@@ -2661,7 +2704,7 @@ namespace Scripts.Spells.Generic
             OnEffectHitTarget.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
         }
     }
-    
+
     [Script("spell_item_soul_harvesters_charm")]
     [Script("spell_item_commendation_of_kaelthas")]
     [Script("spell_item_corpse_tongue_coin")]
@@ -2788,7 +2831,7 @@ namespace Scripts.Spells.Generic
             OnEffectHit.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
         }
     }
-    
+
     [Script]
     class spell_gen_profession_research : SpellScript
     {
@@ -3717,7 +3760,7 @@ namespace Scripts.Spells.Generic
             OnEffectHitTarget.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
         }
     }
-    
+
     [Script]
     class spell_gen_eject_all_passengers : SpellScript
     {
@@ -3792,7 +3835,7 @@ namespace Scripts.Spells.Generic
             OnEffectHitTarget.Add(new EffectHandler(EjectPassenger, 0, SpellEffectName.ScriptEffect));
         }
     }
-    
+
     [Script]
     class spell_gen_gm_freeze : AuraScript
     {
@@ -4417,7 +4460,7 @@ namespace Scripts.Spells.Generic
             OnEffectHitTarget.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
         }
     }
-    
+
     [Script] // 169869 - Transformation Sickness
     class spell_gen_decimatus_transformation_sickness : SpellScript
     {
@@ -4762,7 +4805,7 @@ namespace Scripts.Spells.Generic
             OnCast.Add(new CastHandler(HandleOnCast));
         }
     }
-    
+
     // 40307 - Stasis Field
     class StasisFieldSearcher : ICheck<Unit>
     {

@@ -26,7 +26,6 @@ using Game.Spells;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 
 namespace Scripts.Spells.Items
 {
@@ -139,6 +138,9 @@ namespace Scripts.Spells.Items
         public const uint InvigorationRageHero = 71886;
         public const uint InvigorationEnergyHero = 71887;
         public const uint InvigorationManaHero = 71888;
+
+        //HourglassSand
+        public const uint BroodAfflictionBronze = 23170;
 
         //Makeawish
         public const uint MrPinchysBlessing = 33053;
@@ -308,6 +310,10 @@ namespace Scripts.Spells.Items
         //Impaleleviroth
         public const uint LevirothSelfImpale = 49882;
 
+        //LifegivingGem
+        public const uint GiftOfLife1 = 23782;
+        public const uint GiftOfLife2 = 23783;
+
         //Nitroboots
         public const uint NitroBoostsSuccess = 54861;
         public const uint NitroBoostsBackfire = 46014;
@@ -435,6 +441,13 @@ namespace Scripts.Spells.Items
 
         //TauntFlag
         public const uint EmotePlantsFlag = 28008;
+
+        //Feast
+        public const uint GreatFeast = 31843;
+        public const uint TextFishFeast = 31844;
+        public const uint TextGiganticFeast = 31846;
+        public const uint SmallFeast = 31845;
+        public const uint BountifulFeast = 35153;
     }
 
     struct FactionIds
@@ -509,6 +522,19 @@ namespace Scripts.Spells.Items
         public const uint Ashbringer10 = 8926;                             // "Scarlet Crusade  Is Pure No Longer"
         public const uint Ashbringer11 = 8927;                             // "Balnazzar'S Crusade Corrupted My Son"
         public const uint Ashbringer12 = 8928;                             // "Kill Them All!"
+    }
+
+    struct ModelIds
+    {
+        //DireBrew
+        public const uint ClassClothMale = 25229;
+        public const uint ClassClothFemale = 25233;
+        public const uint ClassLeatherMale = 25230;
+        public const uint ClassLeatherFemale = 25234;
+        public const uint ClassMailMale = 25231;
+        public const uint ClassMailFemale = 25235;
+        public const uint ClassPlateMale = 25232;
+        public const uint ClassPlateFemale = 25236;
     }
 
     // 23074 Arcanite Dragonling
@@ -1217,6 +1243,35 @@ namespace Scripts.Spells.Items
             OnEffectApply.Add(new EffectApplyHandler(HandleEffectApply, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
         }
     }
+
+    [Script] // 51010 - Dire Brew
+    class spell_item_dire_brew : AuraScript
+    {
+        void AfterApply(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit target = GetTarget();
+
+            uint model = 0;
+            var gender = target.GetGender();
+            var chrClass = CliDB.ChrClassesStorage.LookupByKey(target.GetClass());
+            if ((chrClass.ArmorTypeMask & (1 << (int)ItemSubClassArmor.Plate)) != 0)
+                model = gender == Gender.Male ? ModelIds.ClassPlateMale : ModelIds.ClassPlateFemale;
+            else if ((chrClass.ArmorTypeMask & (1 << (int)ItemSubClassArmor.Mail)) != 0)
+                model = gender == Gender.Male ? ModelIds.ClassMailMale : ModelIds.ClassMailFemale;
+            else if ((chrClass.ArmorTypeMask & (1 << (int)ItemSubClassArmor.Leather)) != 0)
+                model = gender == Gender.Male ? ModelIds.ClassLeatherMale : ModelIds.ClassLeatherFemale;
+            else if ((chrClass.ArmorTypeMask & (1 << (int)ItemSubClassArmor.Cloth)) != 0)
+                model = gender == Gender.Male ? ModelIds.ClassClothMale : ModelIds.ClassClothFemale;
+
+            if (model != 0)
+                target.SetDisplayId(model);
+        }
+
+        public override void Register()
+        {
+            AfterEffectApply.Add(new EffectApplyHandler(AfterApply, 0, AuraType.Transform, AuraEffectHandleModes.Real));
+        }
+    }
     
     [Script] // 59915 - Discerning Eye of the Beast Dummy
     class spell_item_discerning_eye_beast_dummy : AuraScript
@@ -1308,6 +1363,37 @@ namespace Scripts.Spells.Items
         }
     }
 
+    [Script("spell_item_great_feast", TextIds.GreatFeast)]
+    [Script("spell_item_fish_feast", TextIds.TextFishFeast)]
+    [Script("spell_item_gigantic_feast", TextIds.TextGiganticFeast)]
+    [Script("spell_item_small_feast", TextIds.SmallFeast)]
+    [Script("spell_item_bountiful_feast", TextIds.BountifulFeast)]
+    class spell_item_feast : SpellScript
+    {
+        uint _text;
+
+        public spell_item_feast(uint text)
+        {
+            _text = text;
+        }
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return CliDB.BroadcastTextStorage.ContainsKey(_text);
+        }
+
+        void HandleScript(uint effIndex)
+        {
+            Unit caster = GetCaster();
+            caster.TextEmote(_text, caster, false);
+        }
+
+        public override void Register()
+        {
+            OnEffectHit.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+    
     // http://www.wowhead.com/item=47499 Flask of the North
     [Script] // 67019 Flask of the North
     class spell_item_flask_of_the_north : SpellScript
@@ -1479,6 +1565,25 @@ namespace Scripts.Spells.Items
         uint _rpSpellId;
     }
 
+    [Script] // 23645 - Hourglass Sand
+    class spell_item_hourglass_sand : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.BroodAfflictionBronze);
+        }
+
+        void HandleDummy(uint effIndex)
+        {
+            GetCaster().RemoveAurasDueToSpell(SpellIds.BroodAfflictionBronze);
+        }
+
+        public override void Register()
+        {
+            OnEffectHit.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+    
     [Script] // 40971 - Bonus Healing (Crystal Spire of Karabor)
     class spell_item_crystal_spire_of_karabor : AuraScript
     {
@@ -2806,6 +2911,27 @@ namespace Scripts.Spells.Items
         }
     }
 
+    [Script] // 23725 - Gift of Life
+    class spell_item_lifegiving_gem : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.GiftOfLife1, SpellIds.GiftOfLife2);
+        }
+
+        void HandleDummy(uint effIndex)
+        {
+            Unit caster = GetCaster();
+            caster.CastSpell(caster, SpellIds.GiftOfLife1, true);
+            caster.CastSpell(caster, SpellIds.GiftOfLife2, true);
+        }
+
+        public override void Register()
+        {
+            OnEffectHit.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+    
     [Script]
     class spell_item_nitro_boosts : SpellScript
     {

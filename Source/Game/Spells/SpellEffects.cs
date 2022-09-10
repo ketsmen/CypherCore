@@ -658,7 +658,7 @@ namespace Game.Spells
             if (aurApp == null)
                 aurApp = unitTarget._CreateAuraApplication(spellAura, 1u << (int)effectInfo.EffectIndex);
             else
-                aurApp.UpdateApplyEffectMask(aurApp.GetEffectsToApply() | 1u << (int)effectInfo.EffectIndex);
+                aurApp.UpdateApplyEffectMask(aurApp.GetEffectsToApply() | 1u << (int)effectInfo.EffectIndex, false);
         }
 
         [SpellEffectHandler(SpellEffectName.UnlearnSpecialization)]
@@ -1956,7 +1956,7 @@ namespace Game.Spells
 
             ObjectGuid guid = m_caster.GetGUID();
             if (!guid.IsEmpty()) // the trainer is the caster
-                unitTarget.ToPlayer().SendRespecWipeConfirm(guid, unitTarget.ToPlayer().GetNextResetTalentsCost());
+                unitTarget.ToPlayer().SendRespecWipeConfirm(guid, unitTarget.ToPlayer().GetNextResetTalentsCost(), SpecResetType.Talents);
         }
 
         [SpellEffectHandler(SpellEffectName.TeleportUnitsFaceCaster)]
