@@ -477,7 +477,7 @@ namespace Game.Entities
                     DurabilityRepair(item.GetPos(), false, 0.0f);
             }
         }
-        
+
         public void DurabilityRepair(ushort pos, bool takeCost, float discountMod)
         {
             Item item = GetItemByPos(pos);
@@ -1222,6 +1222,10 @@ namespace Game.Entities
         bool StoreNewItemInBestSlots(uint titem_id, uint titem_amount)
         {
             Log.outDebug(LogFilter.Player, "STORAGE: Creating initial item, itemId = {0}, count = {1}", titem_id, titem_amount);
+
+            ItemContext itemContext = ItemContext.NewCharacter;
+            var bonusListIDs = Global.DB2Mgr.GetDefaultItemBonusTree(titem_id, itemContext);
+
             InventoryResult msg;
             // attempt equip by one
             while (titem_amount > 0)
@@ -1230,7 +1234,8 @@ namespace Game.Entities
                 if (msg != InventoryResult.Ok)
                     break;
 
-                EquipNewItem(eDest, titem_id, ItemContext.None, true);
+                Item item = EquipNewItem(eDest, titem_id, itemContext, true);
+                item.SetBonuses(bonusListIDs);
                 AutoUnequipOffhandIfNeed();
                 titem_amount--;
             }
@@ -1244,7 +1249,7 @@ namespace Game.Entities
             msg = CanStoreNewItem(InventorySlots.Bag0, ItemConst.NullSlot, sDest, titem_id, titem_amount);
             if (msg == InventoryResult.Ok)
             {
-                StoreNewItem(sDest, titem_id, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(titem_id));
+                StoreNewItem(sDest, titem_id, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(titem_id), null, itemContext, bonusListIDs);
                 return true;                                        // stored
             }
 
@@ -2393,7 +2398,7 @@ namespace Game.Entities
 
             // if player is moving bags and is looting an item inside this bag
             // release the loot
-            if (!GetLootGUID().IsEmpty())
+            if (!GetAELootView().Empty())
             {
                 bool released = false;
                 if (IsBagPos(src))
@@ -2404,9 +2409,9 @@ namespace Game.Entities
                         Item bagItem = bag.GetItemByPos(i);
                         if (bagItem != null)
                         {
-                            if (bagItem.GetGUID() == GetLootGUID())
+                            if (GetLootByWorldObjectGUID(bagItem.GetGUID()) != null)
                             {
-                                GetSession().DoLootRelease(GetLootGUID());
+                                GetSession().DoLootReleaseAll();
                                 released = true;                    // so we don't need to look at dstBag
                                 break;
                             }
@@ -2422,9 +2427,9 @@ namespace Game.Entities
                         Item bagItem = bag.GetItemByPos(i);
                         if (bagItem != null)
                         {
-                            if (bagItem.GetGUID() == GetLootGUID())
+                            if (GetLootByWorldObjectGUID(bagItem.GetGUID()) != null)
                             {
-                                GetSession().DoLootRelease(GetLootGUID());
+                                GetSession().DoLootReleaseAll();
                                 break;
                             }
                         }
@@ -2949,13 +2954,12 @@ namespace Game.Entities
             }
         }
 
-        public InventoryResult CanRollForItemInLFG(ItemTemplate proto, WorldObject lootedObject)
+        public InventoryResult CanRollForItemInLFG(ItemTemplate proto, Map map)
         {
             if (!GetGroup() || !GetGroup().IsLFGGroup())
                 return InventoryResult.Ok;    // not in LFG group
 
             // check if looted object is inside the lfg dungeon
-            Map map = lootedObject.GetMap();
             if (!Global.LFGMgr.InLfgDungeonMap(GetGroup().GetGUID(), map.GetId(), map.GetDifficultyID()))
                 return InventoryResult.Ok;
 
@@ -3946,7 +3950,7 @@ namespace Game.Entities
             }
         }
 
-        void ApplyItemLootedSpell(Item item, bool apply)
+        public void ApplyItemLootedSpell(Item item, bool apply)
         {
             if (item.GetTemplate().HasFlag(ItemFlags.Legacy))
                 return;
@@ -4096,25 +4100,24 @@ namespace Game.Entities
             }
         }
 
-        public ObjectGuid GetLootWorldObjectGUID(ObjectGuid lootObjectGuid)
+        public Loot GetLootByWorldObjectGUID(ObjectGuid lootWorldObjectGuid)
         {
-            if (!m_AELootView.ContainsKey(lootObjectGuid))
-                return ObjectGuid.Empty;
+            if (m_AELootView.TryGetValue(lootWorldObjectGuid, out Loot lootView))
+                return lootView;
 
-            return m_AELootView[lootObjectGuid];
+            return null;
         }
 
-        public void RemoveAELootedWorldObject(ObjectGuid lootWorldObjectGuid)
+        public LootRoll GetLootRoll(ObjectGuid lootObjectGuid, byte lootListId)
         {
-            var itr = m_AELootView.FirstOrDefault(pair => pair.Value == lootWorldObjectGuid);
-
-            if (itr.Key != ObjectGuid.Empty)
-                m_AELootView.Remove(itr.Key);
+            return m_lootRolls.Find(roll => roll.IsLootItem(lootObjectGuid, lootListId));
         }
 
-        public bool HasLootWorldObjectGUID(ObjectGuid lootWorldObjectGuid)
+        public void AddLootRoll(LootRoll roll) { m_lootRolls.Add(roll); }
+
+        public void RemoveLootRoll(LootRoll roll)
         {
-            return m_AELootView.Any(lootView => lootView.Value == lootWorldObjectGuid);
+            m_lootRolls.Remove(roll);
         }
 
         //Inventory
@@ -5894,33 +5897,13 @@ namespace Game.Entities
             }
         }
         public void AutoStoreLoot(uint loot_id, LootStore store, ItemContext context = 0, bool broadcast = false, bool createdByPlayer = false) { AutoStoreLoot(ItemConst.NullBag, ItemConst.NullSlot, loot_id, store, context, broadcast); }
+
         void AutoStoreLoot(byte bag, byte slot, uint loot_id, LootStore store, ItemContext context = 0, bool broadcast = false, bool createdByPlayer = false)
         {
-            Loot loot = new(null, ObjectGuid.Empty, LootType.None);
+            Loot loot = new(null, ObjectGuid.Empty, LootType.None, null);
             loot.FillLoot(loot_id, store, this, true, false, LootModes.Default, context);
 
-            uint max_slot = loot.GetMaxSlotInLootFor(this);
-            for (uint i = 0; i < max_slot; ++i)
-            {
-                LootItem lootItem = loot.LootItemInSlot(i, this);
-
-                List<ItemPosCount> dest = new();
-                InventoryResult msg = CanStoreNewItem(bag, slot, dest, lootItem.itemid, lootItem.count);
-                if (msg != InventoryResult.Ok && slot != ItemConst.NullSlot)
-                    msg = CanStoreNewItem(bag, ItemConst.NullSlot, dest, lootItem.itemid, lootItem.count);
-                if (msg != InventoryResult.Ok && bag != ItemConst.NullBag)
-                    msg = CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, lootItem.itemid, lootItem.count);
-                if (msg != InventoryResult.Ok)
-                {
-                    SendEquipError(msg, null, null, lootItem.itemid);
-                    continue;
-                }
-
-                Item pItem = StoreNewItem(dest, lootItem.itemid, true, lootItem.randomBonusListId, null, lootItem.context, lootItem.BonusListIDs);
-                SendNewItem(pItem, lootItem.count, false, createdByPlayer, broadcast);
-                ApplyItemLootedSpell(pItem, true);
-            }
-
+            loot.AutoStore(this, bag, slot, broadcast, createdByPlayer);
             Unit.ProcSkillsAndAuras(this, null, new ProcFlagsInit(ProcFlags.Looted), new ProcFlagsInit(ProcFlags.None), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, null, null, null);
         }
 
@@ -5978,7 +5961,7 @@ namespace Game.Entities
         public void SetLootGUID(ObjectGuid guid) { SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.LootTargetGUID), guid); }
         public void StoreLootItem(ObjectGuid lootWorldObjectGuid, byte lootSlot, Loot loot, AELootResult aeResult = null)
         {
-            LootItem item = loot.LootItemInSlot(lootSlot, this, out NotNormalLootItem qitem, out NotNormalLootItem ffaitem, out NotNormalLootItem conditem);
+            LootItem item = loot.LootItemInSlot(lootSlot, this, out NotNormalLootItem ffaItem);
             if (item == null || item.is_looted)
             {
                 SendEquipError(InventoryResult.LootGone);
@@ -5991,8 +5974,7 @@ namespace Game.Entities
                 return;
             }
 
-            // questitems use the blocked field for other purposes
-            if (qitem == null && item.is_blocked)
+            if (item.is_blocked)
             {
                 SendLootReleaseAll();
                 return;
@@ -6010,31 +5992,14 @@ namespace Game.Entities
             if (msg == InventoryResult.Ok)
             {
                 Item newitem = StoreNewItem(dest, item.itemid, true, item.randomBonusListId, item.GetAllowedLooters(), item.context, item.BonusListIDs);
-                if (qitem != null)
+                if (ffaItem != null)
                 {
-                    qitem.is_looted = true;
-                    //freeforall is 1 if everyone's supposed to get the quest item.
-                    if (item.freeforall || loot.GetPlayerQuestItems().Count == 1)
-                        SendNotifyLootItemRemoved(loot.GetGUID(), loot.GetOwnerGUID(), lootSlot);
-                    else
-                        loot.NotifyQuestItemRemoved(qitem.index, GetMap());
+                    //freeforall case, notify only one player of the removal
+                    ffaItem.is_looted = true;
+                    SendNotifyLootItemRemoved(loot.GetGUID(), loot.GetOwnerGUID(), lootSlot);
                 }
-                else
-                {
-                    if (ffaitem != null)
-                    {
-                        //freeforall case, notify only one player of the removal
-                        ffaitem.is_looted = true;
-                        SendNotifyLootItemRemoved(loot.GetGUID(), loot.GetOwnerGUID(), lootSlot);
-                    }
-                    else
-                    {
-                        //not freeforall, notify everyone
-                        if (conditem != null)
-                            conditem.is_looted = true;
-                        loot.NotifyItemRemoved(lootSlot, GetMap());
-                    }
-                }
+                else    //not freeforall, notify everyone
+                    loot.NotifyItemRemoved(lootSlot, GetMap());
 
                 //if only one person is supposed to loot the item, then set it to looted
                 if (!item.freeforall)
@@ -6065,7 +6030,7 @@ namespace Game.Entities
 
                 // LootItem is being removed (looted) from the container, delete it from the DB.
                 if (loot.loot_type == LootType.Item)
-                    Global.LootItemStorage.RemoveStoredLootItemForContainer(lootWorldObjectGuid.GetCounter(), item.itemid, item.count, item.itemIndex);
+                    Global.LootItemStorage.RemoveStoredLootItemForContainer(lootWorldObjectGuid.GetCounter(), item.itemid, item.count, item.LootListId);
 
                 ApplyItemLootedSpell(newitem, true);
             }
@@ -6073,7 +6038,7 @@ namespace Game.Entities
                 SendEquipError(msg, null, null, item.itemid);
         }
 
-        public Dictionary<ObjectGuid, ObjectGuid> GetAELootView() { return m_AELootView; }
+        public Dictionary<ObjectGuid, Loot> GetAELootView() { return m_AELootView; }
 
         /// <summary>
         /// if in a Battleground a player dies, and an enemy removes the insignia, the player's bones is lootable
@@ -6105,7 +6070,7 @@ namespace Game.Entities
             // Now we must make bones lootable, and send player loot
             bones.SetCorpseDynamicFlag(CorpseDynFlags.Lootable);
 
-            bones.loot = new Loot(GetMap(), bones.GetGUID(), LootType.Insignia);
+            bones.loot = new Loot(GetMap(), bones.GetGUID(), LootType.Insignia, looterPlr.GetGroup());
 
             // For AV Achievement
             Battleground bg = GetBattleground();
@@ -6122,7 +6087,7 @@ namespace Game.Entities
             // Now it works like this: lvl10: ~6copper, lvl70: ~9silver
             bones.loot.gold = (uint)(RandomHelper.URand(50, 150) * 0.016f * Math.Pow((float)GetLevel() / 5.76f, 2.5f) * WorldConfig.GetFloatValue(WorldCfg.RateDropMoney));
             bones.lootRecipient = looterPlr;
-            looterPlr.SendLoot(bones.GetGUID(), LootType.Insignia);
+            looterPlr.SendLoot(bones.loot);
         }
 
         public void SendLootRelease(ObjectGuid guid)
@@ -6138,385 +6103,32 @@ namespace Game.Entities
             SendPacket(new LootReleaseAll());
         }
 
-        public void SendLoot(ObjectGuid guid, LootType loot_type, bool aeLooting = false)
+        public void SendLoot(Loot loot, bool aeLooting = false)
         {
             if (!GetLootGUID().IsEmpty() && !aeLooting)
                 Session.DoLootReleaseAll();
 
-            Loot loot;
-            PermissionTypes permission = PermissionTypes.All;
+            Log.outDebug(LogFilter.Loot, $"Player::SendLoot: Player: '{GetName()}' ({GetGUID()}), Loot: {loot.GetOwnerGUID()}");
 
-            Log.outDebug(LogFilter.Loot, "Player.SendLoot");
-            if (guid.IsGameObject())
-            {
-                GameObject go = GetMap().GetGameObject(guid);
-                bool shouldLootRelease(GameObject go, LootType lootType)
-                {
-                    // not check distance for GO in case owned GO (fishing bobber case, for example)
-                    // And permit out of range GO with no owner in case fishing hole
-                    if (!go)
-                        return true;
+            if (!loot.GetOwnerGUID().IsItem() && !aeLooting)
+                SetLootGUID(loot.GetOwnerGUID());
 
-                    switch (lootType)
-                    {
-                        case LootType.Fishing:
-                        case LootType.FishingJunk:
-                            if (go.GetOwnerGUID() != GetGUID())
-                                return true;
-                            break;
-                        case LootType.Fishinghole:
-                            break;
-                        default:
-                            if (!go.IsWithinDistInMap(this))
-                                return true;
-                            break;
-                    }
+            LootResponse packet = new();
+            packet.Owner = loot.GetOwnerGUID();
+            packet.LootObj = loot.GetGUID();
+            packet.LootMethod = loot.GetLootMethod();
+            packet.AcquireReason = (byte)SharedConst.GetLootTypeForClient(loot.loot_type);
+            packet.Acquired = true; // false == No Loot (this too^^)
+            packet.AELooting = aeLooting;
+            loot.BuildLootResponse(packet, this);
+            SendPacket(packet);
 
-                    return false;
-                }
+            // add 'this' player as one of the players that are looting 'loot'
+            loot.OnLootOpened(GetMap(), GetGUID());
+            m_AELootView[loot.GetGUID()] = loot;
 
-                if (shouldLootRelease(go, loot_type))
-                {
-                    SendLootRelease(guid);
-                    return;
-                }
-
-                loot = go.GetLootForPlayer(this);
-
-                // loot was generated and respawntime has passed since then, allow to recreate loot
-                // to avoid bugs, this rule covers spawned gameobjects only
-                // Don't allow to regenerate chest loot inside instances and raids, to avoid exploits with duplicate boss loot being given for some encounters
-                if (go.IsSpawnedByDefault() && go.GetLootState() == LootState.Activated && (loot == null || loot.IsLooted()) && !go.GetMap().Instanceable() && go.GetLootGenerationTime() + go.GetRespawnDelay() < GameTime.GetGameTime())
-                    go.SetLootState(LootState.Ready);
-
-                if (go.GetLootState() == LootState.Ready)
-                {
-                    uint lootid = go.GetGoInfo().GetLootId();
-                    Battleground bg = GetBattleground();
-                    if (bg)
-                    {
-                        if (!bg.CanActivateGO((int)go.GetEntry(), (uint)bg.GetPlayerTeam(GetGUID())))
-                        {
-                            SendLootRelease(guid);
-                            return;
-                        }
-                    }
-
-                    loot = new Loot(GetMap(), guid, loot_type);
-                    if (go.GetMap().Is25ManRaid())
-                        loot.maxDuplicates = 3;
-
-                    go.loot = loot;
-
-                    if (lootid != 0)
-                    {
-                        loot.Clear();
-
-                        Group group = GetGroup();
-                        bool groupRules = (group && go.GetGoInfo().type == GameObjectTypes.Chest && go.GetGoInfo().Chest.usegrouplootrules != 0);
-
-                        // check current RR player and get next if necessary
-                        if (groupRules)
-                            group.UpdateLooterGuid(go, true);
-
-                        loot.FillLoot(lootid, LootStorage.Gameobject, this, !groupRules, false, go.GetLootMode(), GetMap().GetDifficultyLootItemContext());
-                        go.SetLootGenerationTime();
-
-                        // get next RR player (for next loot)
-                        if (groupRules && !loot.Empty())
-                            group.UpdateLooterGuid(go);
-                    }
-
-                    if (go.GetLootMode() > 0)
-                    {
-                        GameObjectTemplateAddon addon = go.GetTemplateAddon();
-                        if (addon != null)
-                            loot.GenerateMoneyLoot(addon.Mingold, addon.Maxgold);
-                    }
-
-                    if (loot_type == LootType.Fishing)
-                        go.GetFishLoot(loot, this);
-                    else if (loot_type == LootType.FishingJunk)
-                        go.GetFishLootJunk(loot, this);
-
-                    if (go.GetGoInfo().type == GameObjectTypes.Chest && go.GetGoInfo().Chest.usegrouplootrules != 0)
-                    {
-                        var group = GetGroup();
-                        if (group)
-                        {
-                            switch (group.GetLootMethod())
-                            {
-                                case LootMethod.GroupLoot:
-                                    // GroupLoot: rolls items over threshold. Items with quality < threshold, round robin
-                                    group.GroupLoot(loot, go);
-                                    break;
-                                case LootMethod.MasterLoot:
-                                    group.MasterLoot(loot, go);
-                                    break;
-                                default:
-                                    break;
-                            }
-                        }
-                    }
-
-                    go.SetLootState(LootState.Activated, this);
-                }
-
-                if (go.GetLootState() == LootState.Activated)
-                {
-                    Group group = GetGroup();
-                    if (group)
-                    {
-                        switch (group.GetLootMethod())
-                        {
-                            case LootMethod.MasterLoot:
-                                permission = PermissionTypes.Master;
-                                break;
-                            case LootMethod.FreeForAll:
-                                permission = PermissionTypes.All;
-                                break;
-                            default:
-                                permission = PermissionTypes.Group;
-                                break;
-                        }
-                    }
-                    else
-                        permission = PermissionTypes.All;
-                }
-            }
-            else if (guid.IsItem())
-            {
-                Item item = GetItemByGuid(guid);
-
-                if (item == null)
-                {
-                    SendLootRelease(guid);
-                    return;
-                }
-
-                permission = PermissionTypes.Owner;
-
-                loot = item.GetLootForPlayer(this);
-
-                // If item doesn't already have loot, attempt to load it. If that
-                // fails then this is first time opening, generate loot
-                if (!item.m_lootGenerated && !Global.LootItemStorage.LoadStoredLoot(item, this))
-                {
-                    item.m_lootGenerated = true;
-                    loot = new Loot(GetMap(), guid, loot_type);
-                    item.loot = loot;
-
-                    switch (loot_type)
-                    {
-                        case LootType.Disenchanting:
-                            loot.FillLoot(item.GetDisenchantLoot(this).Id, LootStorage.Disenchant, this, true);
-                            break;
-                        case LootType.Prospecting:
-                            loot.FillLoot(item.GetEntry(), LootStorage.Prospecting, this, true);
-                            break;
-                        case LootType.Milling:
-                            loot.FillLoot(item.GetEntry(), LootStorage.Milling, this, true);
-                            break;
-                        default:
-                            loot.GenerateMoneyLoot(item.GetTemplate().MinMoneyLoot, item.GetTemplate().MaxMoneyLoot);
-                            loot.FillLoot(item.GetEntry(), LootStorage.Items, this, true, loot.gold != 0);
-
-                            // Force save the loot and money items that were just rolled
-                            //  Also saves the container item ID in Loot struct (not to DB)
-                            if (loot.gold > 0 || loot.unlootedCount > 0)
-                                Global.LootItemStorage.AddNewStoredLoot(item.GetGUID().GetCounter(), loot, this);
-
-                            break;
-                    }
-                }
-            }
-            else if (guid.IsCorpse())                          // remove insignia
-            {
-                Corpse bones = ObjectAccessor.GetCorpse(this, guid);
-
-                if (bones == null || !(loot_type == LootType.Corpse || loot_type == LootType.Insignia) || bones.GetCorpseType() != CorpseType.Bones)
-                {
-                    SendLootRelease(guid);
-                    return;
-                }
-
-                loot = bones.GetLootForPlayer(this);
-
-                if (bones.lootRecipient != null && bones.lootRecipient != this)
-                    permission = PermissionTypes.None;
-                else
-                    permission = PermissionTypes.Owner;
-            }
-            else
-            {
-                Creature creature = GetMap().GetCreature(guid);
-
-                // must be in range and creature must be alive for pickpocket and must be dead for another loot
-                if (creature == null || creature.IsAlive() != (loot_type == LootType.Pickpocketing) || (!aeLooting && !creature.IsWithinDistInMap(this, SharedConst.InteractionDistance)))
-                {
-                    SendLootRelease(guid);
-                    return;
-                }
-
-                if (loot_type == LootType.Pickpocketing && IsFriendlyTo(creature))
-                {
-                    SendLootRelease(guid);
-                    return;
-                }
-
-                loot = creature.GetLootForPlayer(this);
-
-                if (loot_type == LootType.Pickpocketing)
-                {
-                    if (loot == null || loot.loot_type != LootType.Pickpocketing)
-                    {
-                        if (creature.CanGeneratePickPocketLoot())
-                        {
-                            creature.StartPickPocketRefillTimer();
-                            loot.Clear();
-
-                            uint lootid = creature.GetCreatureTemplate().PickPocketId;
-                            if (lootid != 0)
-                                loot.FillLoot(lootid, LootStorage.Pickpocketing, this, true);
-
-                            // Generate extra money for pick pocket loot
-                            uint a = RandomHelper.URand(0, creature.GetLevel() / 2);
-                            uint b = RandomHelper.URand(0, GetLevel() / 2);
-                            loot.gold = (uint)(10 * (a + b) * WorldConfig.GetFloatValue(WorldCfg.RateDropMoney));
-                            permission = PermissionTypes.Owner;
-                        }
-                        else
-                        {
-                            SendLootError(loot.GetGUID(), guid, LootError.AlreadPickPocketed);
-                            return;
-                        }
-                    }
-                }
-                else
-                {
-                    // exploit fix
-                    if (!creature.HasDynamicFlag(UnitDynFlags.Lootable))
-                    {
-                        SendLootError(loot.GetGUID(), guid, LootError.DidntKill);
-                        return;
-                    }
-
-                    // the player whose group may loot the corpse
-                    Player recipient = creature.GetLootRecipient();
-                    Group recipientGroup = creature.GetLootRecipientGroup();
-                    if (!recipient && !recipientGroup)
-                    {
-                        SendLootError(loot.GetGUID(), guid, LootError.DidntKill);
-                        return;
-                    }
-
-                    if (loot.loot_type == LootType.None)
-                    {
-                        // for creature, loot is filled when creature is killed.
-                        Group group = creature.GetLootRecipientGroup();
-                        if (group)
-                        {
-                            switch (group.GetLootMethod())
-                            {
-                                case LootMethod.GroupLoot:
-                                    // GroupLoot: rolls items over threshold. Items with quality < threshold, round robin
-                                    group.GroupLoot(loot, creature);
-                                    break;
-                                case LootMethod.MasterLoot:
-                                    group.MasterLoot(loot, creature);
-                                    break;
-                                default:
-                                    break;
-                            }
-                        }
-                    }
-
-                    if (loot.loot_type == LootType.Skinning)
-                    {
-                        loot_type = LootType.Skinning;
-                        permission = creature.GetLootRecipientGUID() == GetGUID() ? PermissionTypes.Owner : PermissionTypes.None;
-                    }
-                    else if (loot_type == LootType.Skinning)
-                    {
-                        loot.Clear();
-                        loot.FillLoot(creature.GetCreatureTemplate().SkinLootId, LootStorage.Skinning, this, true);
-                        permission = PermissionTypes.Owner;
-
-                        // Set new loot recipient
-                        creature.SetLootRecipient(this, false);
-                    }
-                    // set group rights only for loot_type != LOOT_SKINNING
-                    else
-                    {
-                        if (creature.GetLootRecipientGroup())
-                        {
-                            Group group = GetGroup();
-                            if (group == creature.GetLootRecipientGroup())
-                            {
-                                switch (group.GetLootMethod())
-                                {
-                                    case LootMethod.MasterLoot:
-                                        permission = PermissionTypes.Master;
-                                        break;
-                                    case LootMethod.FreeForAll:
-                                        permission = PermissionTypes.All;
-                                        break;
-                                    default:
-                                        permission = PermissionTypes.Group;
-                                        break;
-                                }
-                            }
-                            else
-                                permission = PermissionTypes.None;
-                        }
-                        else if (creature.GetLootRecipient() == this)
-                            permission = PermissionTypes.Owner;
-                        else
-                            permission = PermissionTypes.None;
-                    }
-                }
-            }
-
-            if (permission != PermissionTypes.None)
-            {
-                LootMethod _lootMethod = LootMethod.FreeForAll;
-                Group group = GetGroup();
-                if (group)
-                {
-                    Creature creature = GetMap().GetCreature(guid);
-                    if (creature)
-                    {
-                        Player recipient = creature.GetLootRecipient();
-                        if (recipient)
-                        {
-                            if (group == recipient.GetGroup())
-                                _lootMethod = group.GetLootMethod();
-                        }
-                    }
-                }
-
-                if (!guid.IsItem() && !aeLooting)
-                    SetLootGUID(guid);
-
-                LootResponse packet = new();
-                packet.Owner = guid;
-                packet.LootObj = loot.GetGUID();
-                packet.LootMethod = _lootMethod;
-                packet.AcquireReason = (byte)SharedConst.GetLootTypeForClient(loot_type);
-                packet.Acquired = true; // false == No Loot (this too^^)
-                packet.AELooting = aeLooting;
-                loot.BuildLootResponse(packet, this, permission);
-                SendPacket(packet);
-
-                // add 'this' player as one of the players that are looting 'loot'
-                loot.AddLooter(GetGUID());
-                m_AELootView[loot.GetGUID()] = guid;
-
-                if (loot_type == LootType.Corpse && !guid.IsItem())
-                    SetUnitFlag(UnitFlags.Looting);
-            }
-            else
-                SendLootError(loot != null ? loot.GetGUID() : ObjectGuid.Empty, guid, LootError.DidntKill);
+            if (loot.loot_type == LootType.Corpse && !loot.GetOwnerGUID().IsItem())
+                SetUnitFlag(UnitFlags.Looting);
         }
 
         public void SendLootError(ObjectGuid lootObj, ObjectGuid owner, LootError error)
@@ -6536,12 +6148,12 @@ namespace Game.Entities
             SendPacket(packet);
         }
 
-        public void SendNotifyLootItemRemoved(ObjectGuid lootObj, ObjectGuid owner, byte lootSlot)
+        public void SendNotifyLootItemRemoved(ObjectGuid lootObj, ObjectGuid owner, byte lootListId)
         {
             LootRemoved packet = new();
             packet.LootObj = lootObj;
             packet.Owner = owner;
-            packet.LootListID = (byte)(lootSlot + 1);
+            packet.LootListID = lootListId;
             SendPacket(packet);
         }
 

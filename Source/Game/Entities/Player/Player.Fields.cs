@@ -22,6 +22,7 @@ using Game.Chat;
 using Game.DataStorage;
 using Game.Garrisons;
 using Game.Groups;
+using Game.Loots;
 using Game.Mails;
 using Game.Maps;
 using Game.Misc;
@@ -238,7 +239,8 @@ namespace Game.Entities
 
         SceneMgr m_sceneMgr;
 
-        Dictionary<ObjectGuid /*LootObject*/, ObjectGuid /*WorldObject*/> m_AELootView = new();
+        Dictionary<ObjectGuid, Loot> m_AELootView = new();
+        List<LootRoll> m_lootRolls = new();                                     // loot rolls waiting for answer
 
         CUFProfile[] _CUFProfiles = new CUFProfile[PlayerConst.MaxCUFProfiles];
         float[] m_powerFraction = new float[(int)PowerType.MaxPerClass];
@@ -411,8 +413,10 @@ namespace Game.Entities
             uState = ActionButtonUpdateState.New;
         }
 
-        public ActionButtonType GetButtonType() { return (ActionButtonType)((packedData & 0xFFFFFFFF00000000) >> 56); }
-        public uint GetAction() { return (uint)(packedData & 0x00000000FFFFFFFF); }
+        public ActionButtonType GetButtonType() { return (ActionButtonType)((packedData & 0xFF00000000000000) >> 56); }
+
+        public ulong GetAction() { return (packedData & 0x00FFFFFFFFFFFFFF); }
+
         public void SetActionAndType(ulong action, ActionButtonType type)
         {
             ulong newData = action | ((ulong)type << 56);

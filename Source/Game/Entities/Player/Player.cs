@@ -756,9 +756,8 @@ namespace Game.Entities
                 StopCastingBindSight();
                 UnsummonPetTemporaryIfAny();
                 ClearComboPoints();
-                ObjectGuid lootGuid = GetLootGUID();
-                if (!lootGuid.IsEmpty())
-                    GetSession().DoLootRelease(lootGuid);
+                GetSession().DoLootReleaseAll();
+                m_lootRolls.Clear();
                 Global.OutdoorPvPMgr.HandlePlayerLeaveZone(this, m_zoneUpdateId);
                 Global.BattleFieldMgr.HandlePlayerLeaveZone(this, m_zoneUpdateId);
             }
@@ -1328,53 +1327,62 @@ namespace Game.Entities
             return (byte)_CUFProfiles.Count(p => p != null);
         }
 
-        bool IsActionButtonDataValid(byte button, uint action, uint type)
+        bool IsActionButtonDataValid(byte button, ulong action, uint type)
         {
             if (button >= PlayerConst.MaxActionButtons)
             {
-                Log.outError(LogFilter.Player, "Action {0} not added into button {1} for player {2} (GUID: {3}): button must be < {4}", action, button, GetName(), GetGUID(), PlayerConst.MaxActionButtons);
+                Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Action {action} not added into button {button} for player {GetName()} ({GetGUID()}): button must be < {PlayerConst.MaxActionButtons}");
                 return false;
             }
 
             if (action >= PlayerConst.MaxActionButtonActionValue)
             {
-                Log.outError(LogFilter.Player, "Action {0} not added into button {1} for player {2} (GUID: {3}): action must be < {4}", action, button, GetName(), GetGUID(), PlayerConst.MaxActionButtonActionValue);
+                Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Action {action} not added into button {button} for player {GetName()} ({GetGUID()}): action must be < {PlayerConst.MaxActionButtonActionValue}");
                 return false;
             }
 
             switch ((ActionButtonType)type)
             {
                 case ActionButtonType.Spell:
-                    if (!Global.SpellMgr.HasSpellInfo(action, Difficulty.None))
+                    if (!Global.SpellMgr.HasSpellInfo((uint)action, Difficulty.None))
                     {
-                        Log.outError(LogFilter.Player, "Spell action {0} not added into button {1} for player {2} (GUID: {3}): spell not exist", action, button, GetName(), GetGUID());
+                        Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Spell action {action} not added into button {button} for player {GetName()} ({GetGUID()}): spell not exist");
                         return false;
                     }
 
-                    if (!HasSpell(action))
+                    if (!HasSpell((uint)action))
                     {
-                        Log.outError(LogFilter.Player, "Spell action {0} not added into button {1} for player {2} (GUID: {3}): player don't known this spell", action, button, GetName(), GetGUID());
+                        Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Spell action {action} not added into button {button} for player {GetName()} ({GetGUID()}): player don't known this spell");
                         return false;
                     }
                     break;
                 case ActionButtonType.Item:
-                    if (Global.ObjectMgr.GetItemTemplate(action) == null)
+                    if (Global.ObjectMgr.GetItemTemplate((uint)action) == null)
                     {
-                        Log.outError(LogFilter.Player, "Item action {0} not added into button {1} for player {2} (GUID: {3}): item not exist", action, button, GetName(), GetGUID());
+                        Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Item action {action} not added into button {button} for player {GetName()} ({GetGUID()}): item not exist");
                         return false;
                     }
                     break;
+                case ActionButtonType.Companion:
+                {
+                    if (GetSession().GetBattlePetMgr().GetPet(ObjectGuid.Create(HighGuid.BattlePet, action)) == null)
+                    {
+                        Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Companion action {action} not added into button {button} for player {GetName()} ({GetGUID()}): companion does not exist");
+                        return false;
+                    }
+                    break;
+                }
                 case ActionButtonType.Mount:
                     var mount = CliDB.MountStorage.LookupByKey(action);
                     if (mount == null)
                     {
-                        Log.outError(LogFilter.Player, "Mount action {0} not added into button {1} for player {2} ({3}): mount does not exist", action, button, GetName(), GetGUID().ToString());
+                        Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Mount action {action} not added into button {button} for player {GetName()} ({GetGUID()}): mount does not exist");
                         return false;
                     }
 
                     if (!HasSpell(mount.SourceSpellID))
                     {
-                        Log.outError(LogFilter.Player, "Mount action {0} not added into button {1} for player {2} ({3}): Player does not know this mount", action, button, GetName(), GetGUID().ToString());
+                        Log.outError(LogFilter.Player, $"Player::IsActionButtonDataValid: Mount action {action} not added into button {button} for player {GetName()} ({GetGUID()}): Player does not know this mount");
                         return false;
                     }
                     break;
@@ -1384,14 +1392,16 @@ namespace Game.Entities
                 case ActionButtonType.Eqset:
                     break;
                 default:
-                    Log.outError(LogFilter.Player, "Unknown action type {0}", type);
+                    Log.outError(LogFilter.Player, $"Unknown action type {type}");
                     return false;                                          // other cases not checked at this moment
             }
 
             return true;
         }
+
         public void SetMultiActionBars(byte mask) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.MultiActionBars), mask); }
-        public ActionButton AddActionButton(byte button, uint action, uint type)
+
+        public ActionButton AddActionButton(byte button, ulong action, uint type)
         {
             if (!IsActionButtonDataValid(button, action, type))
                 return null;
@@ -1405,7 +1415,7 @@ namespace Game.Entities
             // set data and update to CHANGED if not NEW
             ab.SetActionAndType(action, (ActionButtonType)type);
 
-            Log.outDebug(LogFilter.Player, "Player '{0}' Added Action '{1}' (type {2}) to Button '{3}'", GetGUID().ToString(), action, type, button);
+            Log.outDebug(LogFilter.Player, $"Player::AddActionButton: Player '{GetName()}' ({GetGUID()}) added action '{action}' (type {type}) to button '{button}'");
             return ab;
         }
         public void RemoveActionButton(byte _button)
@@ -3135,16 +3145,24 @@ namespace Game.Entities
             else if (thisGroup != creature.GetLootRecipientGroup())
                 return false;
 
-            switch (thisGroup.GetLootMethod())
+            switch (loot.GetLootMethod())
             {
                 case LootMethod.PersonalLoot:// @todo implement personal loot (http://wow.gamepedia.com/Loot#Personal_Loot)
                     return false;
-                case LootMethod.MasterLoot:
                 case LootMethod.FreeForAll:
                     return true;
-                case LootMethod.GroupLoot:
+                case LootMethod.RoundRobin:
                     // may only loot if the player is the loot roundrobin player
-                    // or item over threshold (so roll(s) can be launched)
+                    // or if there are free/quest/conditional item for the player
+                    if (loot.roundRobinPlayer.IsEmpty() || loot.roundRobinPlayer == GetGUID())
+                        return true;
+
+                    return loot.HasItemFor(this);
+                case LootMethod.MasterLoot:
+                case LootMethod.GroupLoot:
+                case LootMethod.NeedBeforeGreed:
+                    // may only loot if the player is the loot roundrobin player
+                    // or item over threshold (so roll(s) can be launched or to preview master looted items)
                     // or if there are free/quest/conditional item for the player
                     if (loot.roundRobinPlayer.IsEmpty() || loot.roundRobinPlayer == GetGUID())
                         return true;
