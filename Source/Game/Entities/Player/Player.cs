@@ -78,7 +78,6 @@ namespace Game.Entities
             m_dungeonDifficulty = Difficulty.Normal;
             m_raidDifficulty = Difficulty.NormalRaid;
             m_legacyRaidDifficulty = Difficulty.Raid10N;
-            m_prevMapDifficulty = Difficulty.NormalRaid;
             m_InstanceValid = true;
 
             _specializationInfo = new SpecializationInfo();
@@ -580,7 +579,7 @@ namespace Game.Entities
                 {
                     // Player left the instance
                     if (_pendingBindId == GetInstanceId())
-                        BindToInstance();
+                        ConfirmPendingBind();
                     SetPendingBind(0, 0);
                 }
                 else
@@ -728,11 +727,6 @@ namespace Game.Entities
 
             if (GetTransport() != null)
                 GetTransport().RemovePassenger(this);
-
-            // clean up player-instance binds, may unload some instance saves
-            foreach (var difficultyDic in m_boundInstances.Values)
-                foreach (var instanceBind in difficultyDic.Values)
-                    instanceBind.save.RemovePlayer(this);
         }
 
         public override void AddToWorld()
@@ -1778,7 +1772,10 @@ namespace Game.Entities
             else
             {
                 if (GetClass() == Class.Deathknight && GetMapId() == 609 && !IsGameMaster() && !HasSpell(50977))
+                {
+                    SendTransferAborted(mapid, TransferAbortReason.UniqueMessage, 1);
                     return false;
+                }
 
                 // far teleport to another map
                 Map oldmap = IsInWorld ? GetMap() : null;
@@ -3133,7 +3130,8 @@ namespace Game.Entities
             Loot loot = creature.GetLootForPlayer(this);
             if (loot == null || loot.IsLooted()) // nothing to loot or everything looted.
                 return false;
-            if (!loot.HasItemForAll() && !loot.HasItemFor(this)) // no loot in creature for this player
+
+            if (!loot.HasAllowedLooter(GetGUID()) || (!loot.HasItemForAll() && !loot.HasItemFor(this))) // no loot in creature for this player
                 return false;
 
             if (loot.loot_type == LootType.Skinning)
@@ -4048,8 +4046,8 @@ namespace Game.Entities
             corpse.UpdatePositionData();
             corpse.SetZoneScript();
 
-            // we do not need to save corpses for BG/arenas
-            if (!GetMap().IsBattlegroundOrArena())
+            // we do not need to save corpses for instances
+            if (!GetMap().Instanceable())
                 corpse.SaveToDB();
 
             return corpse;
@@ -4680,14 +4678,14 @@ namespace Game.Entities
                 if (CanEnableWarModeInArea())
                 {
                     RemovePlayerFlag(PlayerFlags.WarModeActive);
-                    RemoveAurasDueToSpell(auraOutside);
                     CastSpell(this, auraInside, true);
+                    RemoveAurasDueToSpell(auraOutside);
                 }
                 else
                 {
                     SetPlayerFlag(PlayerFlags.WarModeActive);
-                    RemoveAurasDueToSpell(auraInside);
                     CastSpell(this, auraOutside, true);
+                    RemoveAurasDueToSpell(auraInside);
                 }
                 SetWarModeLocal(true);
                 SetPvpFlag(UnitPVPStateFlags.PvP);
@@ -5301,20 +5299,12 @@ namespace Game.Entities
             // raid downscaling - send difficulty to player
             if (GetMap().IsRaid())
             {
-                m_prevMapDifficulty = GetMap().GetDifficultyID();
-                DifficultyRecord difficulty = CliDB.DifficultyStorage.LookupByKey(m_prevMapDifficulty);
-                SendRaidDifficulty(difficulty.Flags.HasAnyFlag(DifficultyFlags.Legacy), (int)m_prevMapDifficulty);
+                Difficulty mapDifficulty = GetMap().GetDifficultyID();
+                var difficulty = CliDB.DifficultyStorage.LookupByKey(mapDifficulty);
+                SendRaidDifficulty((difficulty.Flags & DifficultyFlags.Legacy) != 0, (int)mapDifficulty);
             }
             else if (GetMap().IsNonRaidDungeon())
-            {
-                m_prevMapDifficulty = GetMap().GetDifficultyID();
-                SendDungeonDifficulty((int)m_prevMapDifficulty);
-            }
-            else if (!GetMap().Instanceable())
-            {
-                DifficultyRecord difficulty = CliDB.DifficultyStorage.LookupByKey(m_prevMapDifficulty);
-                SendRaidDifficulty(difficulty.Flags.HasAnyFlag(DifficultyFlags.Legacy));
-            }
+                SendDungeonDifficulty((int)GetMap().GetDifficultyID());
 
             PhasingHandler.OnMapChange(this);
 

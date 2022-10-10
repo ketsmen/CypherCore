@@ -20,6 +20,7 @@ using Game.AI;
 using Game.BattleFields;
 using Game.BattleGrounds;
 using Game.Combat;
+using Game.DataStorage;
 using Game.Groups;
 using Game.Loots;
 using Game.Maps;
@@ -778,6 +779,14 @@ namespace Game.Entities
                     if (creature.GetMap().Is25ManRaid())
                         loot.maxDuplicates = 3;
 
+                    InstanceScript instance = creature.GetInstanceScript();
+                    if (instance != null)
+                    {
+                        DungeonEncounterRecord dungeonEncounter = instance.GetBossDungeonEncounter(creature);
+                        if (dungeonEncounter != null)
+                            loot.SetDungeonEncounterId(dungeonEncounter.Id);
+                    }
+
                     uint lootid = creature.GetCreatureTemplate().LootId;
                     if (lootid != 0)
                         loot.FillLoot(lootid, LootStorage.Creature, looter, false, false, creature.GetLootMode(), creature.GetMap().GetDifficultyLootItemContext());
@@ -915,32 +924,6 @@ namespace Game.Entities
                             summoner.ToCreature().GetAI()?.SummonedCreatureDies(creature, attacker);
                         else if (summoner.IsGameObject())
                             summoner.ToGameObject().GetAI()?.SummonedCreatureDies(creature, attacker);
-                    }
-                }
-
-                // Dungeon specific stuff, only applies to players killing creatures
-                if (creature.GetInstanceId() != 0)
-                {
-                    Map instanceMap = creature.GetMap();
-
-                    /// @todo do instance binding anyway if the charmer/owner is offline
-                    if (instanceMap.IsDungeon() && ((attacker != null && attacker.GetCharmerOrOwnerPlayerOrPlayerItself() != null) || attacker == victim))
-                    {
-                        if (instanceMap.IsRaidOrHeroicDungeon())
-                        {
-                            if (creature.GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.InstanceBind))
-                                instanceMap.ToInstanceMap().PermBindAllPlayers();
-                        }
-                        else
-                        {
-                            // the reset time is set but not added to the scheduler
-                            // until the players leave the instance
-                            long resettime = GameTime.GetGameTime() + 2 * Time.Hour;
-                            InstanceSave save = Global.InstanceSaveMgr.GetInstanceSave(creature.GetInstanceId());
-                            if (save != null)
-                                if (save.GetResetTime() < resettime)
-                                    save.SetResetTime(resettime);
-                        }
                     }
                 }
             }

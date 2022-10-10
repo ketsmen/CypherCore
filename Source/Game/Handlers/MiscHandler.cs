@@ -300,22 +300,18 @@ namespace Game
                             reviveAtTrigger = true;
                             break;
                         case EnterState.CannotEnterCorpseInDifferentInstance:
-                            player.SendPacket(new AreaTriggerNoCorpse());
+                            SendPacket(new AreaTriggerNoCorpse());
                             Log.outDebug(LogFilter.Maps, "MAP: Player '{0}' does not have a corpse in instance map {1} and cannot enter", player.GetName(), at.target_mapId);
                             break;
                         case EnterState.CannotEnterInstanceBindMismatch:
-                            {
-                                MapRecord entry = CliDB.MapStorage.LookupByKey(at.target_mapId);
-                                if (entry != null)
-                                {
-                                    string mapName = entry.MapName[player.GetSession().GetSessionDbcLocale()];
-                                    Log.outDebug(LogFilter.Maps, "MAP: Player '{0}' cannot enter instance map '{1}' because their permanent bind is incompatible with their group's", player.GetName(), mapName);
-                                    // is there a special opcode for this?
-                                    // @todo figure out how to get player localized difficulty string (e.g. "10 player", "Heroic" etc)
-                                    player.SendSysMessage(CypherStrings.InstanceBindMismatch, mapName);
-                                }
-                                reviveAtTrigger = true;
-                            }
+                            player.SendTransferAborted(at.target_mapId, TransferAbortReason.LockedToDifferentInstance);
+                            Log.outDebug(LogFilter.Maps, $"MAP: Player '{player.GetName()}' cannot enter instance map {at.target_mapId} because their permanent bind is incompatible with their group's");
+                            reviveAtTrigger = true;
+                            break;
+                        case EnterState.CannotEnterAlreadyCompletedEncounter:
+                            player.SendTransferAborted(at.target_mapId, TransferAbortReason.AlreadyCompletedEncounter);
+                            Log.outDebug(LogFilter.Maps, $"MAP: Player '{player.GetName()}' cannot enter instance map {at.target_mapId} because their permanent bind is incompatible with their group's");
+                            reviveAtTrigger = true;
                             break;
                         case EnterState.CannotEnterTooManyInstances:
                             player.SendTransferAborted(at.target_mapId, TransferAbortReason.TooManyInstances);
@@ -328,6 +324,11 @@ namespace Game
                             break;
                         case EnterState.CannotEnterZoneInCombat:
                             player.SendTransferAborted(at.target_mapId, TransferAbortReason.ZoneInCombat);
+                            reviveAtTrigger = true;
+                            break;
+                        case EnterState.CannotEnterInstanceShuttingDown:
+                            player.SendTransferAborted(at.target_mapId, TransferAbortReason.NotFound);
+                            Log.outDebug(LogFilter.Maps, $"MAP: Player '{player.GetName()}' cannot enter instance map {at.target_mapId} because instance is resetting.");
                             reviveAtTrigger = true;
                             break;
                         default:
@@ -358,25 +359,36 @@ namespace Game
             if (!teleported)
             {
                 WorldSafeLocsEntry entranceLocation = null;
-                InstanceSave instanceSave = player.GetInstanceSave(at.target_mapId);
-                if (instanceSave != null)
+                MapRecord mapEntry = CliDB.MapStorage.LookupByKey(at.target_mapId);
+                if (mapEntry.Instanceable())
                 {
                     // Check if we can contact the instancescript of the instance for an updated entrance location
-                    Map map = Global.MapMgr.FindMap(at.target_mapId, player.GetInstanceSave(at.target_mapId).GetInstanceId());
-                    if (map)
+                    uint targetInstanceId = Global.MapMgr.FindInstanceIdForPlayer(at.target_mapId, _player);
+                    if (targetInstanceId != 0)
                     {
-                        InstanceMap instanceMap = map.ToInstanceMap();
-                        if (instanceMap != null)
+                        Map map = Global.MapMgr.FindMap(at.target_mapId, targetInstanceId);
+                        if (map != null)
                         {
-                            InstanceScript instanceScript = instanceMap.GetInstanceScript();
-                            if (instanceScript != null)
-                                entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceScript.GetEntranceLocation());
+                            InstanceMap instanceMap = map.ToInstanceMap();
+                            if (instanceMap)
+                            {
+                                InstanceScript instanceScript = instanceMap.GetInstanceScript();
+                                if (instanceScript != null)
+                                    entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceScript.GetEntranceLocation());
+                            }
                         }
                     }
 
                     // Finally check with the instancesave for an entrance location if we did not get a valid one from the instancescript
                     if (entranceLocation == null)
-                        entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceSave.GetEntranceLocation());
+                    {
+                        Group group = player.GetGroup();
+                        Difficulty difficulty = group ? group.GetDifficultyID(mapEntry) : player.GetDifficultyID(mapEntry);
+                        ObjectGuid instanceOwnerGuid = group ? group.GetRecentInstanceOwner(at.target_mapId) : player.GetGUID();
+                        InstanceLock instanceLock = Global.InstanceLockMgr.FindActiveInstanceLock(instanceOwnerGuid, new MapDb2Entries(mapEntry, Global.DB2Mgr.GetDownscaledMapDifficultyData(at.target_mapId, ref difficulty)));
+                        if (instanceLock != null)
+                            entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceLock.GetData().EntranceWorldSafeLocId);
+                    }
                 }
 
                 if (entranceLocation != null)
@@ -587,14 +599,23 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.ResetInstances)]
         void HandleResetInstances(ResetInstances packet)
         {
+            Map map = _player.GetMap();
+            if (map != null && map.Instanceable())
+                return;
+
             Group group = GetPlayer().GetGroup();
             if (group)
             {
-                if (group.IsLeader(GetPlayer().GetGUID()))
-                    group.ResetInstances(InstanceResetMethod.All, false, false, GetPlayer());
+                if (!group.IsLeader(GetPlayer().GetGUID()))
+                    return;
+
+                if (group.IsLFGGroup())
+                    return;
+
+                group.ResetInstances(InstanceResetMethod.Manual, _player);
             }
             else
-                GetPlayer().ResetInstances(InstanceResetMethod.All, false, false);
+                GetPlayer().ResetInstances(InstanceResetMethod.Manual);
         }
 
         [WorldPacketHandler(ClientOpcodes.SetDungeonDifficulty)]
@@ -628,7 +649,7 @@ namespace Game
 
             // cannot reset while in an instance
             Map map = GetPlayer().GetMap();
-            if (map && map.IsDungeon())
+            if (map && map.Instanceable())
             {
                 Log.outDebug(LogFilter.Network, "WorldSession:HandleSetDungeonDifficulty: player (Name: {0}, {1}) tried to reset the instance while player is inside!",
                     GetPlayer().GetName(), GetPlayer().GetGUID().ToString());
@@ -638,33 +659,19 @@ namespace Game
             Group group = GetPlayer().GetGroup();
             if (group)
             {
-                if (group.IsLeader(GetPlayer().GetGUID()))
-                {
-                    for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
-                    {
-                        Player groupGuy = refe.GetSource();
-                        if (!groupGuy)
-                            continue;
+                if (!group.IsLeader(_player.GetGUID()))
+                    return;
 
-                        if (!groupGuy.IsInWorld)
-                            return;
+                if (group.IsLFGGroup())
+                    return;
 
-                        if (groupGuy.GetMap().IsNonRaidDungeon())
-                        {
-                            Log.outDebug(LogFilter.Network, "WorldSession:HandleSetDungeonDifficulty: {0} tried to reset the instance while group member (Name: {1}, {2}) is inside!",
-                                GetPlayer().GetGUID().ToString(), groupGuy.GetName(), groupGuy.GetGUID().ToString());
-                            return;
-                        }
-                    }
-                    // the difficulty is set even if the instances can't be reset
-                    //_player.SendDungeonDifficulty(true);
-                    group.ResetInstances(InstanceResetMethod.ChangeDifficulty, false, false, GetPlayer());
-                    group.SetDungeonDifficultyID(difficultyID);
-                }
+                // the difficulty is set even if the instances can't be reset
+                group.ResetInstances(InstanceResetMethod.OnChangeDifficulty, _player);
+                group.SetDungeonDifficultyID(difficultyID);
             }
             else
             {
-                GetPlayer().ResetInstances(InstanceResetMethod.ChangeDifficulty, false, false);
+                GetPlayer().ResetInstances(InstanceResetMethod.OnChangeDifficulty);
                 GetPlayer().SetDungeonDifficultyID(difficultyID);
                 GetPlayer().SendDungeonDifficulty();
             }
@@ -695,7 +702,7 @@ namespace Game
                 return;
             }
 
-            if (((int)(difficultyEntry.Flags & DifficultyFlags.Legacy) >> 5) != setRaidDifficulty.Legacy)
+            if (((int)(difficultyEntry.Flags & DifficultyFlags.Legacy) != 0) != (setRaidDifficulty.Legacy != 0))
             {
                 Log.outDebug(LogFilter.Network, "WorldSession.HandleSetDungeonDifficulty: {0} sent not matching legacy difficulty {1}!",
                     GetPlayer().GetGUID().ToString(), difficultyEntry.Id);
@@ -708,7 +715,7 @@ namespace Game
 
             // cannot reset while in an instance
             Map map = GetPlayer().GetMap();
-            if (map && map.IsDungeon())
+            if (map && map.Instanceable())
             {
                 Log.outDebug(LogFilter.Network, "WorldSession:HandleSetRaidDifficulty: player (Name: {0}, {1} tried to reset the instance while inside!",
                     GetPlayer().GetName(), GetPlayer().GetGUID().ToString());
@@ -718,34 +725,22 @@ namespace Game
             Group group = GetPlayer().GetGroup();
             if (group)
             {
-                if (group.IsLeader(GetPlayer().GetGUID()))
-                {
-                    for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
-                    {
-                        Player groupGuy = refe.GetSource();
-                        if (!groupGuy)
-                            continue;
+                if (!group.IsLeader(_player.GetGUID()))
+                    return;
 
-                        if (!groupGuy.IsInWorld)
-                            return;
+                if (group.IsLFGGroup())
+                    return;
 
-                        if (groupGuy.GetMap().IsRaid())
-                        {
-                            Log.outDebug(LogFilter.Network, "WorldSession:HandleSetRaidDifficulty: player {0} tried to reset the instance while inside!", GetPlayer().GetGUID().ToString());
-                            return;
-                        }
-                    }
-                    // the difficulty is set even if the instances can't be reset
-                    group.ResetInstances(InstanceResetMethod.ChangeDifficulty, true, setRaidDifficulty.Legacy != 0, GetPlayer());
-                    if (setRaidDifficulty.Legacy != 0)
-                        group.SetLegacyRaidDifficultyID(difficultyID);
-                    else
-                        group.SetRaidDifficultyID(difficultyID);
-                }
+                // the difficulty is set even if the instances can't be reset
+                group.ResetInstances(InstanceResetMethod.OnChangeDifficulty, _player);
+                if (setRaidDifficulty.Legacy != 0)
+                    group.SetLegacyRaidDifficultyID(difficultyID);
+                else
+                    group.SetRaidDifficultyID(difficultyID);
             }
             else
             {
-                GetPlayer().ResetInstances(InstanceResetMethod.ChangeDifficulty, true, setRaidDifficulty.Legacy != 0);
+                GetPlayer().ResetInstances(InstanceResetMethod.OnChangeDifficulty);
                 if (setRaidDifficulty.Legacy != 0)
                     GetPlayer().SetLegacyRaidDifficultyID(difficultyID);
                 else
@@ -783,7 +778,7 @@ namespace Game
             }
 
             if (packet.AcceptLock)
-                GetPlayer().BindToInstance();
+                GetPlayer().ConfirmPendingBind();
             else
                 GetPlayer().RepopAtGraveyard();
 

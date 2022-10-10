@@ -514,7 +514,9 @@ namespace Game
 
             // Must be called before `respawn` data
             Log.outInfo(LogFilter.ServerLoading, "Loading instances...");
-            Global.InstanceSaveMgr.LoadInstances();
+
+            Global.MapMgr.InitInstanceIds();
+            Global.InstanceLockMgr.Load();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Localization strings...");
             uint oldMSTime = Time.GetMSTime();
@@ -631,9 +633,6 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Spawn Group Templates...");
             Global.ObjectMgr.LoadSpawnGroupTemplates();
 
-            Log.outInfo(LogFilter.ServerLoading, "Loading instance spawn groups...");
-            Global.ObjectMgr.LoadInstanceSpawnGroups();
-
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Data...");
             Global.ObjectMgr.LoadCreatures();
 
@@ -657,6 +656,9 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Spawn Group Data...");
             Global.ObjectMgr.LoadSpawnGroups();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading instance spawn groups...");
+            Global.ObjectMgr.LoadInstanceSpawnGroups();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading GameObject Addon Data...");
             Global.ObjectMgr.LoadGameObjectAddons();                          // must be after LoadGameObjects()
@@ -1490,9 +1492,6 @@ namespace Game
                 m_timers[WorldTimers.GuildSave].Reset();
                 Global.GuildMgr.SaveGuilds();
             }
-
-            // update the instance reset times
-            Global.InstanceSaveMgr.Update();
 
             // Check for shutdown warning
             if (_guidWarn && !_guidAlert)

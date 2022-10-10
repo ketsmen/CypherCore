@@ -86,7 +86,7 @@ namespace Game
             {
                 foreach (var resultValue in aeResult.GetByOrder())
                 {
-                    player.SendNewItem(resultValue.item, resultValue.count, false, false, true);
+                    player.SendNewItem(resultValue.item, resultValue.count, false, false, true, resultValue.dungeonEncounterId);
                     player.UpdateCriteria(CriteriaType.LootItem, resultValue.item.GetEntry(), resultValue.count);
                     player.UpdateCriteria(CriteriaType.GetLootByType, resultValue.item.GetEntry(), resultValue.count, (ulong)resultValue.lootType);
                     player.UpdateCriteria(CriteriaType.LootAnyItem, resultValue.item.GetEntry(), resultValue.count);
@@ -117,6 +117,9 @@ namespace Game
                     {
                         Player member = refe.GetSource();
                         if (!member)
+                            continue;
+
+                        if (!loot.HasAllowedLooter(member.GetGUID()))
                             continue;
 
                         if (player.IsAtGroupRewardDistance(member))
@@ -183,9 +186,6 @@ namespace Game
             public bool IsValidLootTarget(Creature creature)
             {
                 if (creature.IsAlive())
-                    return false;
-
-                if (creature.GetGUID() == _mainLootTarget)
                     return false;
 
                 if (!_looter.IsWithinDist(creature, LootDistance))
@@ -409,15 +409,21 @@ namespace Game
             {
                 Loot loot = _player.GetAELootView().LookupByKey(req.Object);
 
+                if (loot == null || loot.GetLootMethod() != LootMethod.MasterLoot)
+                    return;
+
                 if (!_player.IsInRaidWith(target) || !_player.IsInMap(target))
                 {
-                    _player.SendLootError(req.Object, ObjectGuid.Empty, LootError.MasterOther);
+                    _player.SendLootError(req.Object, loot.GetOwnerGUID(), LootError.MasterOther);
                     Log.outInfo(LogFilter.Cheat, $"MasterLootItem: Player {GetPlayer().GetName()} tried to give an item to ineligible player {target.GetName()} !");
                     return;
                 }
 
-                if (loot == null || loot.GetLootMethod() != LootMethod.MasterLoot)
+                if (!loot.HasAllowedLooter(masterLootItem.Target))
+                {
+                    _player.SendLootError(req.Object, loot.GetOwnerGUID(), LootError.MasterOther);
                     return;
+                }
 
                 if (req.LootListID >= loot.items.Count)
                 {
@@ -429,23 +435,23 @@ namespace Game
 
                 List<ItemPosCount> dest = new();
                 InventoryResult msg = target.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, item.itemid, item.count);
-                if (!item.AllowedForPlayer(target, true))
+                if (!item.HasAllowedLooter(target.GetGUID()))
                     msg = InventoryResult.CantEquipEver;
                 if (msg != InventoryResult.Ok)
                 {
                     if (msg == InventoryResult.ItemMaxCount)
-                        _player.SendLootError(req.Object, ObjectGuid.Empty, LootError.MasterUniqueItem);
+                        _player.SendLootError(req.Object, loot.GetOwnerGUID(), LootError.MasterUniqueItem);
                     else if (msg == InventoryResult.InvFull)
-                        _player.SendLootError(req.Object, ObjectGuid.Empty, LootError.MasterInvFull);
+                        _player.SendLootError(req.Object, loot.GetOwnerGUID(), LootError.MasterInvFull);
                     else
-                        _player.SendLootError(req.Object, ObjectGuid.Empty, LootError.MasterOther);
+                        _player.SendLootError(req.Object, loot.GetOwnerGUID(), LootError.MasterOther);
 
                     return;
                 }
 
                 // now move item from loot to target inventory
                 Item newitem = target.StoreNewItem(dest, item.itemid, true, item.randomBonusListId, item.GetAllowedLooters(), item.context, item.BonusListIDs);
-                aeResult.Add(newitem, item.count, loot.loot_type);
+                aeResult.Add(newitem, item.count, loot.loot_type, loot.GetDungeonEncounterId());
 
                 // mark as looted
                 item.count = 0;

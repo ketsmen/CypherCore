@@ -3920,7 +3920,7 @@ namespace Game.Spells
                     // possibly SPELL_MISS_IMMUNE2 for this??
                     targetInfo.MissCondition = SpellMissInfo.Immune2;
 
-                if (targetInfo.MissCondition == SpellMissInfo.None) // hits
+                if (targetInfo.MissCondition == SpellMissInfo.None || (targetInfo.MissCondition == SpellMissInfo.Block && !m_spellInfo.HasAttribute(SpellAttr3.CompletelyBlocked))) // Add only hits and partial blocked
                 {
                     data.HitTargets.Add(targetInfo.TargetGUID);
                     data.HitStatus.Add(new SpellHitStatus(SpellMissInfo.None));
@@ -5411,22 +5411,16 @@ namespace Game.Spells
                             return SpellCastResult.SummonPending;
 
                         // check if our map is dungeon
-                        MapRecord map = CliDB.MapStorage.LookupByKey(m_caster.GetMapId());
-                        if (map.IsDungeon())
+                        InstanceMap map = m_caster.GetMap().ToInstanceMap();
+                        if (map != null)
                         {
-                            uint mapId = m_caster.GetMap().GetId();
-                            Difficulty difficulty = m_caster.GetMap().GetDifficultyID();
-                            if (map.IsRaid())
-                            {
-                                InstanceBind targetBind = target.GetBoundInstance(mapId, difficulty);
-                                if (targetBind != null)
-                                {
-                                    InstanceBind casterBind = m_caster.ToPlayer().GetBoundInstance(mapId, difficulty);
-                                    if (casterBind != null)
-                                        if (targetBind.perm && targetBind.save != casterBind.save)
-                                            return SpellCastResult.TargetLockedToRaidInstance;
-                                }
-                            }
+                            uint mapId = map.GetId();
+                            Difficulty difficulty = map.GetDifficultyID();
+                            InstanceLock mapLock = map.GetInstanceLock();
+                            if (mapLock != null)
+                                if (Global.InstanceLockMgr.CanJoinInstanceLock(target.GetGUID(), new MapDb2Entries(mapId, difficulty), mapLock) != TransferAbortReason.None)
+                                    return SpellCastResult.TargetLockedToRaidInstance;
+
                             if (!target.Satisfy(Global.ObjectMgr.GetAccessRequirement(mapId, difficulty), mapId))
                                 return SpellCastResult.BadTargets;
                         }
@@ -7238,7 +7232,7 @@ namespace Game.Spells
         {
             Unit unit = null;
             // In case spell hit target, do all effect on that target
-            if (targetInfo.MissCondition == SpellMissInfo.None)
+            if (targetInfo.MissCondition == SpellMissInfo.None || (targetInfo.MissCondition == SpellMissInfo.Block && !m_spellInfo.HasAttribute(SpellAttr3.CompletelyBlocked)))
                 unit = m_caster.GetGUID() == targetInfo.TargetGUID ? m_caster.ToUnit() : Global.ObjAccessor.GetUnit(m_caster, targetInfo.TargetGUID);
             // In case spell reflect from target, do all effect on caster (if hit)
             else if (targetInfo.MissCondition == SpellMissInfo.Reflect && targetInfo.ReflectResult == SpellMissInfo.None)
@@ -7827,17 +7821,13 @@ namespace Game.Spells
             {
                 if (!unitCaster.CanCastSpellWhileMoving(m_spellInfo))
                 {
-                    if (m_casttime != 0)
+                    if (GetState() == SpellState.Preparing)
                     {
-                        if (m_spellInfo.InterruptFlags.HasFlag(SpellInterruptFlags.Movement))
+                        if (m_casttime > 0 && m_spellInfo.InterruptFlags.HasFlag(SpellInterruptFlags.Movement))
                             return SpellCastResult.Moving;
                     }
-                    else
-                    {
-                        // only fail channeled casts if they are instant but cannot be channeled while moving
-                        if (m_spellInfo.IsChanneled() && !m_spellInfo.IsMoveAllowedChannel())
-                            return SpellCastResult.Moving;
-                    }
+                    else if (GetState() == SpellState.Casting && !m_spellInfo.IsMoveAllowedChannel())
+                        return SpellCastResult.Moving;
                 }
             }
 
@@ -8280,7 +8270,7 @@ namespace Game.Spells
             spell.m_healing = Healing;
 
             _spellHitTarget = null;
-            if (MissCondition == SpellMissInfo.None)
+            if (MissCondition == SpellMissInfo.None || (MissCondition == SpellMissInfo.Block && !spell.GetSpellInfo().HasAttribute(SpellAttr3.CompletelyBlocked)))
                 _spellHitTarget = unit;
             else if (MissCondition == SpellMissInfo.Reflect && ReflectResult == SpellMissInfo.None)
                 _spellHitTarget = spell.GetCaster().ToUnit();
@@ -8485,7 +8475,7 @@ namespace Game.Spells
                         caster.SetLastDamagedTargetGuid(spell.unitTarget.GetGUID());
 
                         // Add bonuses and fill damageInfo struct
-                        caster.CalculateSpellDamageTaken(damageInfo, spell.m_damage, spell.m_spellInfo, spell.m_attackType, IsCrit);
+                        caster.CalculateSpellDamageTaken(damageInfo, spell.m_damage, spell.m_spellInfo, spell.m_attackType, IsCrit, MissCondition == SpellMissInfo.Block, spell);
                         Unit.DealDamageMods(damageInfo.attacker, damageInfo.target, ref damageInfo.damage, ref damageInfo.absorb);
 
                         hitMask |= Unit.CreateProcHitMask(damageInfo, MissCondition);

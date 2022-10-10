@@ -530,7 +530,7 @@ namespace Game
                     {
                         // Player not create (race/class/etc problem?)
                         newChar.CleanupsBeforeDelete();
-
+                        newChar.Dispose();
                         SendCharCreate(ResponseCodes.CharCreateError);
                         return;
                     }
@@ -567,6 +567,8 @@ namespace Game
                         }
                         else
                             SendCharCreate(ResponseCodes.CharCreateError);
+
+                        newChar.Dispose();
                     });
                 }
 
@@ -1310,7 +1312,7 @@ namespace Game
             for (int i = 0; i < SharedConst.MaxDeclinedNameCases; ++i)
             {
                 string declinedName = packet.DeclinedNames.name[i];
-                DB.Characters.EscapeString(ref declinedName);
+                CharacterDatabase.EscapeString(ref declinedName);
                 packet.DeclinedNames.name[i] = declinedName;
             }
 
@@ -2581,10 +2583,6 @@ namespace Game
             stmt.AddValue(0, lowGuid);
             SetQuery(PlayerLoginQueryLoad.Group, stmt);
 
-            stmt = DB.Characters.GetPreparedStatement(CharStatements.SEL_CHARACTER_INSTANCE);
-            stmt.AddValue(0, lowGuid);
-            SetQuery(PlayerLoginQueryLoad.BoundInstances, stmt);
-
             stmt = DB.Characters.GetPreparedStatement(CharStatements.SEL_CHARACTER_AURAS);
             stmt.AddValue(0, lowGuid);
             SetQuery(PlayerLoginQueryLoad.Auras, stmt);
@@ -2864,7 +2862,6 @@ namespace Game
         From,
         Customizations,
         Group,
-        BoundInstances,
         Auras,
         AuraEffects,
         AuraStoredLocations,

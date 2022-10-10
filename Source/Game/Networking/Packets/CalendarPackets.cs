@@ -632,11 +632,11 @@ namespace Game.Networking.Packets
             _worldPacket.WriteInt32(NewTimeRemaining);
         }
 
-        public int MapID;
-        public int OldTimeRemaining;
         public long ServerTime;
+        public int MapID;
         public uint DifficultyID;
         public int NewTimeRemaining;
+        public int OldTimeRemaining;
     }
 
     class CalendarCommunityInvite : ServerPacket
@@ -852,13 +852,13 @@ namespace Game.Networking.Packets
             data.WriteUInt64(InstanceID);
             data.WriteInt32(MapID);
             data.WriteUInt32(DifficultyID);
-            data.WriteUInt32((uint)ExpireTime);
+            data.WriteInt32(ExpireTime);
         }
 
         public ulong InstanceID;
         public int MapID;
         public uint DifficultyID;
-        public long ExpireTime;
+        public int ExpireTime;
     }
 
     struct CalendarSendCalendarEventInfo

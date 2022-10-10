@@ -72,27 +72,16 @@ namespace Game
                 packet.Events.Add(eventInfo);
             }
 
-            foreach (var difficulty in CliDB.DifficultyStorage.Values)
+            foreach (InstanceLock instanceLock in Global.InstanceLockMgr.GetInstanceLocksForPlayer(_player.GetGUID()))
             {
-                var boundInstances = _player.GetBoundInstances((Difficulty)difficulty.Id);
-                if (boundInstances != null)
-                {
-                    foreach (var boundInstance in boundInstances.Values)
-                    {
-                        if (boundInstance.perm)
-                        {
-                            CalendarSendCalendarRaidLockoutInfo lockoutInfo;
+                CalendarSendCalendarRaidLockoutInfo lockoutInfo = new();
 
-                            InstanceSave save = boundInstance.save;
-                            lockoutInfo.MapID = (int)save.GetMapId();
-                            lockoutInfo.DifficultyID = (uint)save.GetDifficultyID();
-                            lockoutInfo.ExpireTime = save.GetResetTime() - currTime;
-                            lockoutInfo.InstanceID = save.GetInstanceId(); // instance save id as unique instance copy id
+                lockoutInfo.MapID = (int)instanceLock.GetMapId();
+                lockoutInfo.DifficultyID = (uint)instanceLock.GetDifficultyId();
+                lockoutInfo.ExpireTime = (int)Math.Max((instanceLock.GetEffectiveExpiryTime() - GameTime.GetSystemTime()).TotalSeconds, 0);
+                lockoutInfo.InstanceID = instanceLock.GetInstanceId();
 
-                            packet.RaidLockouts.Add(lockoutInfo);
-                        }
-                    }
-                }
+                packet.RaidLockouts.Add(lockoutInfo);
             }
 
             SendPacket(packet);
@@ -253,7 +242,7 @@ namespace Game
                 Global.CalendarMgr.SendCalendarCommandResult(guid, CalendarError.EventPassed);
                 return;
             }
-            
+
             CalendarEvent oldEvent = Global.CalendarMgr.GetEvent(calendarCopyEvent.EventID);
             if (oldEvent != null)
             {
@@ -549,70 +538,42 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.SetSavedInstanceExtend)]
         void HandleSetSavedInstanceExtend(SetSavedInstanceExtend setSavedInstanceExtend)
         {
-            Player player = GetPlayer();
-            if (player)
-            {
-                InstanceBind instanceBind = player.GetBoundInstance((uint)setSavedInstanceExtend.MapID, (Difficulty)setSavedInstanceExtend.DifficultyID, setSavedInstanceExtend.Extend); // include expired instances if we are toggling extend on
-                if (instanceBind == null || instanceBind.save == null || !instanceBind.perm)
-                    return;
-
-                BindExtensionState newState;
-                if (!setSavedInstanceExtend.Extend || instanceBind.extendState == BindExtensionState.Expired)
-                    newState = BindExtensionState.Normal;
-                else
-                    newState = BindExtensionState.Extended;
-
-                player.BindToInstance(instanceBind.save, true, newState, false);
-            }
-            /*
-            InstancePlayerBind* instanceBind = GetPlayer().GetBoundInstance(setSavedInstanceExtend.MapID, Difficulty(setSavedInstanceExtend.DifficultyID);
-            if (!instanceBind || !instanceBind.save)
+            // cannot modify locks currently in use
+            if (_player.GetMapId() == setSavedInstanceExtend.MapID)
                 return;
 
-            InstanceSave* save = instanceBind.save;
-            // http://www.wowwiki.com/Instance_Lock_Extension
-            // SendCalendarRaidLockoutUpdated(save);
-            */
-        }
+            var expiryTimes = Global.InstanceLockMgr.UpdateInstanceLockExtensionForPlayer(_player.GetGUID(), new MapDb2Entries((uint)setSavedInstanceExtend.MapID, (Difficulty)setSavedInstanceExtend.DifficultyID), setSavedInstanceExtend.Extend);
 
-        public void SendCalendarRaidLockout(InstanceSave save, bool add)
-        {
-            long currTime = GameTime.GetGameTime();
-
-            if (add)
-            {
-                CalendarRaidLockoutAdded calendarRaidLockoutAdded = new();
-                calendarRaidLockoutAdded.InstanceID = save.GetInstanceId();
-                calendarRaidLockoutAdded.ServerTime = (uint)currTime;
-                calendarRaidLockoutAdded.MapID = (int)save.GetMapId();
-                calendarRaidLockoutAdded.DifficultyID = save.GetDifficultyID();
-                calendarRaidLockoutAdded.TimeRemaining = (int)(save.GetResetTime() - currTime);
-                SendPacket(calendarRaidLockoutAdded);
-            }
-            else
-            {
-                CalendarRaidLockoutRemoved calendarRaidLockoutRemoved = new();
-                calendarRaidLockoutRemoved.InstanceID = save.GetInstanceId();
-                calendarRaidLockoutRemoved.MapID = (int)save.GetMapId();
-                calendarRaidLockoutRemoved.DifficultyID = save.GetDifficultyID();
-                SendPacket(calendarRaidLockoutRemoved);
-            }
-        }
-
-        public void SendCalendarRaidLockoutUpdated(InstanceSave save)
-        {
-            if (save == null)
+            if (expiryTimes.Item1 == DateTime.MinValue)
                 return;
 
-            long currTime = GameTime.GetGameTime();
+            CalendarRaidLockoutUpdated calendarRaidLockoutUpdated = new();
+            calendarRaidLockoutUpdated.ServerTime = GameTime.GetGameTime();
+            calendarRaidLockoutUpdated.MapID = setSavedInstanceExtend.MapID;
+            calendarRaidLockoutUpdated.DifficultyID = setSavedInstanceExtend.DifficultyID;
+            calendarRaidLockoutUpdated.OldTimeRemaining = (int)Math.Max((expiryTimes.Item1 - GameTime.GetSystemTime()).TotalSeconds, 0);
+            calendarRaidLockoutUpdated.NewTimeRemaining = (int)Math.Max((expiryTimes.Item2 - GameTime.GetSystemTime()).TotalSeconds, 0);
+            SendPacket(calendarRaidLockoutUpdated);
+        }
 
-            CalendarRaidLockoutUpdated packet = new();
-            packet.DifficultyID = (uint)save.GetDifficultyID();
-            packet.MapID = (int)save.GetMapId();
-            packet.NewTimeRemaining = 0; // FIXME
-            packet.OldTimeRemaining = (int)(save.GetResetTime() - currTime);
+        public void SendCalendarRaidLockoutAdded(InstanceLock instanceLock)
+        {
+            CalendarRaidLockoutAdded calendarRaidLockoutAdded = new();
+            calendarRaidLockoutAdded.InstanceID = instanceLock.GetInstanceId();
+            calendarRaidLockoutAdded.ServerTime = (uint)GameTime.GetGameTime();
+            calendarRaidLockoutAdded.MapID = (int)instanceLock.GetMapId();
+            calendarRaidLockoutAdded.DifficultyID = instanceLock.GetDifficultyId();
+            calendarRaidLockoutAdded.TimeRemaining = (int)(instanceLock.GetEffectiveExpiryTime() - GameTime.GetSystemTime()).TotalSeconds;
+            SendPacket(calendarRaidLockoutAdded);
+        }
 
-            SendPacket(packet);
+        void SendCalendarRaidLockoutRemoved(InstanceLock instanceLock)
+        {
+            CalendarRaidLockoutRemoved calendarRaidLockoutRemoved = new();
+            calendarRaidLockoutRemoved.InstanceID = instanceLock.GetInstanceId();
+            calendarRaidLockoutRemoved.MapID = (int)instanceLock.GetMapId();
+            calendarRaidLockoutRemoved.DifficultyID = instanceLock.GetDifficultyId();
+            SendPacket(calendarRaidLockoutRemoved);
         }
     }
 }

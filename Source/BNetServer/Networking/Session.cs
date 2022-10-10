@@ -10,6 +10,7 @@ using Framework.Realm;
 using Google.Protobuf;
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Sockets;
 
 namespace BNetServer.Networking
@@ -92,11 +93,18 @@ namespace BNetServer.Networking
             if (!IsOpen())
                 return;
 
-            var stream = new CodedInputStream(data, 0, receivedLength);
-            while (!stream.IsAtEnd)
+            int readPos = 0;
+            while (readPos < receivedLength)
             {
-                var header = new Header();
-                stream.ReadMessage(header);
+                var headerLength = (ushort)IPAddress.HostToNetworkOrder(BitConverter.ToInt16(data, readPos));
+                readPos += 2;
+
+                Header header = new();
+                header.MergeFrom(data, readPos, headerLength);
+                readPos += headerLength;
+
+                var stream = new CodedInputStream(data, readPos, (int)header.Size);                
+                readPos += (int)header.Size;
 
                 if (header.ServiceId != 0xFE && header.ServiceHash != 0)
                 {
@@ -207,8 +215,6 @@ namespace BNetServer.Networking
         public uint LoginTicketExpiry;
         public bool IsBanned;
         public bool IsPermanenetlyBanned;
-        public string PasswordVerifier;
-        public string Salt;
 
         public Dictionary<uint, GameAccountInfo> GameAccounts;
 
@@ -222,8 +228,6 @@ namespace BNetServer.Networking
             LoginTicketExpiry = result.Read<uint>(5);
             IsBanned = result.Read<ulong>(6) != 0;
             IsPermanenetlyBanned = result.Read<ulong>(7) != 0;
-            PasswordVerifier = result.Read<string>(9);
-            Salt = result.Read<string>(10);
 
             GameAccounts = new Dictionary<uint, GameAccountInfo>();
             const int GameAccountFieldsOffset = 8;

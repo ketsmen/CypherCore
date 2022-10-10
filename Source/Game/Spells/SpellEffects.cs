@@ -1259,6 +1259,7 @@ namespace Game.Spells
                                 loot = new(gameObjTarget.GetMap(), guid, loottype, groupRules ? group : null);
                                 gameObjTarget.loot = loot;
 
+                                loot.SetDungeonEncounterId(gameObjTarget.GetGoInfo().Chest.DungeonEncounter);
                                 loot.FillLoot(lootId, LootStorage.Gameobject, player, !groupRules, false, gameObjTarget.GetLootMode(), gameObjTarget.GetMap().GetDifficultyLootItemContext());
 
                                 if (gameObjTarget.GetLootMode() > 0)

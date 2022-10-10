@@ -166,7 +166,9 @@ namespace Game.Groups
 
                 DB.Characters.Execute(stmt);
 
-                ConvertLeaderInstancesToGroup(leader, this, false);
+                InstanceMap leaderInstance = leader.GetMap().ToInstanceMap();
+                if (leaderInstance != null)
+                    leaderInstance.TrySetOwningGroup(this);
 
                 Cypher.Assert(AddMember(leader)); // If the leader can't be added to a new group because it appears full, something is clearly wrong.
             }
@@ -461,12 +463,6 @@ namespace Game.Groups
 
             if (!IsLeader(player.GetGUID()) && !IsBGGroup() && !IsBFGroup())
             {
-                // reset the new member's instances, unless he is currently in one of them
-                // including raid/heroic instances that they are not permanently bound to!
-                player.ResetInstances(InstanceResetMethod.GroupJoin, false, false);
-                player.ResetInstances(InstanceResetMethod.GroupJoin, true, false);
-                player.ResetInstances(InstanceResetMethod.GroupJoin, true, true);
-
                 if (player.GetDungeonDifficultyID() != GetDungeonDifficultyID())
                 {
                     player.SetDungeonDifficultyID(GetDungeonDifficultyID());
@@ -671,29 +667,6 @@ namespace Game.Groups
                 PreparedStatement stmt;
                 SQLTransaction trans = new();
 
-                // Remove the groups permanent instance bindings
-                foreach (var difficultyDic in m_boundInstances.Values)
-                {
-                    foreach (var pair in difficultyDic.ToList())
-                    {
-                        // Do not unbind saves of instances that already had map created (a newLeader entered)
-                        // forcing a new instance with another leader requires group disbanding (confirmed on retail)
-                        if (pair.Value.perm && Global.MapMgr.FindMap(pair.Key, pair.Value.save.GetInstanceId()) == null)
-                        {
-                            stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_GROUP_INSTANCE_PERM_BINDING);
-                            stmt.AddValue(0, m_dbStoreId);
-                            stmt.AddValue(1, pair.Value.save.GetInstanceId());
-                            trans.Append(stmt);
-
-                            pair.Value.save.RemoveGroup(this);
-                            difficultyDic.Remove(pair.Key);
-                        }
-                    }
-                }
-
-                // Copy the permanent binds from the new leader to the group
-                ConvertLeaderInstancesToGroup(newLeader, this, true);
-
                 // Update the group leader
                 stmt = DB.Characters.GetPreparedStatement(CharStatements.UPD_GROUP_LEADER);
 
@@ -719,47 +692,6 @@ namespace Game.Groups
             groupNewLeader.Name = m_leaderName;
             groupNewLeader.PartyIndex = partyIndex;
             BroadcastPacket(groupNewLeader, true);
-        }
-
-        public static void ConvertLeaderInstancesToGroup(Player player, Group group, bool switchLeader)
-        {
-            // copy all binds to the group, when changing leader it's assumed the character
-            // will not have any solo binds
-            foreach (var difficultyDic in player.m_boundInstances.Values)
-            {
-                foreach (var pair in difficultyDic)
-                {
-                    if (!switchLeader || group.GetBoundInstance(pair.Value.save.GetDifficultyID(), pair.Key) == null)
-                        if (pair.Value.extendState != 0) // not expired
-                            group.BindToInstance(pair.Value.save, pair.Value.perm, false);
-
-                    // permanent binds are not removed
-                    if (switchLeader && !pair.Value.perm)
-                    {
-                        player.UnbindInstance(pair, difficultyDic, false);
-                    }
-                }
-            }
-
-            // if group leader is in a non-raid dungeon map and nobody is actually bound to this map then the group can "take over" the instance
-            // (example: two-player group disbanded by disconnect where the player reconnects within 60 seconds and the group is reformed)
-            Map playerMap = player.GetMap();
-            if (playerMap)
-            {
-                if (!switchLeader && playerMap.IsNonRaidDungeon())
-                {
-                    InstanceSave save = Global.InstanceSaveMgr.GetInstanceSave(playerMap.GetInstanceId());
-                    if (save != null)
-                    {
-                        if (save.GetGroupCount() == 0 && save.GetPlayerCount() == 0)
-                        {
-                            Log.outDebug(LogFilter.Maps, "Group.ConvertLeaderInstancesToGroup: Group for player {0} is taking over unbound instance map {1} with Id {2}", player.GetName(), playerMap.GetId(), playerMap.GetInstanceId());
-                            // if nobody is saved to this, then the save wasn't permanent
-                            group.BindToInstance(save, false, false);
-                        }
-                    }
-                }
-            }
         }
 
         public void Disband(bool hideDestroy = false)
@@ -816,15 +748,11 @@ namespace Game.Groups
                 stmt.AddValue(0, m_dbStoreId);
                 trans.Append(stmt);
 
-                DB.Characters.CommitTransaction(trans);
-
-                ResetInstances(InstanceResetMethod.GroupDisband, false, false, null);
-                ResetInstances(InstanceResetMethod.GroupDisband, true, false, null);
-                ResetInstances(InstanceResetMethod.GroupDisband, true, true, null);
-
                 stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_LFG_DATA);
                 stmt.AddValue(0, m_dbStoreId);
-                DB.Characters.Execute(stmt);
+                trans.Append(stmt);
+
+                DB.Characters.CommitTransaction(trans);
 
                 Global.GroupMgr.FreeGroupDbStoreId(this);
             }
@@ -1421,233 +1349,35 @@ namespace Game.Groups
         public Difficulty GetRaidDifficultyID() { return m_raidDifficulty; }
         public Difficulty GetLegacyRaidDifficultyID() { return m_legacyRaidDifficulty; }
 
-        public void ResetInstances(InstanceResetMethod method, bool isRaid, bool isLegacy, Player SendMsgTo)
+        public void ResetInstances(InstanceResetMethod method, Player notifyPlayer)
         {
-            if (IsBGGroup() || IsBFGroup())
-                return;
-
-            // method can be INSTANCE_RESET_ALL, INSTANCE_RESET_CHANGE_DIFFICULTY, INSTANCE_RESET_GROUP_DISBAND
-
-            // we assume that when the difficulty changes, all instances that can be reset will be
-            Difficulty diff = GetDungeonDifficultyID();
-            if (isRaid)
+            for (GroupInstanceReference refe = m_ownedInstancesMgr.GetFirst(); refe != null; refe = refe.Next())
             {
-                if (!isLegacy)
-                    diff = GetRaidDifficultyID();
-                else
-                    diff = GetLegacyRaidDifficultyID();
-            }
-
-            var difficultyDic = m_boundInstances.LookupByKey(diff);
-            if (difficultyDic == null)
-                return;
-
-            foreach (var pair in difficultyDic.ToList())
-            {
-                InstanceSave instanceSave = pair.Value.save;
-                MapRecord entry = CliDB.MapStorage.LookupByKey(pair.Key);
-                if (entry == null || entry.IsRaid() != isRaid || (!instanceSave.CanReset() && method != InstanceResetMethod.GroupDisband))
-                    continue;
-
-                if (method == InstanceResetMethod.All)
+                InstanceMap map = refe.GetSource();
+                switch (map.Reset(method))
                 {
-                    // the "reset all instances" method can only reset normal maps
-                    if (entry.InstanceType == MapTypes.Raid || diff == Difficulty.Heroic)
-                        continue;
-                }
-
-                bool isEmpty = true;
-                // if the map is loaded, reset it
-                Map map = Global.MapMgr.FindMap(instanceSave.GetMapId(), instanceSave.GetInstanceId());
-                if (map && map.IsDungeon() && !(method == InstanceResetMethod.GroupDisband && !instanceSave.CanReset()))
-                {
-                    if (instanceSave.CanReset())
-                        isEmpty = ((InstanceMap)map).Reset(method);
-                    else
-                        isEmpty = !map.HavePlayers();
-                }
-
-                if (SendMsgTo)
-                {
-                    if (!isEmpty)
-                        SendMsgTo.SendResetInstanceFailed(ResetFailedReason.Failed, instanceSave.GetMapId());
-                    else if (WorldConfig.GetBoolValue(WorldCfg.InstancesResetAnnounce))
-                    {
-                        Group group = SendMsgTo.GetGroup();
-                        if (group)
-                        {
-                            for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
-                            {
-                                Player player = refe.GetSource();
-                                if (player)
-                                    player.SendResetInstanceSuccess(instanceSave.GetMapId());
-                            }
-                        }
-                        else
-                            SendMsgTo.SendResetInstanceSuccess(instanceSave.GetMapId());
-                    }
-                    else
-                        SendMsgTo.SendResetInstanceSuccess(instanceSave.GetMapId());
-                }
-
-                if (isEmpty || method == InstanceResetMethod.GroupDisband || method == InstanceResetMethod.ChangeDifficulty)
-                {
-                    // do not reset the instance, just unbind if others are permanently bound to it
-                    if (instanceSave.CanReset())
-                    {
-                        if (map != null && map.IsDungeon() && SendMsgTo)
-                        {
-                            AreaTriggerStruct instanceEntrance = Global.ObjectMgr.GetGoBackTrigger(map.GetId());
-
-                            if (instanceEntrance == null)
-                                Log.outDebug(LogFilter.Misc, $"Instance entrance not found for map {map.GetId()}");
-                            else
-                            {
-                                WorldSafeLocsEntry graveyardLocation = Global.ObjectMgr.GetClosestGraveYard(
-                                    new WorldLocation(instanceEntrance.target_mapId, instanceEntrance.target_X, instanceEntrance.target_Y, instanceEntrance.target_Z),
-                                    SendMsgTo.GetTeam(), null);
-                                uint zoneId = Global.TerrainMgr.GetZoneId(PhasingHandler.EmptyPhaseShift, graveyardLocation.Loc.GetMapId(),
-                                    graveyardLocation.Loc.GetPositionX(), graveyardLocation.Loc.GetPositionY(), graveyardLocation.Loc.GetPositionZ());
-
-                                foreach (MemberSlot member in GetMemberSlots())
-                                {
-                                    if (!Global.ObjAccessor.FindConnectedPlayer(member.guid))
-                                    {
-                                        var stmt = DB.Characters.GetPreparedStatement(CharStatements.UPD_CHARACTER_POSITION_BY_MAPID);
-
-                                        stmt.AddValue(0, graveyardLocation.Loc.GetPositionX());
-                                        stmt.AddValue(1, graveyardLocation.Loc.GetPositionY());
-                                        stmt.AddValue(2, graveyardLocation.Loc.GetPositionZ());
-                                        stmt.AddValue(3, instanceEntrance.target_Orientation);
-                                        stmt.AddValue(4, graveyardLocation.Loc.GetMapId());
-                                        stmt.AddValue(5, zoneId);
-                                        stmt.AddValue(6, member.guid.GetCounter());
-                                        stmt.AddValue(7, map.GetId());
-
-                                        DB.Characters.Execute(stmt);
-                                    }
-                                }
-                            }
-                        }
-                        instanceSave.DeleteFromDB();
-                    }
-                    else
-                    {
-                        PreparedStatement stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_GROUP_INSTANCE_BY_INSTANCE);
-                        stmt.AddValue(0, instanceSave.GetInstanceId());
-
-                        DB.Characters.Execute(stmt);
-                    }
-
-
-                    difficultyDic.Remove(pair.Key);
-                    // this unloads the instance save unless online players are bound to it
-                    // (eg. permanent binds or GM solo binds)
-                    instanceSave.RemoveGroup(this);
+                    case InstanceResetResult.Success:
+                        notifyPlayer.SendResetInstanceSuccess(map.GetId());
+                        m_recentInstances.Remove(map.GetId());
+                        break;
+                    case InstanceResetResult.NotEmpty:
+                        if (method == InstanceResetMethod.Manual)
+                            notifyPlayer.SendResetInstanceFailed(ResetFailedReason.Failed, map.GetId());
+                        else if (method == InstanceResetMethod.OnChangeDifficulty)
+                            m_recentInstances.Remove(map.GetId()); // map might not have been reset on difficulty change but we still don't want to zone in there again
+                        break;
+                    case InstanceResetResult.CannotReset:
+                        m_recentInstances.Remove(map.GetId()); // forget the instance, allows retrying different lockout with a new leader
+                        break;
+                    default:
+                        break;
                 }
             }
         }
 
-        public InstanceBind GetBoundInstance(Player player)
+        public void LinkOwnedInstance(GroupInstanceReference refe)
         {
-            uint mapid = player.GetMapId();
-            MapRecord mapEntry = CliDB.MapStorage.LookupByKey(mapid);
-            return GetBoundInstance(mapEntry);
-        }
-
-        public InstanceBind GetBoundInstance(Map aMap)
-        {
-            return GetBoundInstance(aMap.GetEntry());
-        }
-
-        public InstanceBind GetBoundInstance(MapRecord mapEntry)
-        {
-            if (mapEntry == null || !mapEntry.IsDungeon())
-                return null;
-
-            Difficulty difficulty = GetDifficultyID(mapEntry);
-            return GetBoundInstance(difficulty, mapEntry.Id);
-        }
-
-        public InstanceBind GetBoundInstance(Difficulty difficulty, uint mapId)
-        {
-            // some instances only have one difficulty
-            Global.DB2Mgr.GetDownscaledMapDifficultyData(mapId, ref difficulty);
-
-            var difficultyDic = m_boundInstances.LookupByKey(difficulty);
-            if (difficultyDic == null)
-                return null;
-
-            var instanceBind = difficultyDic.LookupByKey(mapId);
-            if (instanceBind != null)
-                return instanceBind;
-
-            return null;
-        }
-
-        public InstanceBind BindToInstance(InstanceSave save, bool permanent, bool load = false)
-        {
-            if (save == null || IsBGGroup() || IsBFGroup())
-                return null;
-
-            if (!m_boundInstances.ContainsKey(save.GetDifficultyID()))
-                m_boundInstances[save.GetDifficultyID()] = new Dictionary<uint, InstanceBind>();
-
-            if (!m_boundInstances[save.GetDifficultyID()].ContainsKey(save.GetMapId()))
-                m_boundInstances[save.GetDifficultyID()][save.GetMapId()] = new InstanceBind();
-
-            InstanceBind bind = m_boundInstances[save.GetDifficultyID()][save.GetMapId()];
-            if (!load && (bind.save == null || permanent != bind.perm || save != bind.save))
-            {
-                PreparedStatement stmt = DB.Characters.GetPreparedStatement(CharStatements.REP_GROUP_INSTANCE);
-
-                stmt.AddValue(0, m_dbStoreId);
-                stmt.AddValue(1, save.GetInstanceId());
-                stmt.AddValue(2, permanent);
-
-                DB.Characters.Execute(stmt);
-            }
-
-            if (bind.save != save)
-            {
-                if (bind.save != null)
-                    bind.save.RemoveGroup(this);
-                save.AddGroup(this);
-            }
-
-            bind.save = save;
-            bind.perm = permanent;
-            if (!load)
-                Log.outDebug(LogFilter.Maps, "Group.BindToInstance: Group ({0}, storage id: {1}) is now bound to map {2}, instance {3}, difficulty {4}",
-                GetGUID().ToString(), m_dbStoreId, save.GetMapId(), save.GetInstanceId(), save.GetDifficultyID());
-
-            m_boundInstances[save.GetDifficultyID()][save.GetMapId()] = bind;
-
-            return bind;
-        }
-
-        public void UnbindInstance(uint mapid, Difficulty difficulty, bool unload = false)
-        {
-            var difficultyDic = m_boundInstances.LookupByKey(difficulty);
-            if (difficultyDic == null)
-                return;
-
-            var instanceBind = difficultyDic.LookupByKey(mapid);
-            if (instanceBind != null)
-            {
-                if (!unload)
-                {
-                    PreparedStatement stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_GROUP_INSTANCE_BY_GUID);
-
-                    stmt.AddValue(0, m_dbStoreId);
-                    stmt.AddValue(1, instanceBind.save.GetInstanceId());
-
-                    DB.Characters.Execute(stmt);
-                }
-
-                instanceBind.save.RemoveGroup(this);                // save can become invalid
-                difficultyDic.Remove(mapid);
-            }
+            m_ownedInstancesMgr.InsertLast(refe);
         }
 
         void _homebindIfInstance(Player player)
@@ -2064,11 +1794,6 @@ namespace Game.Groups
             }
         }
 
-        public Dictionary<uint, InstanceBind> GetBoundInstances(Difficulty difficulty)
-        {
-            return m_boundInstances.LookupByKey(difficulty);
-        }
-
         void _initRaidSubGroupsCounter()
         {
             // Sub group counters initialization
@@ -2155,6 +1880,28 @@ namespace Game.Groups
                 worker(refe.GetSource());
         }
 
+        public ObjectGuid GetRecentInstanceOwner(uint mapId)
+        {
+
+            if (m_recentInstances.TryGetValue(mapId, out Tuple<ObjectGuid, uint> value))
+                return value.Item1;
+
+            return m_leaderGuid;
+        }
+
+        public uint GetRecentInstanceId(uint mapId)
+        {
+            if (m_recentInstances.TryGetValue(mapId, out Tuple<ObjectGuid, uint> value))
+                return value.Item2;
+
+            return 0;
+        }
+
+        public void SetRecentInstance(uint mapId, ObjectGuid instanceOwner, uint instanceId)
+        {
+            m_recentInstances[mapId] = Tuple.Create(instanceOwner, instanceId);
+        }
+        
         List<MemberSlot> m_memberSlots = new();
         GroupRefManager m_memberMgr = new();
         List<Player> m_invitees = new();
@@ -2173,7 +1920,8 @@ namespace Game.Groups
         ItemQuality m_lootThreshold;
         ObjectGuid m_looterGuid;
         ObjectGuid m_masterLooterGuid;
-        Dictionary<Difficulty, Dictionary<uint, InstanceBind>> m_boundInstances = new();
+        Dictionary<uint, Tuple<ObjectGuid, uint>> m_recentInstances = new();
+        GroupInstanceRefManager m_ownedInstancesMgr = new();
         byte[] m_subGroupsCounts;
         ObjectGuid m_guid;
         uint m_dbStoreId;
