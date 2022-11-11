@@ -887,8 +887,11 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu options...");
             Global.ObjectMgr.LoadGossipMenuItems();
 
-            Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu friendship factions...");
-            Global.ObjectMgr.LoadGossipMenuFriendshipFactions();
+            Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu addon...");
+            Global.ObjectMgr.LoadGossipMenuAddon();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu item addon...");
+            Global.ObjectMgr.LoadGossipMenuItemAddon();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature trainers...");
             Global.ObjectMgr.LoadCreatureTrainers();                         // must be after LoadGossipMenuItems
@@ -1141,8 +1144,8 @@ namespace Game
             // load update time related configs
             _worldUpdateTime.LoadFromConfig();
 
-            Global.WorldMgr.SetPlayerAmountLimit((uint)ConfigMgr.GetDefaultValue("PlayerLimit", 100));
-            Global.WorldMgr.SetMotd(ConfigMgr.GetDefaultValue("Motd", "Welcome to a Cypher Core Server."));
+            SetPlayerAmountLimit((uint)ConfigMgr.GetDefaultValue("PlayerLimit", 100));
+            SetMotd(ConfigMgr.GetDefaultValue("Motd", "Welcome to a Cypher Core Server."));
 
             if (reload)
             {
@@ -1743,10 +1746,14 @@ namespace Game
         /// Ban an account or ban an IP address, duration will be parsed using TimeStringToSecs if it is positive, otherwise permban
         public BanReturn BanCharacter(string name, string duration, string reason, string author)
         {
+            uint durationSecs = Time.TimeStringToSecs(duration);
+            return BanAccount(BanMode.Character, name, durationSecs, reason, author);
+        }
+
+        public BanReturn BanCharacter(string name, uint durationSecs, string reason, string author)
+        {
             Player pBanned = Global.ObjAccessor.FindConnectedPlayerByName(name);
             ObjectGuid guid;
-
-            uint duration_secs = Time.TimeStringToSecs(duration);
 
             // Pick a player to ban if not online
             if (!pBanned)
@@ -1768,7 +1775,7 @@ namespace Game
 
             stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHARACTER_BAN);
             stmt.AddValue(0, guid.GetCounter());
-            stmt.AddValue(1, (long)duration_secs);
+            stmt.AddValue(1, (long)durationSecs);
             stmt.AddValue(2, author);
             stmt.AddValue(3, reason);
             trans.Append(stmt);

@@ -99,16 +99,17 @@ namespace Game.Entities
             Unit unit = obj.ToUnit();
             if (unit != null)
             {
-                unitDynFlags &= ~(uint)UnitDynFlags.Tapped;
-
                 Creature creature = obj.ToCreature();
                 if (creature != null)
                 {
-                    if (creature.HasLootRecipient() && !creature.IsTappedBy(receiver))
-                        unitDynFlags |= (uint)UnitDynFlags.Tapped;
+                    if ((unitDynFlags & (uint)UnitDynFlags.Tapped) != 0 && !creature.IsTappedBy(receiver))
+                        unitDynFlags &= ~(uint)UnitDynFlags.Tapped;
 
-                    if (!receiver.IsAllowedToLoot(creature))
+                    if ((unitDynFlags & (uint)UnitDynFlags.Lootable) != 0 && !receiver.IsAllowedToLoot(creature))
                         unitDynFlags &= ~(uint)UnitDynFlags.Lootable;
+
+                    if ((unitDynFlags & (uint)UnitDynFlags.CanSkin) != 0 && creature.IsSkinnedBy(receiver))
+                        unitDynFlags &= ~(uint)UnitDynFlags.CanSkin;
                 }
 
                 // unit UNIT_DYNFLAG_TRACK_UNIT should only be sent to caster of SPELL_AURA_MOD_STALKED auras
@@ -130,9 +131,18 @@ namespace Game.Entities
                                 dynFlags |= GameObjectDynamicLowFlags.Activate;
                             break;
                         case GameObjectTypes.Chest:
-                        case GameObjectTypes.Goober:
                             if (gameObject.ActivateToQuest(receiver))
                                 dynFlags |= GameObjectDynamicLowFlags.Activate | GameObjectDynamicLowFlags.Sparkle | GameObjectDynamicLowFlags.Highlight;
+                            else if (receiver.IsGameMaster())
+                                dynFlags |= GameObjectDynamicLowFlags.Activate;
+                            break;
+                        case GameObjectTypes.Goober:
+                            if (gameObject.ActivateToQuest(receiver))
+                            {
+                                dynFlags |= GameObjectDynamicLowFlags.Highlight;
+                                if (gameObject.GetGoStateFor(receiver.GetGUID()) != GameObjectState.Active)
+                                    dynFlags |= GameObjectDynamicLowFlags.Activate;
+                            }
                             else if (receiver.IsGameMaster())
                                 dynFlags |= GameObjectDynamicLowFlags.Activate;
                             break;
@@ -153,9 +163,18 @@ namespace Game.Entities
                             else
                                 dynFlags &= ~GameObjectDynamicLowFlags.NoInterract;
                             break;
+                        case GameObjectTypes.GatheringNode:
+                            if (gameObject.ActivateToQuest(receiver))
+                                dynFlags |= GameObjectDynamicLowFlags.Activate | GameObjectDynamicLowFlags.Sparkle | GameObjectDynamicLowFlags.Highlight;
+                            if (gameObject.GetGoStateFor(receiver.GetGUID()) == GameObjectState.Active)
+                                dynFlags |= GameObjectDynamicLowFlags.Depleted;
+                            break;
                         default:
                             break;
                     }
+
+                    if (!gameObject.MeetsInteractCondition(receiver))
+                        dynFlags |= GameObjectDynamicLowFlags.NoInterract;
 
                     unitDynFlags = ((uint)pathProgress << 16) | (uint)dynFlags;
                 }
@@ -1327,7 +1346,7 @@ namespace Game.Entities
 
             data.WriteUInt32(GetViewerDependentFlags(this, owner, receiver));
             data.WriteUInt32(Flags2);
-            data.WriteUInt32(Flags3);
+            data.WriteUInt32(GetViewerDependentFlags3(this, owner, receiver));
             data.WriteUInt32(GetViewerDependentAuraState(this, owner, receiver));
             for (int i = 0; i < 2; ++i)
                 data.WriteUInt32(AttackRoundBaseTime[i]);
@@ -1712,7 +1731,7 @@ namespace Game.Entities
                 }
                 if (changesMask[45])
                 {
-                    data.WriteUInt32(Flags3);
+                    data.WriteUInt32(GetViewerDependentFlags3(this, owner, receiver));
                 }
                 if (changesMask[46])
                 {
@@ -2305,6 +2324,14 @@ namespace Game.Entities
             // Update fields of triggers, transformed units or uninteractible units (values dependent on GM state)
             if (receiver.IsGameMaster())
                 flags &= ~(uint)UnitFlags.Uninteractible;
+
+            return flags;
+        }
+        uint GetViewerDependentFlags3(UnitData unitData, Unit unit, Player receiver)
+        {
+            uint flags = unitData.Flags3;
+            if ((flags & (uint)UnitFlags3.AlreadySkinned) != 0 && unit.IsCreature() && !unit.ToCreature().IsSkinnedBy(receiver))
+                flags &= ~(uint)UnitFlags3.AlreadySkinned;
 
             return flags;
         }
@@ -4988,7 +5015,7 @@ namespace Game.Entities
             data.WriteFloat(rotation.Z);
             data.WriteFloat(rotation.W);
             data.WriteUInt32(FactionTemplate);
-            data.WriteInt8(State);
+            data.WriteInt8(GetViewerGameObjectState(this, owner, receiver));
             data.WriteInt8(TypeID);
             data.WriteUInt8(PercentHealth);
             data.WriteUInt32(ArtKit);
@@ -5095,7 +5122,7 @@ namespace Game.Entities
                 }
                 if (changesMask[14])
                 {
-                    data.WriteInt8(State);
+                    data.WriteInt8(GetViewerGameObjectState(this, owner, receiver));
                 }
                 if (changesMask[15])
                 {
@@ -5157,6 +5184,11 @@ namespace Game.Entities
                     flags |= (uint)(GameObjectFlags.Locked | GameObjectFlags.NotSelectable);
 
             return flags;
+        }
+
+        sbyte GetViewerGameObjectState(GameObjectFieldData gameObjectData, GameObject gameObject, Player receiver)
+        {
+            return (sbyte)gameObject.GetGoStateFor(receiver.GetGUID());
         }
     }
 

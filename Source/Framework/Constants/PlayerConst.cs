@@ -74,6 +74,8 @@ namespace Framework.Constants
 
         //Warmode
         public const uint WarmodeEnlistedSpellOutside = 269083;
+
+        public const uint SpellExperienceEliminated = 206662;
     }
 
     public struct MoneyConstants
@@ -240,6 +242,7 @@ namespace Framework.Constants
         DifficultyNotFound = 22,  // Client Writes To Console "Unable To Resolve Requested Difficultyid %U To Actual Difficulty For Map %D"
         XrealmZoneDown = 24,  // Transfer ed: Cross-Realm Zone Is Down
         SoloPlayerSwitchDifficulty = 26,  // This Instance Is Already In Progress. You May Only Switch Difficulties From Inside The Instance.
+        NotCrossFactionCompatible = 33,  // This instance isn't available for cross-faction groups
     }
 
     public enum RaidGroupReason

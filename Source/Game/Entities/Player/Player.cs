@@ -1783,8 +1783,12 @@ namespace Game.Entities
 
                 // Check enter rights before map getting to avoid creating instance copy for player
                 // this check not dependent from map instance copy and same for all instance copies of selected map
-                if (Map.PlayerCannotEnter(mapid, this, false) != 0)
+                TransferAbortParams abortParams = Map.PlayerCannotEnter(mapid, this);
+                if (abortParams != null)
+                {
+                    SendTransferAborted(mapid, abortParams.Reason, abortParams.Arg, abortParams.MapDifficultyXConditionId);
                     return false;
+                }
 
                 // Seamless teleport can happen only if cosmetic maps match
                 if (!oldmap || (oldmap.GetEntry().CosmeticParentMapID != mapid && GetMapId() != mEntry.CosmeticParentMapID &&
@@ -1795,13 +1799,13 @@ namespace Game.Entities
                 SetSemaphoreTeleportNear(false);
                 //setup delayed teleport flag
                 SetDelayedTeleportFlag(IsCanDelayTeleport());
-                //if teleport spell is casted in Unit.Update() func
+                //if teleport spell is cast in Unit::Update() func
                 //then we need to delay it until update process will be finished
                 if (IsHasDelayedTeleport())
                 {
                     SetSemaphoreTeleportFar(true);
                     //lets save teleport destination for player
-                    teleportDest = new WorldLocation(mapid, x, y, z, orientation);
+                    teleportDest = new(mapid, x, y, z, orientation);
                     m_teleport_instanceId = instanceId;
                     m_teleport_options = options;
                     return true;
@@ -1837,11 +1841,11 @@ namespace Game.Entities
                 if (pet)
                     UnsummonPetTemporaryIfAny();
 
-                // remove all areatriggers entities
-                RemoveAllAreaTriggers();
-
                 // remove all dyn objects
                 RemoveAllDynObjects();
+                
+                // remove all areatriggers entities
+                RemoveAllAreaTriggers();
 
                 // stop spellcasting
                 // not attempt interrupt teleportation spell at caster teleport
@@ -2295,7 +2299,7 @@ namespace Game.Entities
         }
 
         //Chat - Text - Channel
-        public void PrepareGossipMenu(WorldObject source, uint menuId = 0, bool showQuests = false)
+        public void PrepareGossipMenu(WorldObject source, uint menuId, bool showQuests = false)
         {
             PlayerMenu menu = PlayerTalkClass;
             menu.ClearMenus();
@@ -2304,25 +2308,18 @@ namespace Game.Entities
 
             var menuItemBounds = Global.ObjectMgr.GetGossipMenuItemsMapBounds(menuId);
 
-            // if default menuId and no menu options exist for this, use options from default options
-            if (menuItemBounds.Empty() && menuId == GetDefaultGossipMenuForSource(source))
-                menuItemBounds = Global.ObjectMgr.GetGossipMenuItemsMapBounds(0);
-
-            NPCFlags npcflags = 0;
-
             if (source.IsTypeId(TypeId.Unit))
             {
-                npcflags = (NPCFlags)(((ulong)(source.ToUnit().m_unitData.NpcFlags[1]) << 32) | source.ToUnit().m_unitData.NpcFlags[0]);
-                if (Convert.ToBoolean(npcflags & NPCFlags.QuestGiver) && showQuests)
+                if (showQuests && source.ToUnit().IsQuestGiver())
                     PrepareQuestMenu(source.GetGUID());
             }
             else if (source.IsTypeId(TypeId.GameObject))
                 if (source.ToGameObject().GetGoType() == GameObjectTypes.QuestGiver)
                     PrepareQuestMenu(source.GetGUID());
 
-            foreach (var menuItems in menuItemBounds)
+            foreach (var gossipMenuItem in menuItemBounds)
             {
-                if (!Global.ConditionMgr.IsObjectMeetToConditions(this, source, menuItems.Conditions))
+                if (!Global.ConditionMgr.IsObjectMeetToConditions(this, source, gossipMenuItem.Conditions))
                     continue;
 
                 bool canTalk = true;
@@ -2330,10 +2327,7 @@ namespace Game.Entities
                 Creature creature = source.ToCreature();
                 if (creature)
                 {
-                    if (!menuItems.OptionNpcFlag.HasAnyFlag(npcflags))
-                        continue;
-
-                    switch (menuItems.OptionNpc)
+                    switch (gossipMenuItem.OptionNpc)
                     {
                         case GossipOptionNpc.TaxiNode:
                             if (GetSession().SendLearnNewTaxiNode(creature))
@@ -2359,11 +2353,11 @@ namespace Game.Entities
                                 canTalk = false;
                             break;
                         case GossipOptionNpc.DisableXPGain:
-                            if (HasPlayerFlag(PlayerFlags.NoXPGain))
+                            if (HasPlayerFlag(PlayerFlags.NoXPGain) || IsMaxLevel())
                                 canTalk = false;
                             break;
                         case GossipOptionNpc.EnableXPGain:
-                            if (!HasPlayerFlag(PlayerFlags.NoXPGain))
+                            if (!HasPlayerFlag(PlayerFlags.NoXPGain) || IsMaxLevel())
                                 canTalk = false;
                             break;
                         case GossipOptionNpc.None:
@@ -2376,6 +2370,7 @@ namespace Game.Entities
                         case GossipOptionNpc.Auctioneer:
                         case GossipOptionNpc.Mailbox:
                         case GossipOptionNpc.Transmogrify:
+                        case GossipOptionNpc.AzeriteRespec:
                             break;                                         // No checks
                         case GossipOptionNpc.CemeterySelect:
                             canTalk = false;                               // Deprecated
@@ -2394,7 +2389,6 @@ namespace Game.Entities
                         case GossipOptionNpc.AdventureMap:
                         case GossipOptionNpc.GarrisonTalent:
                         case GossipOptionNpc.ContributionCollector:
-                        case GossipOptionNpc.AzeriteRespec:
                         case GossipOptionNpc.IslandsMission:
                         case GossipOptionNpc.UIItemInteraction:
                         case GossipOptionNpc.WorldMap:
@@ -2407,14 +2401,14 @@ namespace Game.Entities
                         case GossipOptionNpc.CovenantRenown:
                             break;                                         // NYI
                         default:
-                            Log.outError(LogFilter.Sql, $"Creature entry {creature.GetEntry()} has an unknown gossip option icon {menuItems.OptionNpc} for menu {menuItems.MenuId}.");
+                            Log.outError(LogFilter.Sql, $"Creature entry {creature.GetEntry()} has an unknown gossip option icon {gossipMenuItem.OptionNpc} for menu {gossipMenuItem.MenuId}.");
                             canTalk = false;
                             break;
                     }
                 }
                 else if (go != null)
                 {
-                    switch (menuItems.OptionNpc)
+                    switch (gossipMenuItem.OptionNpc)
                     {
                         case GossipOptionNpc.None:
                             if (go.GetGoType() != GameObjectTypes.QuestGiver && go.GetGoType() != GameObjectTypes.Goober)
@@ -2430,26 +2424,26 @@ namespace Game.Entities
                 {
                     string strOptionText;
                     string strBoxText;
-                    BroadcastTextRecord optionBroadcastText = CliDB.BroadcastTextStorage.LookupByKey(menuItems.OptionBroadcastTextId);
-                    BroadcastTextRecord boxBroadcastText = CliDB.BroadcastTextStorage.LookupByKey(menuItems.BoxBroadcastTextId);
+                    BroadcastTextRecord optionBroadcastText = CliDB.BroadcastTextStorage.LookupByKey(gossipMenuItem.OptionBroadcastTextId);
+                    BroadcastTextRecord boxBroadcastText = CliDB.BroadcastTextStorage.LookupByKey(gossipMenuItem.BoxBroadcastTextId);
                     Locale locale = GetSession().GetSessionDbLocaleIndex();
 
                     if (optionBroadcastText != null)
                         strOptionText = Global.DB2Mgr.GetBroadcastTextValue(optionBroadcastText, locale, GetGender());
                     else
-                        strOptionText = menuItems.OptionText;
+                        strOptionText = gossipMenuItem.OptionText;
 
                     if (boxBroadcastText != null)
                         strBoxText = Global.DB2Mgr.GetBroadcastTextValue(boxBroadcastText, locale, GetGender());
                     else
-                        strBoxText = menuItems.BoxText;
+                        strBoxText = gossipMenuItem.BoxText;
 
                     if (locale != Locale.enUS)
                     {
                         if (optionBroadcastText == null)
                         {
                             // Find localizations from database.
-                            GossipMenuItemsLocale gossipMenuLocale = Global.ObjectMgr.GetGossipMenuItemsLocale(menuId, menuItems.OptionId);
+                            GossipMenuItemsLocale gossipMenuLocale = Global.ObjectMgr.GetGossipMenuItemsLocale(menuId, gossipMenuItem.OptionId);
                             if (gossipMenuLocale != null)
                                 ObjectManager.GetLocaleString(gossipMenuLocale.OptionText, locale, ref strOptionText);
                         }
@@ -2457,14 +2451,14 @@ namespace Game.Entities
                         if (boxBroadcastText == null)
                         {
                             // Find localizations from database.
-                            GossipMenuItemsLocale gossipMenuLocale = Global.ObjectMgr.GetGossipMenuItemsLocale(menuId, menuItems.OptionId);
+                            GossipMenuItemsLocale gossipMenuLocale = Global.ObjectMgr.GetGossipMenuItemsLocale(menuId, gossipMenuItem.OptionId);
                             if (gossipMenuLocale != null)
                                 ObjectManager.GetLocaleString(gossipMenuLocale.BoxText, locale, ref strBoxText);
                         }
                     }
 
-                    menu.GetGossipMenu().AddMenuItem((int)menuItems.OptionId, menuItems.OptionNpc, strOptionText, 0, (uint)menuItems.OptionNpc, strBoxText, menuItems.BoxMoney, menuItems.BoxCoded);
-                    menu.GetGossipMenu().AddGossipMenuItemData(menuItems.OptionId, menuItems.ActionMenuId, menuItems.ActionPoiId);
+                    menu.GetGossipMenu().AddMenuItem((int)gossipMenuItem.OptionId, gossipMenuItem.OptionNpc, strOptionText, 0, (uint)gossipMenuItem.OptionNpc, strBoxText, gossipMenuItem.BoxMoney, gossipMenuItem.BoxCoded);
+                    menu.GetGossipMenu().AddGossipMenuItemData(gossipMenuItem.OptionId, gossipMenuItem.ActionMenuId, gossipMenuItem.ActionPoiId);
                 }
             }
         }
@@ -2601,10 +2595,12 @@ namespace Game.Entities
                     break;
                 case GossipOptionNpc.DisableXPGain:
                     PlayerTalkClass.SendCloseGossip();
+                    CastSpell(null, PlayerConst.SpellExperienceEliminated, true);
                     SetPlayerFlag(PlayerFlags.NoXPGain);
                     break;
                 case GossipOptionNpc.EnableXPGain:
                     PlayerTalkClass.SendCloseGossip();
+                    RemoveAurasDueToSpell(PlayerConst.SpellExperienceEliminated);
                     RemovePlayerFlag(PlayerFlags.NoXPGain);
                     break;
                 case GossipOptionNpc.Mailbox:
@@ -2618,8 +2614,19 @@ namespace Game.Entities
                     PlayerTalkClass.SendCloseGossip();
                     SendRespecWipeConfirm(guid, 0, SpecResetType.Glyphs);
                     break;
+                case GossipOptionNpc.GarrisonTalent:
+                {
+                    GossipMenuAddon addon = Global.ObjectMgr.GetGossipMenuAddon(menuId);
+                    GossipMenuItemAddon itemAddon = Global.ObjectMgr.GetGossipMenuItemAddon(menuId, gossipListId);
+                    SendGarrisonOpenTalentNpc(guid, itemAddon != null ? itemAddon.GarrTalentTreeID.GetValueOrDefault(0) : 0, addon != null ? addon.FriendshipFactionID : 0);
+                    break;
+                }
                 case GossipOptionNpc.Transmogrify:
                     GetSession().SendOpenTransmogrifier(guid);
+                    break;
+                case GossipOptionNpc.AzeriteRespec:
+                    PlayerTalkClass.SendCloseGossip();
+                    GetSession().SendAzeriteRespecNPC(guid);
                     break;
                 default:
                     break;
@@ -3121,7 +3128,7 @@ namespace Game.Entities
 
         public bool IsAllowedToLoot(Creature creature)
         {
-            if (!creature.IsDead() || !creature.IsDamageEnoughForLootingAndReward())
+            if (!creature.IsDead())
                 return false;
 
             if (HasPendingBind())
@@ -3134,19 +3141,9 @@ namespace Game.Entities
             if (!loot.HasAllowedLooter(GetGUID()) || (!loot.HasItemForAll() && !loot.HasItemFor(this))) // no loot in creature for this player
                 return false;
 
-            if (loot.loot_type == LootType.Skinning)
-                return creature.GetLootRecipientGUID() == GetGUID();
-
-            Group thisGroup = GetGroup();
-            if (!thisGroup)
-                return this == creature.GetLootRecipient();
-            else if (thisGroup != creature.GetLootRecipientGroup())
-                return false;
-
             switch (loot.GetLootMethod())
             {
-                case LootMethod.PersonalLoot:// @todo implement personal loot (http://wow.gamepedia.com/Loot#Personal_Loot)
-                    return false;
+                case LootMethod.PersonalLoot:
                 case LootMethod.FreeForAll:
                     return true;
                 case LootMethod.RoundRobin:
@@ -4289,7 +4286,7 @@ namespace Game.Entities
 
             map.AddToMap(pet.ToCreature());
 
-            Cypher.Assert(petStable.CurrentPetIndex == 0);
+            Cypher.Assert(!petStable.CurrentPetIndex.HasValue);
             petStable.SetCurrentUnslottedPetIndex((uint)petStable.UnslottedPets.Count);
             PetStable.PetInfo petInfo = new();
             pet.FillPetInfo(petInfo);
@@ -7404,6 +7401,8 @@ namespace Game.Entities
 
         // Closes the Menu
         public void CloseGossipMenu() { PlayerTalkClass.SendCloseGossip(); }
+
+        public void InitGossipMenu(uint menuId) { PlayerTalkClass.GetGossipMenu().SetMenuId(menuId); }
 
         //Clears the Menu
         public void ClearGossipMenu() { PlayerTalkClass.ClearMenus(); }

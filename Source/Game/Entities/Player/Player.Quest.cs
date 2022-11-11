@@ -352,8 +352,10 @@ namespace Game.Entities
                         if (quest.IsAutoAccept() && CanAddQuest(quest, true) && CanTakeQuest(quest, true))
                             AddQuestAndCheckCompletion(quest, source);
 
-                        if (quest.IsAutoComplete() && quest.IsRepeatable() && !quest.IsDailyOrWeekly())
+                        if (quest.IsAutoComplete() && quest.IsRepeatable() && !quest.IsDailyOrWeekly() && !quest.IsMonthly())
                             PlayerTalkClass.SendQuestGiverRequestItems(quest, source.GetGUID(), CanCompleteRepeatableQuest(quest), true);
+                        else if (quest.IsAutoComplete() && !quest.IsDailyOrWeekly() && !quest.IsMonthly())
+                            PlayerTalkClass.SendQuestGiverRequestItems(quest, source.GetGUID(), CanRewardQuest(quest, false), true);
                         else
                             PlayerTalkClass.SendQuestGiverQuestDetails(quest, source.GetGUID(), true, false);
 
@@ -2978,6 +2980,7 @@ namespace Game.Entities
                             case GameObjectTypes.Chest:
                             case GameObjectTypes.Goober:
                             case GameObjectTypes.Generic:
+                            case GameObjectTypes.GatheringNode:
                                 if (Global.ObjectMgr.IsGameObjectForQuests(obj.GetEntry()))
                                     objMask.MarkChanged(obj.m_objectData.DynamicFlags);
                                 break;
@@ -3110,6 +3113,15 @@ namespace Game.Entities
             }
 
             SendPacket(displayToast);
+        }
+
+        void SendGarrisonOpenTalentNpc(ObjectGuid guid, int garrTalentTreeId, int friendshipFactionId)
+        {
+            GarrisonOpenTalentNpc openTalentNpc = new();
+            openTalentNpc.NpcGUID = guid;
+            openTalentNpc.GarrTalentTreeID = garrTalentTreeId;
+            openTalentNpc.FriendshipFactionID = friendshipFactionId;
+            SendPacket(openTalentNpc);
         }
     }
 }

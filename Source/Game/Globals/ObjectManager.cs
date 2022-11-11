@@ -18,11 +18,11 @@
 using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
-using Framework.Dynamic;
 using Framework.IO;
 using Game.Conditions;
 using Game.DataStorage;
 using Game.Entities;
+using Game.Loots;
 using Game.Mails;
 using Game.Maps;
 using Game.Misc;
@@ -30,7 +30,6 @@ using Game.Movement;
 using Game.Scripting;
 using Game.Spells;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -579,8 +578,8 @@ namespace Game
 
             gossipMenuItemsStorage.Clear();
 
-            //                                         0       1         2           3           4                      5              6         7             8            9         10        11       12
-            SQLResult result = DB.World.Query("SELECT MenuID, OptionID, OptionNpc, OptionText, OptionBroadcastTextID, OptionNpcFlag, Language, ActionMenuID, ActionPoiID, BoxCoded, BoxMoney, BoxText, BoxBroadcastTextID " +
+            //                                         0       1         2          3           4                      5         6             7            8         9         10       11
+            SQLResult result = DB.World.Query("SELECT MenuID, OptionID, OptionNpc, OptionText, OptionBroadcastTextID, Language, ActionMenuID, ActionPoiID, BoxCoded, BoxMoney, BoxText, BoxBroadcastTextID " +
                 "FROM gossip_menu_option ORDER BY MenuID, OptionID");
 
             if (result.IsEmpty())
@@ -598,14 +597,13 @@ namespace Game
                 gMenuItem.OptionNpc = (GossipOptionNpc)result.Read<byte>(2);
                 gMenuItem.OptionText = result.Read<string>(3);
                 gMenuItem.OptionBroadcastTextId = result.Read<uint>(4);
-                gMenuItem.OptionNpcFlag = (NPCFlags)result.Read<ulong>(5);
-                gMenuItem.Language = result.Read<uint>(6);
-                gMenuItem.ActionMenuId = result.Read<uint>(7);
-                gMenuItem.ActionPoiId = result.Read<uint>(8);
-                gMenuItem.BoxCoded = result.Read<bool>(9);
-                gMenuItem.BoxMoney = result.Read<uint>(10);
-                gMenuItem.BoxText = result.Read<string>(11);
-                gMenuItem.BoxBroadcastTextId = result.Read<uint>(12);
+                gMenuItem.Language = result.Read<uint>(5);
+                gMenuItem.ActionMenuId = result.Read<uint>(6);
+                gMenuItem.ActionPoiId = result.Read<uint>(7);
+                gMenuItem.BoxCoded = result.Read<bool>(8);
+                gMenuItem.BoxMoney = result.Read<uint>(9);
+                gMenuItem.BoxText = result.Read<string>(10);
+                gMenuItem.BoxBroadcastTextId = result.Read<uint>(11);
 
                 if (gMenuItem.OptionNpc >= GossipOptionNpc.Max)
                 {
@@ -662,7 +660,7 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, $"Loaded {gossipMenuItemsStorage.Count} gossip_menu_option entries in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
         }
-        public void LoadGossipMenuFriendshipFactions()
+        public void LoadGossipMenuAddon()
         {
             uint oldMSTime = Time.GetMSTime();
 
@@ -702,6 +700,42 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, $"Loaded {_gossipMenuAddonStorage.Count} gossip_menu_addon IDs in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
         }
+        public void LoadGossipMenuItemAddon()
+        {
+            uint oldMSTime = Time.GetMSTime();
+
+            _gossipMenuItemAddonStorage.Clear();
+
+            //                                         0       1         2
+            SQLResult result = DB.World.Query("SELECT MenuID, OptionId, GarrTalentTreeID FROM gossip_menu_option_addon");
+            if (result.IsEmpty())
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loaded 0 gossip_menu_option_addon IDs. DB table `gossip_menu_option_addon` is empty!");
+                return;
+            }
+
+            do
+            {
+                uint menuId = result.Read<uint>(0);
+                uint optionId = result.Read<uint>(1);
+                GossipMenuItemAddon  addon = new();
+                if (!result.IsNull(2))
+                {
+                    addon.GarrTalentTreeID = result.Read<int>(2);
+
+                    if (!CliDB.GarrTalentTreeStorage.ContainsKey(addon.GarrTalentTreeID.Value))
+                    {
+                        Log.outError(LogFilter.Sql, $"Table gossip_menu_option_addon: MenuID {menuId} OptionID {optionId} is using non-existing GarrTalentTree {addon.GarrTalentTreeID.Value}");
+                        addon.GarrTalentTreeID = null;
+                    }
+                }
+
+                _gossipMenuItemAddonStorage[Tuple.Create(menuId, optionId)] = addon;
+
+            } while (result.NextRow());
+
+            Log.outInfo(LogFilter.ServerLoading, $"Loaded {_gossipMenuItemAddonStorage.Count} gossip_menu_option_addon IDs in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
+        }
 
         public void LoadPointsOfInterest()
         {
@@ -710,7 +744,7 @@ namespace Game
             pointsOfInterestStorage.Clear(); // need for reload case
 
             //                                   0   1          2          3          4     5      6           7     8
-            var result = DB.World.Query("SELECT ID, PositionX, PositionY, PositionZ, Icon, Flags, Importance, Name, Unknown905 FROM points_of_interest");
+            var result = DB.World.Query("SELECT ID, PositionX, PositionY, PositionZ, Icon, Flags, Importance, Name, WMOGroupID FROM points_of_interest");
             if (result.IsEmpty())
             {
                 Log.outInfo(LogFilter.ServerLoading, "Loaded 0 Points of Interest definitions. DB table `points_of_interest` is empty.");
@@ -729,7 +763,7 @@ namespace Game
                 POI.Flags = result.Read<uint>(5);
                 POI.Importance = result.Read<uint>(6);
                 POI.Name = result.Read<string>(7);
-                POI.Unknown905 = result.Read<uint>(8);
+                POI.WMOGroupID = result.Read<uint>(8);
 
                 if (!GridDefines.IsValidMapCoord(POI.Pos.X, POI.Pos.Y, POI.Pos.Z))
                 {
@@ -756,6 +790,10 @@ namespace Game
         public GossipMenuAddon GetGossipMenuAddon(uint menuId)
         {
             return _gossipMenuAddonStorage.LookupByKey(menuId);
+        }
+        public GossipMenuItemAddon GetGossipMenuItemAddon(uint menuId, uint optionId)
+        {
+            return _gossipMenuItemAddonStorage.LookupByKey(Tuple.Create(menuId, optionId));
         }
         public PointOfInterest GetPointOfInterest(uint id)
         {
@@ -4033,7 +4071,7 @@ namespace Game
 
                     got.ContentTuningId = result.Read<uint>(43);
                     got.AIName = result.Read<string>(44);
-                    got.ScriptId = Global.ObjectMgr.GetScriptId(result.Read<string>(45));
+                    got.ScriptId = GetScriptId(result.Read<string>(45));
 
                     switch (got.type)
                     {
@@ -4144,7 +4182,7 @@ namespace Game
                             break;
                         case GameObjectTypes.GarrisonBuilding:
                         {
-                            int transportMap = got.garrisonBuilding.SpawnMap;
+                            int transportMap = got.GarrisonBuilding.SpawnMap;
                             if (transportMap != 0)
                                 _transportMaps.Add((ushort)transportMap);
                         }
@@ -4181,7 +4219,7 @@ namespace Game
             {
                 uint entry = result.Read<uint>(0);
 
-                GameObjectTemplate got = Global.ObjectMgr.GetGameObjectTemplate(entry);
+                GameObjectTemplate got = GetGameObjectTemplate(entry);
                 if (got == null)
                 {
                     Log.outError(LogFilter.Sql, $"GameObject template (Entry: {entry}) does not exist but has a record in `gameobject_template_addon`");
@@ -4648,10 +4686,11 @@ namespace Game
                     case GameObjectTypes.Chest:
                     {
                         // scan GO chest with loot including quest items
-                        uint lootId = pair.Value.GetLootId();
-
                         // find quest loot for GO
-                        if (pair.Value.Chest.questID != 0 || Loots.LootStorage.Gameobject.HaveQuestLootFor(lootId))
+                        if (pair.Value.Chest.questID != 0
+                            || LootStorage.Gameobject.HaveQuestLootFor(pair.Value.Chest.chestLoot)
+                            || LootStorage.Gameobject.HaveQuestLootFor(pair.Value.Chest.chestPersonalLoot)
+                            || LootStorage.Gameobject.HaveQuestLootFor(pair.Value.Chest.chestPushLoot))
                             break;
 
                         continue;
@@ -4668,6 +4707,14 @@ namespace Game
                         if (pair.Value.Goober.questID > 0)              //quests objects
                             break;
 
+                        continue;
+                    }
+                    case GameObjectTypes.GatheringNode:
+                    {
+                        // scan GO chest with loot including quest items
+                        // find quest loot for GO
+                        if (LootStorage.Gameobject.HaveQuestLootFor(pair.Value.GatheringNode.chestLoot))
+                            break;
                         continue;
                     }
                     default:
@@ -4750,7 +4797,7 @@ namespace Game
         }
         void CheckGOLinkedTrapId(GameObjectTemplate goInfo, uint dataN, uint N)
         {
-            GameObjectTemplate trapInfo = Global.ObjectMgr.GetGameObjectTemplate(dataN);
+            GameObjectTemplate trapInfo = GetGameObjectTemplate(dataN);
             if (trapInfo != null)
             {
                 if (trapInfo.type != GameObjectTypes.Trap)
@@ -5263,7 +5310,7 @@ namespace Game
 
                 var instanceTemplate = new InstanceTemplate();
                 instanceTemplate.Parent = result.Read<uint>(1);
-                instanceTemplate.ScriptId = Global.ObjectMgr.GetScriptId(result.Read<string>(2));
+                instanceTemplate.ScriptId = GetScriptId(result.Read<string>(2));
 
                 instanceTemplateStorage.Add(mapID, instanceTemplate);
 
@@ -6884,9 +6931,9 @@ namespace Game
                 uint alliance = result.Read<uint>(0);
                 uint horde = result.Read<uint>(1);
 
-                if (Global.ObjectMgr.GetQuestTemplate(alliance) == null)
+                if (GetQuestTemplate(alliance) == null)
                     Log.outError(LogFilter.Sql, "Quest {0} (alliance_id) referenced in `player_factionchange_quests` does not exist, pair skipped!", alliance);
-                else if (Global.ObjectMgr.GetQuestTemplate(horde) == null)
+                else if (GetQuestTemplate(horde) == null)
                     Log.outError(LogFilter.Sql, "Quest {0} (horde_id) referenced in `player_factionchange_quests` does not exist, pair skipped!", horde);
                 else
                     FactionChangeQuests[alliance] = horde;
@@ -7459,7 +7506,7 @@ namespace Game
 
                 if (qinfo.SourceItemId != 0)
                 {
-                    if (Global.ObjectMgr.GetItemTemplate(qinfo.SourceItemId) == null)
+                    if (GetItemTemplate(qinfo.SourceItemId) == null)
                     {
                         Log.outError(LogFilter.Sql, "Quest {0} has `SourceItemId` = {1} but item with entry {2} does not exist, quest can't be done.",
                             qinfo.Id, qinfo.SourceItemId, qinfo.SourceItemId);
@@ -7536,7 +7583,7 @@ namespace Game
                                 Log.outError(LogFilter.Sql, $"Quest {qinfo.Id} objective {obj.Id} has non existing gameobject entry {obj.ObjectID}, quest can't be done.");
                             break;
                         case QuestObjectiveType.TalkTo:
-                            if (Global.ObjectMgr.GetCreatureTemplate((uint)obj.ObjectID) == null)
+                            if (GetCreatureTemplate((uint)obj.ObjectID) == null)
                                 Log.outError(LogFilter.Sql, $"Quest {qinfo.Id} objective {obj.Id} has non existing creature entry {obj.ObjectID}, quest can't be done.");
                             break;
                         case QuestObjectiveType.MinReputation:
@@ -7562,7 +7609,7 @@ namespace Game
                                 Log.outError(LogFilter.Sql, "Quest {0} objective {1} has non existing spell id {2}", qinfo.Id, obj.Id, obj.ObjectID);
                             break;
                         case QuestObjectiveType.WinPetBattleAgainstNpc:
-                            if (obj.ObjectID != 0 && Global.ObjectMgr.GetCreatureTemplate((uint)obj.ObjectID) == null)
+                            if (obj.ObjectID != 0 && GetCreatureTemplate((uint)obj.ObjectID) == null)
                                 Log.outError(LogFilter.Sql, "Quest {0} objective {1} has non existing creature entry {2}, quest can't be done.", qinfo.Id, obj.Id, obj.ObjectID);
                             break;
                         case QuestObjectiveType.DefeatBattlePet:
@@ -7626,7 +7673,7 @@ namespace Game
                         switch (qinfo.RewardChoiceItemType[j])
                         {
                             case LootItemType.Item:
-                                if (Global.ObjectMgr.GetItemTemplate(id) == null)
+                                if (GetItemTemplate(id) == null)
                                 {
                                     Log.outError(LogFilter.Sql, $"Quest {qinfo.Id} has `RewardChoiceItemId{j + 1}` = {id} but item with entry {id} does not exist, quest will not reward this item.");
                                     qinfo.RewardChoiceItemId[j] = 0;          // no changes, quest will not reward this
@@ -7660,7 +7707,7 @@ namespace Game
                     var id = qinfo.RewardItemId[j];
                     if (id != 0)
                     {
-                        if (Global.ObjectMgr.GetItemTemplate(id) == null)
+                        if (GetItemTemplate(id) == null)
                         {
                             Log.outError(LogFilter.Sql, "Quest {0} has `RewardItemId{1}` = {2} but item with entry {3} does not exist, quest will not reward this item.",
                                 qinfo.Id, j + 1, id, id);
@@ -7894,7 +7941,7 @@ namespace Game
 
                     questSet.Add(qinfo.Id);
 
-                    qinfo = Global.ObjectMgr.GetQuestTemplate(breadcrumbForQuestId);
+                    qinfo = GetQuestTemplate(breadcrumbForQuestId);
 
                     //every quest has a list of every breadcrumb towards it
                     qinfo.DependentBreadcrumbQuests.Add(qid);
@@ -8095,7 +8142,7 @@ namespace Game
                 int spawnTrackingID = result.Read<int>(13);
                 bool alwaysAllowMergingBlobs = result.Read<bool>(14);
 
-                if (Global.ObjectMgr.GetQuestTemplate(questID) == null)
+                if (GetQuestTemplate(questID) == null)
                     Log.outError(LogFilter.Sql, $"`quest_poi` quest id ({questID}) Idx1 ({idx1}) does not exist in `quest_template`");
 
                 var blobs = allPoints.LookupByKey(questID);
@@ -8204,14 +8251,14 @@ namespace Game
                 switch (type)
                 {
                     case 0: // Creature
-                        if (Global.ObjectMgr.GetCreatureTemplate(id) == null)
+                        if (GetCreatureTemplate(id) == null)
                         {
                             Log.outError(LogFilter.Sql, "Table `quest_greeting`: creature template entry {0} does not exist.", id);
                             continue;
                         }
                         break;
                     case 1: // GameObject
-                        if (Global.ObjectMgr.GetGameObjectTemplate(id) == null)
+                        if (GetGameObjectTemplate(id) == null)
                         {
                             Log.outError(LogFilter.Sql, "Table `quest_greeting`: gameobject template entry {0} does not exist.", id);
                             continue;
@@ -10616,7 +10663,7 @@ namespace Game
             {
                 uint creatureId = result.Read<uint>(0);
 
-                if (Global.ObjectMgr.GetCreatureTemplate(creatureId) == null)
+                if (GetCreatureTemplate(creatureId) == null)
                 {
                     Log.outError(LogFilter.Sql, $"Table `vehicle_template`: Vehicle {creatureId} does not exist.");
                     continue;
@@ -10864,6 +10911,7 @@ namespace Game
         MultiMap<uint, GossipMenus> gossipMenusStorage = new();
         MultiMap<uint, GossipMenuItems> gossipMenuItemsStorage = new();
         Dictionary<uint, GossipMenuAddon> _gossipMenuAddonStorage = new();
+        Dictionary<Tuple<uint, uint>, GossipMenuItemAddon> _gossipMenuItemAddonStorage = new();
         Dictionary<uint, PointOfInterest> pointsOfInterestStorage = new();
 
         //Creature

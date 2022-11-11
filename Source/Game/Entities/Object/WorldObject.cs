@@ -1218,7 +1218,7 @@ namespace Game.Entities
                     return false;
             }
 
-            if (obj.IsInvisibleDueToDespawn())
+            if (obj.IsInvisibleDueToDespawn(this))
                 return false;
 
             if (!CanDetect(obj, ignoreStealth, checkAlert))
@@ -1271,7 +1271,7 @@ namespace Game.Entities
 
         bool CanDetectInvisibilityOf(WorldObject obj)
         {
-            uint mask = obj.m_invisibility.GetFlags() & m_invisibilityDetect.GetFlags();
+            ulong mask = obj.m_invisibility.GetFlags() & m_invisibilityDetect.GetFlags();
 
             // Check for not detected types
             if (mask != obj.m_invisibility.GetFlags())
@@ -1279,7 +1279,7 @@ namespace Game.Entities
 
             for (int i = 0; i < (int)InvisibilityType.Max; ++i)
             {
-                if (!Convert.ToBoolean(mask & (1 << i)))
+                if (!Convert.ToBoolean(mask & (1ul << i)))
                     continue;
 
                 int objInvisibilityValue = obj.m_invisibility.GetValue((InvisibilityType)i);
@@ -1615,6 +1615,14 @@ namespace Game.Entities
             var checker = new NearestCreatureEntryWithLiveStateInObjectRangeCheck(this, entry, alive, range);
             var searcher = new CreatureLastSearcher(this, checker);
 
+            Cell.VisitAllObjects(this, searcher, range);
+            return searcher.GetTarget();
+        }
+
+        public Creature FindNearestCreatureWithAura(uint entry, uint spellId, float range, bool alive = true)
+        {
+            var checker = new NearestCreatureEntryWithLiveStateAndAuraInObjectRangeCheck(this, entry, spellId, alive, range);
+            var searcher = new CreatureLastSearcher(this, checker);
             Cell.VisitAllObjects(this, searcher, range);
             return searcher.GetTarget();
         }
@@ -3038,7 +3046,7 @@ namespace Game.Entities
 
         public virtual bool IsNeverVisibleFor(WorldObject seer) { return !IsInWorld || IsDestroyedObject(); }
         public virtual bool IsAlwaysVisibleFor(WorldObject seer) { return false; }
-        public virtual bool IsInvisibleDueToDespawn() { return false; }
+        public virtual bool IsInvisibleDueToDespawn(WorldObject seer) { return false; }
         public virtual bool IsAlwaysDetectableFor(WorldObject seer) { return false; }
 
         public virtual bool LoadFromDB(ulong spawnId, Map map, bool addToMap, bool allowDuplicate) { return true; }
@@ -3708,14 +3716,14 @@ namespace Game.Entities
 
         SmoothPhasing _smoothPhasing;
 
-        public FlaggedArray<StealthType> m_stealth = new(2);
-        public FlaggedArray<StealthType> m_stealthDetect = new(2);
+        public FlaggedArray32<StealthType> m_stealth = new(2);
+        public FlaggedArray32<StealthType> m_stealthDetect = new(2);
 
-        public FlaggedArray<InvisibilityType> m_invisibility = new((int)InvisibilityType.Max);
-        public FlaggedArray<InvisibilityType> m_invisibilityDetect = new((int)InvisibilityType.Max);
+        public FlaggedArray64<InvisibilityType> m_invisibility = new((int)InvisibilityType.Max);
+        public FlaggedArray64<InvisibilityType> m_invisibilityDetect = new((int)InvisibilityType.Max);
 
-        public FlaggedArray<ServerSideVisibilityType> m_serverSideVisibility = new(2);
-        public FlaggedArray<ServerSideVisibilityType> m_serverSideVisibilityDetect = new(2);
+        public FlaggedArray32<ServerSideVisibilityType> m_serverSideVisibility = new(2);
+        public FlaggedArray32<ServerSideVisibilityType> m_serverSideVisibilityDetect = new(2);
         #endregion
 
         public static implicit operator bool(WorldObject obj)

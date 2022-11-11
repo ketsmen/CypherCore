@@ -168,7 +168,7 @@ namespace Game.Spells
                 if (unitCaster != null && apply_direct_bonus)
                 {
                     uint bonus = unitCaster.SpellDamageBonusDone(unitTarget, m_spellInfo, (uint)damage, DamageEffectType.SpellDirect, effectInfo);
-                    damage = (int)(bonus + (bonus * variance));
+                    damage = (int)(bonus + (uint)(bonus * variance));
                     damage = (int)unitTarget.SpellDamageBonusTaken(unitCaster, m_spellInfo, (uint)damage, DamageEffectType.SpellDirect);
                 }
 
@@ -697,7 +697,7 @@ namespace Game.Spells
             if (unitCaster != null)
             {
                 uint bonus = unitCaster.SpellDamageBonusDone(unitTarget, m_spellInfo, (uint)damage, DamageEffectType.SpellDirect, effectInfo);
-                damage = (int)(bonus + (bonus * variance));
+                damage = (int)(bonus + (uint)(bonus * variance));
                 damage = (int)unitTarget.SpellDamageBonusTaken(unitCaster, m_spellInfo, (uint)damage, DamageEffectType.SpellDirect);
             }
 
@@ -886,7 +886,7 @@ namespace Game.Spells
             if (unitCaster != null)
                 unitCaster.SpellDamageBonusDone(unitTarget, m_spellInfo, (uint)damage, DamageEffectType.SpellDirect, effectInfo);
 
-            damage = (int)(bonus + (bonus * variance));
+            damage = (int)(bonus + (uint)(bonus * variance));
 
             if (unitCaster != null)
                 damage = (int)unitTarget.SpellDamageBonusTaken(unitCaster, m_spellInfo, (uint)damage, DamageEffectType.SpellDirect);
@@ -1186,118 +1186,6 @@ namespace Game.Spells
             unitCaster.EnergizeBySpell(unitTarget, m_spellInfo, gain, power);
         }
 
-        void SendLoot(ObjectGuid guid, LootType loottype)
-        {
-            Player player = m_caster.ToPlayer();
-            if (player == null)
-                return;
-
-            if (gameObjTarget != null)
-            {
-                // Players shouldn't be able to loot gameobjects that are currently despawned
-                if (!gameObjTarget.IsSpawned() && !player.IsGameMaster())
-                {
-                    Log.outError(LogFilter.Spells, "Possible hacking attempt: Player {0} [{1}] tried to loot a gameobject [{2}] which is on respawn time without being in GM mode!",
-                                    player.GetName(), player.GetGUID().ToString(), gameObjTarget.GetGUID().ToString());
-                    return;
-                }
-                // special case, already has GossipHello inside so return and avoid calling twice
-                if (gameObjTarget.GetGoType() == GameObjectTypes.Goober)
-                {
-                    gameObjTarget.Use(player);
-                    return;
-                }
-
-                player.PlayerTalkClass.ClearMenus();
-                if (gameObjTarget.GetAI().OnGossipHello(player))
-                    return;
-
-                switch (gameObjTarget.GetGoType())
-                {
-                    case GameObjectTypes.Door:
-                    case GameObjectTypes.Button:
-                        gameObjTarget.UseDoorOrButton(0, false, player);
-                        return;
-
-                    case GameObjectTypes.QuestGiver:
-                        player.PrepareGossipMenu(gameObjTarget, gameObjTarget.GetGoInfo().QuestGiver.gossipID, true);
-                        player.SendPreparedGossip(gameObjTarget);
-                        return;
-
-                    case GameObjectTypes.SpellFocus:
-                    {
-                        // triggering linked GO
-                        uint trapEntry = gameObjTarget.GetGoInfo().SpellFocus.linkedTrap;
-                        if (trapEntry != 0)
-                            gameObjTarget.TriggeringLinkedGameObject(trapEntry, player);
-                        return;
-                    }
-                    case GameObjectTypes.Chest:
-                    {
-                        // @todo possible must be moved to loot release (in different from linked triggering)
-                        var bg = player.GetBattleground();
-                        if (bg != null)
-                        {
-                            if (!bg.CanActivateGO((int)gameObjTarget.GetEntry(), (uint)bg.GetPlayerTeam(player.GetGUID())))
-                            {
-                                player.SendLootRelease(guid);
-                                return;
-                            }
-                        }
-
-                        Loot loot = null;
-                        if (gameObjTarget.GetLootState() == LootState.Ready)
-                        {
-                            uint lootId = gameObjTarget.GetGoInfo().GetLootId();
-                            if (lootId != 0)
-                            {
-                                gameObjTarget.SetLootGenerationTime();
-
-                                Group group = player.GetGroup();
-                                bool groupRules = group != null && gameObjTarget.GetGoInfo().Chest.usegrouplootrules != 0;
-
-                                loot = new(gameObjTarget.GetMap(), guid, loottype, groupRules ? group : null);
-                                gameObjTarget.loot = loot;
-
-                                loot.SetDungeonEncounterId(gameObjTarget.GetGoInfo().Chest.DungeonEncounter);
-                                loot.FillLoot(lootId, LootStorage.Gameobject, player, !groupRules, false, gameObjTarget.GetLootMode(), gameObjTarget.GetMap().GetDifficultyLootItemContext());
-
-                                if (gameObjTarget.GetLootMode() > 0)
-                                {
-                                    var addon = gameObjTarget.GetTemplateAddon();
-                                    if (addon != null)
-                                        loot.GenerateMoneyLoot(addon.Mingold, addon.Maxgold);
-                                }
-                            }
-
-                            /// @todo possible must be moved to loot release (in different from linked triggering)
-                            if (gameObjTarget.GetGoInfo().Chest.triggeredEvent != 0)
-                            {
-                                Log.outDebug(LogFilter.Spells, $"Chest ScriptStart id {gameObjTarget.GetGoInfo().Chest.triggeredEvent} for GO {gameObjTarget.GetSpawnId()}");
-                                GameEvents.Trigger(gameObjTarget.GetGoInfo().Chest.triggeredEvent, player, gameObjTarget);
-                            }
-
-                            // triggering linked GO
-                            uint trapEntry = gameObjTarget.GetGoInfo().Chest.linkedTrap;
-                            if (trapEntry != 0)
-                                gameObjTarget.TriggeringLinkedGameObject(trapEntry, player);
-
-                            gameObjTarget.SetLootState(LootState.Activated, player);
-                        }
-                        else
-                            loot = gameObjTarget.GetLootForPlayer(player);
-
-                        // Send loot
-                        if (loot != null)
-                            player.SendLoot(loot);
-                        break;
-                    }
-                    default:
-                        break;
-                }
-            }
-        }
-
         [SpellEffectHandler(SpellEffectName.OpenLock)]
         void EffectOpenLock()
         {
@@ -1394,7 +1282,7 @@ namespace Game.Spells
             }
 
             if (gameObjTarget != null)
-                SendLoot(guid, LootType.Chest);
+                gameObjTarget.Use(player);
             else if (itemTarget != null)
             {
                 itemTarget.SetItemFlag(ItemFieldFlags.Unlocked);
@@ -1412,7 +1300,7 @@ namespace Game.Spells
                     {
                         // Allow one skill-up until respawned
                         if (!gameObjTarget.IsInSkillupList(player.GetGUID()) &&
-                            player.UpdateGatherSkill(skillId, pureSkillValue, (uint)reqSkillValue))
+                            player.UpdateGatherSkill(skillId, pureSkillValue, (uint)reqSkillValue, 1, gameObjTarget))
                             gameObjTarget.AddToSkillupList(player.GetGUID());
                     }
                     else if (itemTarget != null)
@@ -1704,23 +1592,13 @@ namespace Game.Spells
                                     // randomize position for multiple summons
                                     pos = caster.GetRandomPoint(destTarget, radius);
 
-                                summon = caster.SummonCreature(entry, pos, summonType, TimeSpan.FromMilliseconds(duration), 0, m_spellInfo.Id, privateObjectOwner);
+                                summon = unitCaster.GetMap().SummonCreature(entry, pos, properties, (uint)duration, unitCaster, m_spellInfo.Id, 0, privateObjectOwner);
                                 if (summon == null)
                                     continue;
 
+                                summon.SetTempSummonType(summonType);
                                 if (properties.Control == SummonCategory.Ally)
                                     summon.SetOwnerGUID(caster.GetGUID());
-
-                                uint faction = properties.Faction;
-                                if (properties.GetFlags().HasFlag(SummonPropertiesFlags.UseSummonerFaction)) // TODO: Determine priority between faction and flag
-                                {
-                                    WorldObject summoner = summon.GetSummoner();
-                                    if (summoner != null)
-                                        faction = summoner.GetFaction();
-                                }
-
-                                if (faction != 0)
-                                    summon.SetFaction(faction);
 
                                 ExecuteLogEffectSummonObject(effectInfo.Effect, summon);
                             }
@@ -1966,25 +1844,25 @@ namespace Game.Spells
             {
                 creature.StartPickPocketRefillTimer();
 
-                creature.loot = new Loot(creature.GetMap(), creature.GetGUID(), LootType.Pickpocketing, null);
+                creature._loot = new Loot(creature.GetMap(), creature.GetGUID(), LootType.Pickpocketing, null);
                 uint lootid = creature.GetCreatureTemplate().PickPocketId;
                 if (lootid != 0)
-                    creature.loot.FillLoot(lootid, LootStorage.Pickpocketing, player, true);
+                    creature._loot.FillLoot(lootid, LootStorage.Pickpocketing, player, true);
 
                 // Generate extra money for pick pocket loot
                 uint a = RandomHelper.URand(0, creature.GetLevel() / 2);
                 uint b = RandomHelper.URand(0, player.GetLevel() / 2);
-                creature.loot.gold = (uint)(10 * (a + b) * WorldConfig.GetFloatValue(WorldCfg.RateDropMoney));
+                creature._loot.gold = (uint)(10 * (a + b) * WorldConfig.GetFloatValue(WorldCfg.RateDropMoney));
             }
-            else if (creature.loot != null)
+            else if (creature._loot != null)
             {
-                if (creature.loot.loot_type == LootType.Pickpocketing && creature.loot.IsLooted())
-                    player.SendLootError(creature.loot.GetGUID(), creature.GetGUID(), LootError.AlreadPickPocketed);
+                if (creature._loot.loot_type == LootType.Pickpocketing && creature._loot.IsLooted())
+                    player.SendLootError(creature._loot.GetGUID(), creature.GetGUID(), LootError.AlreadPickPocketed);
 
                 return;
             }
 
-            player.SendLoot(creature.loot);
+            player.SendLoot(creature._loot);
         }
 
         [SpellEffectHandler(SpellEffectName.AddFarsight)]
@@ -3615,12 +3493,12 @@ namespace Game.Spells
 
             SkillType skill = creature.GetCreatureTemplate().GetRequiredLootSkill();
 
-            creature.RemoveUnitFlag(UnitFlags.Skinnable);
+            creature.SetUnitFlag3(UnitFlags3.AlreadySkinned);
             creature.SetDynamicFlag(UnitDynFlags.Lootable);
-            creature.loot = new Loot(creature.GetMap(), creature.GetGUID(), LootType.Skinning, null);
-            creature.loot.FillLoot(creature.GetCreatureTemplate().SkinLootId, LootStorage.Skinning, player, true);
-            creature.SetLootRecipient(player, false);
-            player.SendLoot(creature.loot);
+            Loot loot = new(creature.GetMap(), creature.GetGUID(), LootType.Skinning, null);
+            creature.m_personalLoot[player.GetGUID()] = loot;
+            loot.FillLoot(creature.GetCreatureTemplate().SkinLootId, LootStorage.Skinning, player, true);
+            player.SendLoot(loot);
 
             if (skill == SkillType.Skinning)
             {
@@ -5700,16 +5578,16 @@ namespace Game.Spells
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
-            if (unitCaster == null || unitTarget == null || !unitTarget.IsPlayer())
+            if (unitCaster == null || !unitCaster.IsPlayer())
                 return;
 
-            Conversation.CreateConversation((uint)effectInfo.MiscValue, unitCaster, unitTarget.GetPosition(), unitTarget.GetGUID(), GetSpellInfo());
+            Conversation.CreateConversation((uint)effectInfo.MiscValue, unitCaster, destTarget.GetPosition(), unitCaster.GetGUID(), GetSpellInfo());
         }
 
         [SpellEffectHandler(SpellEffectName.SendChatMessage)]
         void EffectSendChatMessage()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();

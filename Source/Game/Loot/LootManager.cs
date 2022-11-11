@@ -65,6 +65,42 @@ namespace Game.Loots
             LoadLootTemplates_Reference();
         }
 
+        public static Dictionary<ObjectGuid, Loot> GenerateDungeonEncounterPersonalLoot(uint dungeonEncounterId, uint lootId, LootStore store,
+            LootType type, WorldObject lootOwner, uint minMoney, uint maxMoney, ushort lootMode, ItemContext context, List<Player> tappers)
+        {
+            Dictionary<Player, Loot> tempLoot = new();
+
+            foreach (Player tapper in tappers)
+            {
+                if (tapper.IsLockedToDungeonEncounter(dungeonEncounterId))
+                    continue;
+
+                Loot loot = new(lootOwner.GetMap(), lootOwner.GetGUID(), type, null);
+                loot.SetItemContext(context);
+                loot.SetDungeonEncounterId(dungeonEncounterId);
+                loot.GenerateMoneyLoot(minMoney, maxMoney);
+
+                tempLoot[tapper] = loot;
+            }
+
+            LootTemplate tab = store.GetLootFor(lootId);
+            if (tab != null)
+                tab.ProcessPersonalLoot(tempLoot, store.IsRatesAllowed(), lootMode);
+
+            Dictionary<ObjectGuid, Loot> personalLoot = new();
+            foreach (var (looter, loot) in tempLoot)
+            {
+                loot.FillNotNormalLootFor(looter);
+
+                if (loot.IsLooted())
+                    continue;
+
+                personalLoot[looter.GetGUID()] = loot;
+            }
+
+            return personalLoot;
+        }
+
         public static void LoadLootTemplates_Creature()
         {
             Log.outInfo(LogFilter.ServerLoading, "Loading creature loot templates...");
@@ -165,17 +201,29 @@ namespace Game.Loots
             List<uint> lootIdSet, lootIdSetUsed = new();
             uint count = Gameobject.LoadAndCollectLootIds(out lootIdSet);
 
+            void checkLootId(uint lootId, uint gameObjectId)
+            {
+                if (!lootIdSet.Contains(lootId))
+                    Gameobject.ReportNonExistingId(lootId, gameObjectId);
+                else
+                    lootIdSetUsed.Add(lootId);
+            }
+
             // remove real entries and check existence loot
             var gotc = Global.ObjectMgr.GetGameObjectTemplates();
-            foreach (var go in gotc)
+            foreach (var (gameObjectId, gameObjectTemplate) in gotc)
             {
-                uint lootid = go.Value.GetLootId();
+                uint lootid = gameObjectTemplate.GetLootId();
                 if (lootid != 0)
+                    checkLootId(lootid, gameObjectId);
+
+                if (gameObjectTemplate.type == GameObjectTypes.Chest)
                 {
-                    if (!lootIdSet.Contains(lootid))
-                        Gameobject.ReportNonExistingId(lootid, go.Value.entry);
-                    else
-                        lootIdSetUsed.Add(lootid);
+                    if (gameObjectTemplate.Chest.chestPersonalLoot != 0)
+                        checkLootId(gameObjectTemplate.Chest.chestPersonalLoot, gameObjectId);
+
+                    if (gameObjectTemplate.Chest.chestPushLoot != 0)
+                        checkLootId(gameObjectTemplate.Chest.chestPushLoot, gameObjectId);
                 }
             }
 
@@ -707,7 +755,7 @@ namespace Game.Loots
                 Entries.Add(item);
         }
 
-        public void Process(Loot loot, bool rate, ushort lootMode, byte groupId)
+        public void Process(Loot loot, bool rate, ushort lootMode, byte groupId, Player personalLooter = null)
         {
             if (groupId != 0)                                            // Group reference uses own processing of the group
             {
@@ -717,7 +765,7 @@ namespace Game.Loots
                 if (Groups[groupId - 1] == null)
                     return;
 
-                Groups[groupId - 1].Process(loot, lootMode);
+                Groups[groupId - 1].Process(loot, lootMode, personalLooter);
                 return;
             }
 
@@ -738,19 +786,156 @@ namespace Game.Loots
 
                     uint maxcount = (uint)(item.maxcount * WorldConfig.GetFloatValue(WorldCfg.RateDropItemReferencedAmount));
                     for (uint loop = 0; loop < maxcount; ++loop)      // Ref multiplicator
-                        Referenced.Process(loot, rate, lootMode, item.groupid);
+                        Referenced.Process(loot, rate, lootMode, item.groupid, personalLooter);
                 }
-                else                                                    // Plain entries (not a reference, not grouped)
-                    loot.AddItem(item);                                // Chance is already checked, just add
+                else
+                {
+                    // Plain entries (not a reference, not grouped)
+                    // Chance is already checked, just add
+                    if (personalLooter == null
+                        || LootItem.AllowedForPlayer(personalLooter, null, item.itemid, item.needs_quest,
+                            !item.needs_quest || Global.ObjectMgr.GetItemTemplate(item.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                            true, item.conditions))
+                        loot.AddItem(item);
+                }
             }
 
             // Now processing groups
             foreach (var group in Groups.Values)
             {
                 if (group != null)
-                    group.Process(loot, lootMode);
+                    group.Process(loot, lootMode, personalLooter);
             }
         }
+
+        public void ProcessPersonalLoot(Dictionary<Player, Loot> personalLoot, bool rate, ushort lootMode)
+        {
+            List<Player> getLootersForItem(Func<Player, bool> predicate)
+            {
+                List<Player> lootersForItem = new();
+                foreach (var (looter, loot) in personalLoot)
+                {
+                    if (predicate(looter))
+                        lootersForItem.Add(looter);
+                }
+                return lootersForItem;
+            }
+
+            // Rolling non-grouped items
+            foreach (LootStoreItem item in Entries)
+            {
+                if ((item.lootmode & lootMode) == 0)                       // Do not add if mode mismatch
+                    continue;
+
+                if (!item.Roll(rate))
+                    continue;                                           // Bad luck for the entry
+
+                if (item.reference > 0)                                // References processing
+                {
+                    LootTemplate referenced = LootStorage.Reference.GetLootFor(item.reference);
+                    if (referenced == null)
+                        continue;                                       // Error message already printed at loading stage
+
+                    uint maxcount = (uint)((float)item.maxcount * WorldConfig.GetFloatValue(WorldCfg.RateDropItemReferencedAmount));
+                    List<Player> gotLoot = new();
+                    for (uint loop = 0; loop < maxcount; ++loop)      // Ref multiplicator
+                    {
+                        var lootersForItem = getLootersForItem(looter => referenced.HasDropForPlayer(looter, item.groupid, true));
+
+                        // nobody can loot this, skip it
+                        if (lootersForItem.Empty())
+                            break;
+
+                        var newEnd = lootersForItem.RemoveAll(looter => gotLoot.Contains(looter));
+
+                        if (lootersForItem.Count == newEnd)
+                        {
+                            // if we run out of looters this means that there are more items dropped than players
+                            // start a new cycle adding one item to everyone
+                            gotLoot.Clear();
+                        }
+                        else
+                            lootersForItem.RemoveRange(newEnd, lootersForItem.Count - newEnd);
+
+                        Player chosenLooter = lootersForItem.SelectRandom();
+                        referenced.Process(personalLoot[chosenLooter], rate, lootMode, item.groupid, chosenLooter);
+                        gotLoot.Add(chosenLooter);
+                    }
+                }
+                else
+                {
+                    // Plain entries (not a reference, not grouped)
+                    // Chance is already checked, just add
+                    var lootersForItem = getLootersForItem(looter =>
+                    {
+                        return LootItem.AllowedForPlayer(looter, null, item.itemid, item.needs_quest,
+                            !item.needs_quest || Global.ObjectMgr.GetItemTemplate(item.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                            true, item.conditions);
+                    });
+
+                    if (!lootersForItem.Empty())
+                    {
+                        Player chosenLooter = lootersForItem.SelectRandom();
+                        personalLoot[chosenLooter].AddItem(item);
+                    }
+                }
+            }
+
+            // Now processing groups
+            foreach (LootGroup group in Groups.Values)
+            {
+                if (group != null)
+                {
+                    var lootersForGroup = getLootersForItem(looter => group.HasDropForPlayer(looter, true));
+
+                    if (!lootersForGroup.Empty())
+                    {
+                        Player chosenLooter = lootersForGroup.SelectRandom();
+                        group.Process(personalLoot[chosenLooter], lootMode);
+                    }
+                }
+            }
+        }
+
+        // True if template includes at least 1 drop for the player
+        bool HasDropForPlayer(Player player, byte groupId, bool strictUsabilityCheck)
+        {
+            if (groupId != 0)                                            // Group reference
+            {
+                if (groupId > Groups.Count)
+                    return false;                                   // Error message already printed at loading stage
+
+                if (Groups[groupId - 1] == null)
+                    return false;
+
+                return Groups[groupId - 1].HasDropForPlayer(player, strictUsabilityCheck);
+            }
+
+            // Checking non-grouped entries
+            foreach (LootStoreItem lootStoreItem in Entries)
+            {
+                if (lootStoreItem.reference > 0)                   // References processing
+                {
+                    LootTemplate referenced = LootStorage.Reference.GetLootFor(lootStoreItem.reference);
+                    if (referenced == null)
+                        continue;                                   // Error message already printed at loading stage
+                    if (referenced.HasDropForPlayer(player, lootStoreItem.groupid, strictUsabilityCheck))
+                        return true;
+                }
+                else if (LootItem.AllowedForPlayer(player, null, lootStoreItem.itemid, lootStoreItem.needs_quest,
+                    !lootStoreItem.needs_quest || Global.ObjectMgr.GetItemTemplate(lootStoreItem.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                    strictUsabilityCheck, lootStoreItem.conditions))
+                    return true;                                    // active quest drop found
+            }
+
+            // Now checking groups
+            foreach (LootGroup group in Groups.Values)
+                if (group != null && group.HasDropForPlayer(player, strictUsabilityCheck))
+                    return true;
+
+            return false;
+        }
+
         public void CopyConditions(List<Condition> conditions)
         {
             foreach (var i in Entries)
@@ -847,7 +1032,7 @@ namespace Game.Loots
         {
             // Checking group chances
             foreach (var group in Groups)
-                    group.Value.Verify(lootstore, id, (byte)(group.Key + 1));
+                group.Value.Verify(lootstore, id, (byte)(group.Key + 1));
 
             // @todo References validity checks
         }
@@ -971,9 +1156,9 @@ namespace Game.Loots
                 return false;
             }
 
-            public void Process(Loot loot, ushort lootMode)
+            public void Process(Loot loot, ushort lootMode, Player personalLooter = null)
             {
-                LootStoreItem item = Roll(loot, lootMode);
+                LootStoreItem item = Roll(lootMode, personalLooter);
                 if (item != null)
                     loot.AddItem(item);
             }
@@ -1045,10 +1230,10 @@ namespace Game.Loots
             LootStoreItemList ExplicitlyChanced = new();                // Entries with chances defined in DB
             LootStoreItemList EqualChanced = new();                     // Zero chances - every entry takes the same chance
 
-            LootStoreItem Roll(Loot loot, ushort lootMode)
+            LootStoreItem Roll(ushort lootMode, Player personalLooter = null)
             {
                 LootStoreItemList possibleLoot = ExplicitlyChanced;
-                possibleLoot.RemoveAll(new LootGroupInvalidSelector(loot, lootMode).Check);
+                possibleLoot.RemoveAll(new LootGroupInvalidSelector(lootMode, personalLooter).Check);
 
                 if (!possibleLoot.Empty())                             // First explicitly chanced entries are checked
                 {
@@ -1066,38 +1251,54 @@ namespace Game.Loots
                 }
 
                 possibleLoot = EqualChanced;
-                possibleLoot.RemoveAll(new LootGroupInvalidSelector(loot, lootMode).Check);
+                possibleLoot.RemoveAll(new LootGroupInvalidSelector(lootMode, personalLooter).Check);
                 if (!possibleLoot.Empty())                              // If nothing selected yet - an item is taken from equal-chanced part
                     return possibleLoot.SelectRandom();
 
                 return null;                                            // Empty drop from the group
+            }
+
+            public bool HasDropForPlayer(Player player, bool strictUsabilityCheck)
+            {
+                foreach (LootStoreItem lootStoreItem in ExplicitlyChanced)
+                    if (LootItem.AllowedForPlayer(player, null, lootStoreItem.itemid, lootStoreItem.needs_quest,
+                        !lootStoreItem.needs_quest || Global.ObjectMgr.GetItemTemplate(lootStoreItem.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                        strictUsabilityCheck, lootStoreItem.conditions))
+                        return true;
+
+                foreach (LootStoreItem lootStoreItem in EqualChanced)
+                    if (LootItem.AllowedForPlayer(player, null, lootStoreItem.itemid, lootStoreItem.needs_quest,
+                        !lootStoreItem.needs_quest || Global.ObjectMgr.GetItemTemplate(lootStoreItem.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                        strictUsabilityCheck, lootStoreItem.conditions))
+                        return true;
+
+                return false;
             }
         }
     }
 
     public struct LootGroupInvalidSelector
     {
-        public LootGroupInvalidSelector(Loot loot, ushort lootMode)
+        public LootGroupInvalidSelector(ushort lootMode, Player personalLooter)
         {
-            _loot = loot;
             _lootMode = lootMode;
+            _personalLooter = personalLooter;
         }
 
         public bool Check(LootStoreItem item)
         {
-            if (!Convert.ToBoolean(item.lootmode & _lootMode))
+            if ((item.lootmode & _lootMode) == 0)
                 return true;
 
-            byte foundDuplicates = 0;
-            foreach (var lootItem in _loot.items)
-                if (lootItem.itemid == item.itemid)
-                    if (++foundDuplicates == _loot.maxDuplicates)
-                        return true;
+            if (_personalLooter && !LootItem.AllowedForPlayer(_personalLooter, null, item.itemid, item.needs_quest,
+                !item.needs_quest || Global.ObjectMgr.GetItemTemplate(item.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                true, item.conditions))
+                return true;
 
             return false;
         }
 
-        Loot _loot;
         ushort _lootMode;
+        Player _personalLooter;
     }
 }

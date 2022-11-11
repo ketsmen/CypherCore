@@ -4728,6 +4728,46 @@ namespace Scripts.Spells.Generic
         }
     }
 
+    [Script] // 132334 - Trainer Heal Cooldown (SERVERSIDE)
+    class spell_gen_trainer_heal_cooldown : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SharedConst.SpellReviveBattlePets);
+        }
+
+        public override bool Load()
+        {
+            return GetUnitOwner().IsPlayer();
+        }
+
+        void UpdateReviveBattlePetCooldown(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Player target = GetUnitOwner().ToPlayer();
+            SpellInfo reviveBattlePetSpellInfo = Global.SpellMgr.GetSpellInfo(SharedConst.SpellReviveBattlePets, Difficulty.None);
+
+            if (target.GetSession().GetBattlePetMgr().IsBattlePetSystemEnabled())
+            {
+                TimeSpan expectedCooldown = TimeSpan.FromMilliseconds(GetAura().GetMaxDuration());
+                TimeSpan remainingCooldown = target.GetSpellHistory().GetRemainingCategoryCooldown(reviveBattlePetSpellInfo);
+                if (remainingCooldown > TimeSpan.Zero)
+                {
+                    if (remainingCooldown < expectedCooldown)
+                        target.GetSpellHistory().ModifyCooldown(reviveBattlePetSpellInfo, expectedCooldown - remainingCooldown);
+                }
+                else
+                {
+                    target.GetSpellHistory().StartCooldown(reviveBattlePetSpellInfo, 0, null, false, expectedCooldown);
+                }
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectApply.Add(new EffectApplyHandler(UpdateReviveBattlePetCooldown, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+        }
+    }
+    
     [Script] // 45313 - Anchor Here
     class spell_gen_anchor_here : SpellScript
     {
@@ -4824,7 +4864,45 @@ namespace Scripts.Spells.Generic
             OnEffectHitTarget.Add(new EffectHandler(HandleScriptEffect, 0, SpellEffectName.ScriptEffect));
         }
     }
-    
+
+    [Script] // 83781 - Reverse Cast Ride Vehicle
+    class spell_gen_reverse_cast_target_to_caster_triggered : SpellScript
+    {
+        void HandleScript(uint effIndex)
+        {
+            GetHitUnit().CastSpell(GetCaster(), (uint)GetSpellInfo().GetEffect(effIndex).CalcValue(), true);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleScript, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+
+    // Note: this spell unsummons any creature owned by the caster. Set appropriate target conditions on the DB.
+    // 84065 - Despawn All Summons
+    // 83935 - Despawn All Summons
+    [Script] // 160938 - Despawn All Summons (Garrison Intro Only)
+    class spell_gen_despawn_all_summons_owned_by_caster : SpellScript
+    {
+        void HandleScriptEffect(uint effIndex)
+        {
+            Unit caster = GetCaster();
+            if (caster != null)
+            {
+                Creature target = GetHitCreature();
+
+                if (target.GetOwner() == caster)
+                    target.DespawnOrUnsummon();
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleScriptEffect, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+
     // 40307 - Stasis Field
     class StasisFieldSearcher : ICheck<Unit>
     {

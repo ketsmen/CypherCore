@@ -57,7 +57,6 @@ namespace Framework.Constants
         public const int SpellReviveBattlePets = 125439;
         public const int SpellSummonBattlePet = 118301;
         public const int MaxBattlePetLevel = 25;
-        public static TimeSpan ReviveBattlePetsCooldown = TimeSpan.FromSeconds(180);
 
         /// <summary>
         /// Lfg Const
@@ -201,6 +200,7 @@ namespace Framework.Constants
         public const int BoundaryVisualizeFailsafeLimit = 750;
         public const int BoundaryVisualizeSpawnHeight = 5;
         public const uint AIDefaultCooldown = 5000;
+        public const uint CreatureTappersSoftCap = 5;
 
         /// <summary>
         /// GameObject Const
@@ -1854,13 +1854,14 @@ namespace Framework.Constants
         TradeLevelReq,
         UptimeUpdate,
         VmapIndoorCheck,
-        WardenClientBanDuration,
+        WardenClientResponseDelay,
         WardenClientCheckHoldoff,
         WardenClientFailAction,
-        WardenClientResponseDelay,
+        WardenClientBanDuration,
         WardenEnabled,
-        WardenNumMemChecks,
-        WardenNumOtherChecks,
+        WardenNumInjectChecks,
+        WardenNumLuaChecks,
+        WardenNumClientModChecks,
         Weather,
         WeeklyQuestResetTimeWDay,
         WintergraspBattletime,
@@ -1871,7 +1872,8 @@ namespace Framework.Constants
         WintergraspPlrMinLvl,
         WintergraspRestartAfterCrash,
         WorldBossLevelDiff,
-        XpBoostDaymask
+        XpBoostDaymask,
+        Max
     }
 
     public enum TimerType

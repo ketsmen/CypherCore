@@ -296,10 +296,10 @@ namespace Game
                         else
                             go.SetLootState(LootState.Ready);
                     }
-                    else
+                    else if (go.GetGoType() != GameObjectTypes.GatheringNode && go.IsFullyLooted())
                         go.SetLootState(LootState.JustDeactivated);
 
-                    loot.Clear();
+                    go.OnLootRelease(player);
                 }
                 else
                 {
@@ -357,11 +357,14 @@ namespace Game
 
                 if (loot.IsLooted())
                 {
-                    creature.RemoveDynamicFlag(UnitDynFlags.Lootable);
+                    if (creature.IsFullyLooted())
+                    {
+                        creature.RemoveDynamicFlag(UnitDynFlags.Lootable);
 
-                    // skip pickpocketing loot for speed, skinning timer reduction is no-op in fact
-                    if (!creature.IsAlive())
-                        creature.AllLootRemovedFromCorpse();
+                        // skip pickpocketing loot for speed, skinning timer reduction is no-op in fact
+                        if (!creature.IsAlive())
+                            creature.AllLootRemovedFromCorpse();
+                    }
                 }
                 else
                 {
@@ -371,11 +374,11 @@ namespace Game
                         loot.roundRobinPlayer.Clear();
                         loot.NotifyLootList(creature.GetMap());
                     }
-
-                    // force dynflag update to update looter and lootable info
-                    creature.m_values.ModifyValue(creature.m_objectData).ModifyValue(creature.m_objectData.DynamicFlags);
-                    creature.ForceUpdateFieldChange();
                 }
+
+                // force dynflag update to update looter and lootable info
+                creature.m_values.ModifyValue(creature.m_objectData).ModifyValue(creature.m_objectData.DynamicFlags);
+                creature.ForceUpdateFieldChange();
             }
         }
 
