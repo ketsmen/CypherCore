@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.Chat;
@@ -22,6 +8,7 @@ using Game.Entities;
 using Game.Groups;
 using Game.Maps;
 using Game.Misc;
+using Game.Movement;
 using Game.Spells;
 using System;
 using System.Collections.Generic;
@@ -1111,7 +1098,7 @@ namespace Game.AI
                         float x = (float)(pos.GetPositionX() + (Math.Cos(o - (Math.PI / 2)) * e.Target.x) + (Math.Cos(o) * e.Target.y));
                         float y = (float)(pos.GetPositionY() + (Math.Sin(o - (Math.PI / 2)) * e.Target.x) + (Math.Sin(o) * e.Target.y));
                         float z = pos.GetPositionZ() + e.Target.z;
-                        target.ToCreature().GetMotionMaster().MovePoint(EventId.SmartRandomPoint, x, y, z);
+                        target.ToCreature().GetMotionMaster().MovePoint(e.Action.moveOffset.PointId, x, y, z);
                     }
                     break;
                 }
@@ -1606,7 +1593,7 @@ namespace Game.AI
                     if (targets.Empty())
                         break;
 
-                    List<WorldObject> casters = GetTargets(CreateSmartEvent(SmartEvents.UpdateIc, 0, 0, 0, 0, 0, 0, SmartActions.None, 0, 0, 0, 0, 0, 0, (SmartTargets)e.Action.crossCast.targetType, e.Action.crossCast.targetParam1, e.Action.crossCast.targetParam2, e.Action.crossCast.targetParam3, 0, 0), unit);
+                    List<WorldObject> casters = GetTargets(CreateSmartEvent(SmartEvents.UpdateIc, 0, 0, 0, 0, 0, 0, SmartActions.None, 0, 0, 0, 0, 0, 0, 0, (SmartTargets)e.Action.crossCast.targetType, e.Action.crossCast.targetParam1, e.Action.crossCast.targetParam2, e.Action.crossCast.targetParam3, 0, 0), unit);
                     foreach (var caster in casters)
                     {
                         if (!IsUnit(caster))
@@ -1824,12 +1811,28 @@ namespace Game.AI
                 }
                 case SmartActions.JumpToPos:
                 {
-                    foreach (var target in targets)
+                    WorldObject target = null;
+
+                    if (!targets.Empty())
+                        target = targets.SelectRandom();
+
+                    Position pos = new(e.Target.x, e.Target.y, e.Target.z);
+                    if (target)
                     {
-                        Creature creature = target.ToCreature();
-                        if (creature != null)
-                            creature.GetMotionMaster().MoveJump(e.Target.x, e.Target.y, e.Target.z, 0.0f, e.Action.jump.speedxy, e.Action.jump.speedz);
+                        float x, y, z;
+                        target.GetPosition(out x, out y, out z);
+                        if (e.Action.jump.ContactDistance > 0)
+                            target.GetContactPoint(_me, out x, out y, out z, e.Action.jump.ContactDistance);
+                        pos = new Position(x + e.Target.x, y + e.Target.y, z + e.Target.z);
                     }
+
+                    if (e.Action.jump.Gravity != 0 || e.Action.jump.UseDefaultGravity != 0)
+                    {
+                        float gravity = e.Action.jump.UseDefaultGravity != 0 ? (float)MotionMaster.gravity : e.Action.jump.Gravity;
+                        _me.GetMotionMaster().MoveJumpWithGravity(pos, e.Action.jump.SpeedXY, gravity, e.Action.jump.PointId);
+                    }
+                    else
+                        _me.GetMotionMaster().MoveJump(pos, e.Action.jump.SpeedXY, e.Action.jump.SpeedZ, e.Action.jump.PointId);
                     break;
                 }
                 case SmartActions.GoSetLootState:
@@ -2531,7 +2534,7 @@ namespace Game.AI
         }
 
         SmartScriptHolder CreateSmartEvent(SmartEvents e, SmartEventFlags event_flags, uint event_param1, uint event_param2, uint event_param3, uint event_param4, uint event_param5,
-            SmartActions action, uint action_param1, uint action_param2, uint action_param3, uint action_param4, uint action_param5, uint action_param6,
+            SmartActions action, uint action_param1, uint action_param2, uint action_param3, uint action_param4, uint action_param5, uint action_param6, uint action_param7,
             SmartTargets t, uint target_param1, uint target_param2, uint target_param3, uint target_param4, uint phaseMask)
         {
             SmartScriptHolder script = new();
@@ -2552,6 +2555,7 @@ namespace Game.AI
             script.Action.raw.param4 = action_param4;
             script.Action.raw.param5 = action_param5;
             script.Action.raw.param6 = action_param6;
+            script.Action.raw.param7 = action_param7;
 
             script.Target.type = t;
             script.Target.raw.param1 = target_param1;

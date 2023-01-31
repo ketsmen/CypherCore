@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */﻿
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.﻿
 
 namespace Framework.Constants
 {
@@ -67,7 +53,7 @@ namespace Framework.Constants
         PetType = 45,                // mask             0              0                  true if player has a pet of given type(s)
         Taxi = 46,                   // 0                0              0                  true if player is on taxi
         Queststate = 47,             // quest_id         state_mask     0                  true if player is in any of the provided quest states for the quest (1 = not taken, 2 = completed, 8 = in progress, 32 = failed, 64 = rewarded)
-        ObjectiveProgress = 48,      // ID               0              0                  true if player has ID objective complete, but quest not yet rewarded
+        ObjectiveProgress = 48,      // ID               0              progressValue      true if player has ID objective progress equal to ConditionValue3 (and quest is in quest log)
         DifficultyId = 49,           // Difficulty       0              0                  true is map has difficulty id
         Gamemaster = 50,             // canBeGM          0              0                  true if player is gamemaster (or can be gamemaster)
         ObjectEntryGuid = 51,        // TypeID           entry          guid               true if object is type TypeID and the entry is 0 or matches entry of the object or matches guid of the object

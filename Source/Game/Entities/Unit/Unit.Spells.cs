@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -257,12 +243,12 @@ namespace Game.Entities
             float TakenTotalMod = 1.0f;
 
             // Mod damage from spell mechanic
-            uint mechanicMask = spellProto.GetAllEffectsMechanicMask();
+            ulong mechanicMask = spellProto.GetAllEffectsMechanicMask();
             if (mechanicMask != 0)
             {
                 TakenTotalMod *= GetTotalAuraMultiplier(AuraType.ModMechanicDamageTakenPercent, aurEff =>
                 {
-                    if ((mechanicMask & (1 << aurEff.GetMiscValue())) != 0)
+                    if ((mechanicMask & (1ul << aurEff.GetMiscValue())) != 0)
                         return true;
                     return false;
                 });
@@ -300,6 +286,11 @@ namespace Game.Entities
                     TakenTotalMod *= GetTotalAuraMultiplier(AuraType.ModSpellDamageFromCaster, aurEff =>
                     {
                         return aurEff.GetCasterGUID() == caster.GetGUID() && aurEff.IsAffectingSpell(spellProto);
+                    });
+
+                    TakenTotalMod *= GetTotalAuraMultiplier(AuraType.ModDamageTakenFromCasterByLabel, aurEff =>
+                    {
+                        return aurEff.GetCasterGUID() == caster.GetGUID() && spellProto.HasLabel((uint)aurEff.GetMiscValue());
                     });
                 }
 
@@ -1331,12 +1322,12 @@ namespace Game.Entities
             return mask;
         }
 
-        public uint GetMechanicImmunityMask()
+        public ulong GetMechanicImmunityMask()
         {
-            uint mask = 0;
+            ulong mask = 0;
             var mechanicList = m_spellImmune[(int)SpellImmunity.Mechanic];
             foreach (var pair in mechanicList)
-                mask |= (1u << (int)pair.Value);
+                mask |= (1ul << (int)pair.Value);
 
             return mask;
         }
@@ -1814,7 +1805,7 @@ namespace Game.Entities
         public bool HasInvisibilityAura() { return HasAuraType(AuraType.ModInvisibility); }
         public bool IsFeared() { return HasAuraType(AuraType.ModFear); }
         public bool IsFrozen() { return HasAuraState(AuraStateType.Frozen); }
-        public bool HasRootAura() { return HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2); }
+        public bool HasRootAura() { return HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2) || HasAuraType(AuraType.ModRootDisableGravity); }
         public bool IsPolymorphed()
         {
             uint transformId = GetTransformSpell();
@@ -2648,17 +2639,18 @@ namespace Game.Entities
 
             return false;
         }
-        public bool HasAuraWithMechanic(uint mechanicMask)
+
+        public bool HasAuraWithMechanic(ulong mechanicMask)
         {
             foreach (var pair in GetAppliedAuras())
             {
                 SpellInfo spellInfo = pair.Value.GetBase().GetSpellInfo();
-                if (spellInfo.Mechanic != 0 && Convert.ToBoolean(mechanicMask & (1 << (int)spellInfo.Mechanic)))
+                if (spellInfo.Mechanic != 0 && Convert.ToBoolean(mechanicMask & (1ul << (int)spellInfo.Mechanic)))
                     return true;
 
                 foreach (var spellEffectInfo in spellInfo.GetEffects())
                     if (spellEffectInfo != null && pair.Value.HasEffect(spellEffectInfo.EffectIndex) && spellEffectInfo.IsEffect() && spellEffectInfo.Mechanic != 0)
-                        if ((mechanicMask & (1 << (int)spellEffectInfo.Mechanic)) != 0)
+                        if ((mechanicMask & (1ul << (int)spellEffectInfo.Mechanic)) != 0)
                             return true;
             }
 
@@ -2669,6 +2661,7 @@ namespace Game.Entities
         {
             return !m_modAuras.LookupByKey(auraType).Empty();
         }
+
         public bool HasAuraTypeWithCaster(AuraType auraType, ObjectGuid caster)
         {
             foreach (var auraEffect in GetAuraEffectsByType(auraType))
@@ -2677,6 +2670,7 @@ namespace Game.Entities
 
             return false;
         }
+
         public bool HasAuraTypeWithMiscvalue(AuraType auraType, int miscvalue)
         {
             foreach (var auraEffect in GetAuraEffectsByType(auraType))
@@ -2685,6 +2679,7 @@ namespace Game.Entities
 
             return false;
         }
+
         public bool HasAuraTypeWithAffectMask(AuraType auraType, SpellInfo affectedSpell)
         {
             foreach (var auraEffect in GetAuraEffectsByType(auraType))
@@ -2693,6 +2688,7 @@ namespace Game.Entities
 
             return false;
         }
+
         public bool HasAuraTypeWithValue(AuraType auraType, int value)
         {
             foreach (var auraEffect in GetAuraEffectsByType(auraType))
@@ -2930,26 +2926,36 @@ namespace Game.Entities
             UpdateInterruptMask();
         }
 
-        public void RemoveAurasWithMechanic(uint mechanicMaskToRemove, AuraRemoveMode removeMode = AuraRemoveMode.Default, uint exceptSpellId = 0, bool withEffectMechanics = false)
+        public void RemoveAurasWithMechanic(ulong mechanicMaskToRemove, AuraRemoveMode removeMode = AuraRemoveMode.Default, uint exceptSpellId = 0, bool withEffectMechanics = false)
         {
+            List<Aura> aurasToUpdateTargets = new();
             RemoveAppliedAuras(aurApp =>
             {
                 Aura aura = aurApp.GetBase();
                 if (exceptSpellId != 0 && aura.GetId() == exceptSpellId)
                     return false;
 
-                uint appliedMechanicMask = aura.GetSpellInfo().GetSpellMechanicMaskByEffectMask(aurApp.GetEffectMask());
+                ulong appliedMechanicMask = aura.GetSpellInfo().GetSpellMechanicMaskByEffectMask(aurApp.GetEffectMask());
                 if ((appliedMechanicMask & mechanicMaskToRemove) == 0)
                     return false;
 
                 // spell mechanic matches required mask for removal
-                if (((1 << (int)aura.GetSpellInfo().Mechanic) & mechanicMaskToRemove) != 0 || withEffectMechanics)
+                if (((1ul << (int)aura.GetSpellInfo().Mechanic) & mechanicMaskToRemove) != 0 || withEffectMechanics)
                     return true;
 
                 // effect mechanic matches required mask for removal - don't remove, only update targets
-                aura.UpdateTargetMap(aura.GetCaster());
+                aurasToUpdateTargets.Add(aura);
                 return false;
             }, removeMode);
+
+            foreach (Aura aura in aurasToUpdateTargets)
+            {
+                aura.UpdateTargetMap(aura.GetCaster());
+
+                // Fully remove the aura if all effects were removed
+                if (!aura.IsPassive() && aura.GetOwner() == this && aura.GetApplicationOfTarget(GetGUID()) == null)
+                    aura.Remove(removeMode);
+            }
         }
         public void RemoveAurasDueToSpellBySteal(uint spellId, ObjectGuid casterGUID, WorldObject stealer, int stolenCharges = 1)
         {
@@ -3084,7 +3090,7 @@ namespace Game.Entities
                     else
                     {
                         Unit caster = aura.GetCaster();
-                        if (!caster || !caster.IsInPhase(this))
+                        if (!caster || !caster.InSamePhase(this))
                             RemoveOwnedAura(pair);
                     }
                 }
@@ -3094,7 +3100,7 @@ namespace Game.Entities
             for (var i = 0; i < m_scAuras.Count; i++)
             {
                 var aura = m_scAuras[i];
-                if (aura.GetUnitOwner() != this && (!onPhaseChange || !aura.GetUnitOwner().IsInPhase(this)))
+                if (aura.GetUnitOwner() != this && (!onPhaseChange || !aura.GetUnitOwner().InSamePhase(this)))
                     aura.Remove();
             }
         }
@@ -3356,7 +3362,7 @@ namespace Game.Entities
 
         public void RemoveAurasByShapeShift()
         {
-            uint mechanic_mask = (1 << (int)Mechanics.Snare) | (1 << (int)Mechanics.Root);
+            ulong mechanic_mask = (1 << (int)Mechanics.Snare) | (1 << (int)Mechanics.Root);
             foreach (var pair in GetAppliedAuras())
             {
                 Aura aura = pair.Value.GetBase();

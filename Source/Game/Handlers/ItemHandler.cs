@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -89,13 +75,13 @@ namespace Game
 
             if (Player.IsBankPos(InventorySlots.Bag0, swapInvItem.Slot1) && !CanUseBank())
             {
-                Log.outDebug(LogFilter.Network, "WORLD: HandleSwapInvItemOpcode - {0} not found or you can't interact with him.", m_currentBankerGUID.ToString());
+                Log.outDebug(LogFilter.Network, $"WORLD: HandleSwapInvItemOpcode - {_player.PlayerTalkClass.GetInteractionData().SourceGuid} not found or you can't interact with him.");
                 return;
             }
 
             if (Player.IsBankPos(InventorySlots.Bag0, swapInvItem.Slot2) && !CanUseBank())
             {
-                Log.outDebug(LogFilter.Network, "WORLD: HandleSwapInvItemOpcode - {0} not found or you can't interact with him.", m_currentBankerGUID.ToString());
+                Log.outDebug(LogFilter.Network, $"WORLD: HandleSwapInvItemOpcode - {_player.PlayerTalkClass.GetInteractionData().SourceGuid} not found or you can't interact with him.");
                 return;
             }
 
@@ -155,13 +141,13 @@ namespace Game
 
             if (Player.IsBankPos(swapItem.ContainerSlotA, swapItem.SlotA) && !CanUseBank())
             {
-                Log.outDebug(LogFilter.Network, "WORLD: HandleSwapInvItemOpcode - {0} not found or you can't interact with him.", m_currentBankerGUID.ToString());
+                Log.outDebug(LogFilter.Network, $"WORLD: HandleSwapInvItemOpcode - {_player.PlayerTalkClass.GetInteractionData().SourceGuid} not found or you can't interact with him.");
                 return;
             }
 
             if (Player.IsBankPos(swapItem.ContainerSlotB, swapItem.SlotB) && !CanUseBank())
             {
-                Log.outDebug(LogFilter.Network, "WORLD: HandleSwapInvItemOpcode - {0} not found or you can't interact with him.", m_currentBankerGUID.ToString());
+                Log.outDebug(LogFilter.Network, $"WORLD: HandleSwapInvItemOpcode - {_player.PlayerTalkClass.GetInteractionData().SourceGuid} not found or you can't interact with him.");
                 return;
             }
 
@@ -808,8 +794,8 @@ namespace Game
                     gems[i] = gem;
                     gemData[i].ItemId = gem.GetEntry();
                     gemData[i].Context = (byte)gem.m_itemData.Context;
-                    for (int b = 0; b < ((List<uint>)gem.m_itemData.BonusListIDs).Count && b < 16; ++b)
-                        gemData[i].BonusListIDs[b] = (ushort)((List<uint>)gem.m_itemData.BonusListIDs)[b];
+                    for (int b = 0; b < gem.GetBonusListIDs().Count && b < 16; ++b)
+                        gemData[i].BonusListIDs[b] = (ushort)gem.GetBonusListIDs()[b];
 
                     gemProperties[i] = CliDB.GemPropertiesStorage.LookupByKey(gem.GetTemplate().GetGemProperties());
                 }
@@ -1039,9 +1025,9 @@ namespace Game
         {
             // bankerGUID parameter is optional, set to 0 by default.
             if (bankerGUID.IsEmpty())
-                bankerGUID = m_currentBankerGUID;
+                bankerGUID = _player.PlayerTalkClass.GetInteractionData().SourceGuid;
 
-            bool isUsingBankCommand = (bankerGUID == GetPlayer().GetGUID() && bankerGUID == m_currentBankerGUID);
+            bool isUsingBankCommand = bankerGUID == GetPlayer().GetGUID() && bankerGUID == _player.PlayerTalkClass.GetInteractionData().SourceGuid;
 
             if (!isUsingBankCommand)
             {

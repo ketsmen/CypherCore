@@ -1,19 +1,5 @@
-/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.Entities;
@@ -39,9 +25,6 @@ namespace Scripts.World.ItemScripts
         //Pilefakefur
         public const uint NesingwaryTrapper = 25835;
 
-        //Helpthemselves
-        public const uint TrappedMammothCalf = 25850;
-
         //Theemissary
         public const uint Leviroth = 26452;
 
@@ -58,16 +41,6 @@ namespace Scripts.World.ItemScripts
             187982, 187995, 187996, 187997, 187998,
             187999, 188000, 188001, 188002, 188003,
             188004, 188005, 188006, 188007, 188008,
-        };
-
-        //Helpthemselves
-        public static uint[] MammothTraps =
-        {
-            188022, 188024, 188025, 188026, 188027,
-            188028, 188029, 188030, 188031, 188032,
-            188033, 188034, 188035, 188036, 188037,
-            188038, 188039, 188040, 188041, 188042,
-            188043, 188044
         };
     }
 
@@ -195,35 +168,6 @@ namespace Scripts.World.ItemScripts
                 return true;
             }
 
-            return false;
-        }
-    }
-
-    [Script]
-    class item_dehta_trap_smasher : ItemScript
-    {
-        public item_dehta_trap_smasher() : base("item_dehta_trap_smasher") { }
-
-        public override bool OnUse(Player player, Item item, SpellCastTargets targets, ObjectGuid castId)
-        {
-            if (player.GetQuestStatus(QuestIds.CannotHelpThemselves) != QuestStatus.Incomplete)
-                return false;
-
-            Creature pMammoth = player.FindNearestCreature(CreatureIds.TrappedMammothCalf, 5.0f);
-            if (!pMammoth)
-                return false;
-
-            foreach (var id in GameObjectIds.MammothTraps)
-            {
-                GameObject pTrap = player.FindNearestGameObject(id, 11.0f);
-                if (pTrap)
-                {
-                    pMammoth.GetAI().DoAction(1);
-                    pTrap.SetGoState(GameObjectState.Ready);
-                    player.KilledMonsterCredit(CreatureIds.TrappedMammothCalf);
-                    return true;
-                }
-            }
             return false;
         }
     }

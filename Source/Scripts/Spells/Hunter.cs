@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.Entities;
@@ -34,6 +20,7 @@ namespace Scripts.Spells.Hunter
         public const uint Exhilaration = 109304;
         public const uint ExhilarationPet = 128594;
         public const uint ExhilarationR2 = 231546;
+        public const uint ExplosiveShotDamage = 212680;
         public const uint Lonewolf = 155228;
         public const uint MastersCallTriggered = 62305;
         public const uint Misdirection = 34477;
@@ -86,7 +73,7 @@ namespace Scripts.Spells.Hunter
             OnEffectRemove.Add(new EffectApplyHandler(RemoveEffect, 0, AuraType.PeriodicDummy, AuraEffectHandleModes.Real));
         }
     }
-    
+
     [Script] // 186257 - Aspect of the Cheetah
     class spell_hun_aspect_cheetah : AuraScript
     {
@@ -118,12 +105,31 @@ namespace Scripts.Spells.Hunter
         void HandleOnHit()
         {
             if (GetCaster().HasAura(SpellIds.ExhilarationR2) && !GetCaster().HasAura(SpellIds.Lonewolf))
-                GetCaster().CastSpell((Unit)null, SpellIds.ExhilarationPet, true);
+                GetCaster().CastSpell(null, SpellIds.ExhilarationPet, true);
         }
 
         public override void Register()
         {
             OnHit.Add(new HitHandler(HandleOnHit));
+        }
+    }
+
+    [Script] // 212431 - Explosive Shot
+    class spell_hun_explosive_shot : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.ExplosiveShotDamage);
+        }
+
+        void HandlePeriodic(AuraEffect aurEff)
+        {
+            GetCaster()?.CastSpell(GetTarget(), SpellIds.ExplosiveShotDamage, true);
+        }
+
+        public override void Register()
+        {
+            OnEffectPeriodic.Add(new EffectPeriodicHandler(HandlePeriodic, 0, AuraType.PeriodicDummy));
         }
     }
 
@@ -340,7 +346,7 @@ namespace Scripts.Spells.Hunter
             AfterCast.Add(new CastHandler(HandleAfterCast));
         }
     }
-    
+
     [Script] // 53480 - Roar of Sacrifice
     class spell_hun_roar_of_sacrifice : AuraScript
     {

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -97,7 +83,7 @@ namespace Game.Chat
 
             uint faction = target.GetFaction();
             ulong npcflags = (ulong)target.m_unitData.NpcFlags[1] << 32 | target.m_unitData.NpcFlags[0];
-            uint mechanicImmuneMask = cInfo.MechanicImmuneMask;
+            ulong mechanicImmuneMask = cInfo.MechanicImmuneMask;
             uint displayid = target.GetDisplayId();
             uint nativeid = target.GetNativeDisplayId();
             uint entry = target.GetEntry();
@@ -150,6 +136,7 @@ namespace Game.Chat
             handler.SendSysMessage(CypherStrings.NpcinfoArmor, target.GetArmor());
             handler.SendSysMessage(CypherStrings.NpcinfoPosition, target.GetPositionX(), target.GetPositionY(), target.GetPositionZ());
             handler.SendSysMessage(CypherStrings.ObjectinfoAiInfo, target.GetAIName(), target.GetScriptName());
+            handler.SendSysMessage(CypherStrings.ObjectinfoStringIds, target.GetStringIds()[0], target.GetStringIds()[1], target.GetStringIds()[2]);
             handler.SendSysMessage(CypherStrings.NpcinfoReactstate, target.GetReactState());
             var ai = target.GetAI();
             if (ai != null)
@@ -166,7 +153,7 @@ namespace Game.Chat
 
             handler.SendSysMessage(CypherStrings.NpcinfoMechanicImmune, mechanicImmuneMask);
             foreach (int value in Enum.GetValues(typeof(Mechanics)))
-                if (Convert.ToBoolean(mechanicImmuneMask & (1 << (value - 1))))
+                if (Convert.ToBoolean(mechanicImmuneMask & (1ul << (value - 1))))
                     handler.SendSysMessage("{0} (0x{1:X})", (Mechanics)value, value);
 
             return true;

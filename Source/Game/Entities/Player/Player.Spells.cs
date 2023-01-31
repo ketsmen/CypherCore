@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -1025,12 +1011,16 @@ namespace Game.Entities
 
         public bool HasSkill(SkillType skill)
         {
+            return HasSkill((uint)skill);
+        }
+        public bool HasSkill(uint skill)
+        {
             if (skill == 0)
                 return false;
 
             SkillInfo skillInfoField = m_activePlayerData.Skill;
 
-            var skillStatusData = mSkillStatus.LookupByKey((uint)skill);
+            var skillStatusData = mSkillStatus.LookupByKey(skill);
             return skillStatusData != null && skillStatusData.State != SkillState.Deleted && skillInfoField.SkillRank[skillStatusData.Pos] != 0;
         }
         public void SetSkill(SkillType skill, uint step, uint newVal, uint maxVal)
@@ -1794,7 +1784,7 @@ namespace Game.Entities
                 if (apply)
                 {
                     if (!HasAura((uint)spellId))
-                        CastSpell(this, (uint)spellId, item);
+                        CastSpell(this, (uint)spellId, new CastSpellExtraArgs().SetCastItem(item));
                 }
                 else
                     RemoveAurasDueToSpell((uint)spellId);
@@ -2025,7 +2015,7 @@ namespace Game.Entities
         void SendKnownSpells()
         {
             SendKnownSpells knownSpells = new();
-            knownSpells.InitialLogin = false; // @todo
+            knownSpells.InitialLogin = IsLoading();
 
             foreach (var spell in m_spells.ToList())
             {
@@ -2036,6 +2026,8 @@ namespace Game.Entities
                     continue;
 
                 knownSpells.KnownSpells.Add(spell.Key);
+                if (spell.Value.Favorite)
+                    knownSpells.FavoriteSpells.Add(spell.Key);
             }
 
             SendPacket(knownSpells);
@@ -2046,22 +2038,27 @@ namespace Game.Entities
             SendPacket(new SendUnlearnSpells());
         }
 
-        public void LearnSpell(uint spellId, bool dependent, uint fromSkill = 0, bool suppressMessaging = false)
+        public void LearnSpell(uint spellId, bool dependent, uint fromSkill = 0, bool suppressMessaging = false, int? traitDefinitionId = null)
         {
             PlayerSpell spell = m_spells.LookupByKey(spellId);
 
             bool disabled = (spell != null) && spell.Disabled;
             bool active = !disabled || spell.Active;
+            bool favorite = spell != null ? spell.Favorite : false;
 
-            bool learning = AddSpell(spellId, active, true, dependent, false, false, fromSkill);
+            bool learning = AddSpell(spellId, active, true, dependent, false, false, fromSkill, favorite, traitDefinitionId);
 
             // prevent duplicated entires in spell book, also not send if not in world (loading)
             if (learning && IsInWorld)
             {
-                LearnedSpells packet = new();
-                packet.SpellID.Add(spellId);
-                packet.SuppressMessaging = suppressMessaging;
-                SendPacket(packet);
+                LearnedSpells learnedSpells = new();
+                LearnedSpellInfo learnedSpellInfo = new();
+                learnedSpellInfo.SpellID = spellId;
+                learnedSpellInfo.IsFavorite = favorite;
+                learnedSpellInfo.TraitDefinitionID = traitDefinitionId;
+                learnedSpells.SuppressMessaging = suppressMessaging;
+                learnedSpells.ClientLearnedSpellData.Add(learnedSpellInfo);
+                SendPacket(learnedSpells);
             }
 
             // learn all disabled higher ranks and required spells (recursive)
@@ -2261,6 +2258,18 @@ namespace Game.Entities
                 SendPacket(unlearnedSpells);
             }
         }
+
+        public void SetSpellFavorite(uint spellId, bool favorite)
+        {
+            var spell = m_spells.LookupByKey(spellId);
+            if (spell == null)
+                return;
+
+            spell.Favorite = favorite;
+            if (spell.State == PlayerSpellState.Unchanged)
+                spell.State = PlayerSpellState.Changed;
+        }
+
         bool HandlePassiveSpellLearn(SpellInfo spellInfo)
         {
             // note: form passives activated with shapeshift spells be implemented by HandleShapeshiftBoosts instead of spell_learn_spell
@@ -2313,7 +2322,7 @@ namespace Game.Entities
             return null;
         }
 
-        bool AddSpell(uint spellId, bool active, bool learning, bool dependent, bool disabled, bool loading = false, uint fromSkill = 0)
+        bool AddSpell(uint spellId, bool active, bool learning, bool dependent, bool disabled, bool loading = false, uint fromSkill = 0, bool favorite = false, int? traitDefinitionId = null)
         {
             SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(spellId, Difficulty.None);
             if (spellInfo == null)
@@ -2391,6 +2400,20 @@ namespace Game.Entities
                         spell.State = PlayerSpellState.Changed;
                     dependent_set = true;
                 }
+
+                if (spell.TraitDefinitionId != traitDefinitionId)
+                {
+                    if (spell.TraitDefinitionId.HasValue)
+                    {
+                        TraitDefinitionRecord traitDefinition = CliDB.TraitDefinitionStorage.LookupByKey(spell.TraitDefinitionId.Value);
+                        if (traitDefinition != null)
+                            RemoveOverrideSpell((uint)traitDefinition.OverridesSpellID, spellId);
+                    }
+
+                    spell.TraitDefinitionId = traitDefinitionId;
+                }
+
+                spell.Favorite = favorite;
 
                 // update active state for known spell
                 if (spell.Active != active && spell.State != PlayerSpellState.Removed && !spell.Disabled)
@@ -2473,6 +2496,9 @@ namespace Game.Entities
                 newspell.Active = active;
                 newspell.Dependent = dependent;
                 newspell.Disabled = disabled;
+                newspell.Favorite = favorite;
+                if (traitDefinitionId.HasValue)
+                    newspell.TraitDefinitionId = traitDefinitionId.Value;
 
                 // replace spells in action bars and spellbook to bigger rank if only one spell rank must be accessible
                 if (newspell.Active && !newspell.Disabled && spellInfo.IsRanked())
@@ -2522,26 +2548,73 @@ namespace Game.Entities
                     return false;
             }
 
+            bool castSpell = false;
+
             // cast talents with SPELL_EFFECT_LEARN_SPELL (other dependent spells will learned later as not auto-learned)
             // note: all spells with SPELL_EFFECT_LEARN_SPELL isn't passive
             if (!loading && spellInfo.HasAttribute(SpellCustomAttributes.IsTalent) && spellInfo.HasEffect(SpellEffectName.LearnSpell))
             {
                 // ignore stance requirement for talent learn spell (stance set for spell only for client spell description show)
-                CastSpell(this, spellId, true);
+                castSpell = true;
             }
             // also cast passive spells (including all talents without SPELL_EFFECT_LEARN_SPELL) with additional checks
             else if (spellInfo.IsPassive())
-            {
-                if (HandlePassiveSpellLearn(spellInfo))
-                    CastSpell(this, spellId, true);
-            }
+                castSpell = HandlePassiveSpellLearn(spellInfo);
             else if (spellInfo.HasEffect(SpellEffectName.SkillStep))
-            {
-                CastSpell(this, spellId, true);
-                return false;
-            }
+                castSpell = true;
             else if (spellInfo.HasAttribute(SpellAttr1.CastWhenLearned))
-                CastSpell(this, spellId, true);
+                castSpell = true;
+
+            if (castSpell)
+            {
+                CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
+
+                if (traitDefinitionId.HasValue)
+                {
+                    TraitConfig traitConfig = GetTraitConfig((int)(uint)m_activePlayerData.ActiveCombatTraitConfigID);
+                    if (traitConfig != null)
+                    {
+                        int traitEntryIndex = traitConfig.Entries.FindIndexIf(traitEntry =>
+                        {
+                            return CliDB.TraitNodeEntryStorage.LookupByKey(traitEntry.TraitNodeEntryID)?.TraitDefinitionID == traitDefinitionId;
+                        });
+
+                        int rank = 0;
+                        if (traitEntryIndex >= 0)
+                            rank = traitConfig.Entries[traitEntryIndex].Rank + traitConfig.Entries[traitEntryIndex].GrantedRanks;
+
+                        if (rank > 0)
+                        {
+                            var traitDefinitionEffectPoints = TraitMgr.GetTraitDefinitionEffectPointModifiers(traitDefinitionId.Value);
+                            if (traitDefinitionEffectPoints != null)
+                            {
+                                foreach (TraitDefinitionEffectPointsRecord traitDefinitionEffectPoint in traitDefinitionEffectPoints)
+                                {
+                                    if (traitDefinitionEffectPoint.EffectIndex >= spellInfo.GetEffects().Count)
+                                        continue;
+
+                                    float basePoints = Global.DB2Mgr.GetCurveValueAt((uint)traitDefinitionEffectPoint.CurveID, rank);
+                                    if (traitDefinitionEffectPoint.GetOperationType() == TraitPointsOperationType.Multiply)
+                                        basePoints *= spellInfo.GetEffect((uint)traitDefinitionEffectPoint.EffectIndex).CalcBaseValue(this, null, 0, -1);
+
+                                    args.AddSpellMod(SpellValueMod.BasePoint0 + traitDefinitionEffectPoint.EffectIndex, (int)basePoints);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                CastSpell(this, spellId, args);
+                if (spellInfo.HasEffect(SpellEffectName.SkillStep))
+                    return false;
+            }
+
+            if (traitDefinitionId.HasValue)
+            {
+                TraitDefinitionRecord traitDefinition = CliDB.TraitDefinitionStorage.LookupByKey(traitDefinitionId.Value);
+                if (traitDefinition != null)
+                    AddOverrideSpell(traitDefinition.OverridesSpellID, spellId);
+            }
 
             // update free primary prof.points (if any, can be none in case GM .learn prof. learning)
             uint freeProfs = GetFreePrimaryProfessionPoints();
@@ -2761,6 +2834,16 @@ namespace Game.Entities
             GetSpellModValues(spellInfo, op, spell, basevalue, ref totalflat, ref totalmul);
 
             basevalue = (float)(basevalue + totalflat) * totalmul;
+        }
+
+        public void ApplySpellMod(SpellInfo spellInfo, SpellModOp op, ref double basevalue, Spell spell = null)
+        {
+            float totalmul = 1.0f;
+            int totalflat = 0;
+
+            GetSpellModValues(spellInfo, op, spell, basevalue, ref totalflat, ref totalmul);
+
+            basevalue = (double)(basevalue + totalflat) * totalmul;
         }
 
         public void GetSpellModValues<T>(SpellInfo spellInfo, SpellModOp op, Spell spell, T baseValue, ref int flat, ref float pct) where T : IComparable
@@ -3046,8 +3129,10 @@ namespace Game.Entities
         void SendSupercededSpell(uint oldSpell, uint newSpell)
         {
             SupercededSpells supercededSpells = new();
-            supercededSpells.SpellID.Add(newSpell);
-            supercededSpells.Superceded.Add(oldSpell);
+            LearnedSpellInfo learnedSpellInfo = new();
+            learnedSpellInfo.SpellID = newSpell;
+            learnedSpellInfo.Superceded = (int)oldSpell;
+            supercededSpells.ClientLearnedSpellData.Add(learnedSpellInfo);
             SendPacket(supercededSpells);
         }
 
@@ -3511,5 +3596,7 @@ namespace Game.Entities
         public bool Active;
         public bool Dependent;
         public bool Disabled;
+        public bool Favorite;
+        public int? TraitDefinitionId;
     }
 }

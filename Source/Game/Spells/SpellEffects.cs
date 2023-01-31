@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -316,6 +302,8 @@ namespace Game.Spells
 
             m_caster.m_Events.AddEventAtOffset(() =>
             {
+                targets.Update(caster); // refresh pointers stored in targets
+
                 // original caster guid only for GO cast
                 CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
                 args.SetOriginalCaster(originalCaster);
@@ -1592,7 +1580,7 @@ namespace Game.Spells
                                     // randomize position for multiple summons
                                     pos = caster.GetRandomPoint(destTarget, radius);
 
-                                summon = unitCaster.GetMap().SummonCreature(entry, pos, properties, (uint)duration, unitCaster, m_spellInfo.Id, 0, privateObjectOwner);
+                                summon = caster.GetMap().SummonCreature(entry, pos, properties, (uint)duration, unitCaster, m_spellInfo.Id, 0, privateObjectOwner);
                                 if (summon == null)
                                     continue;
 
@@ -2127,30 +2115,7 @@ namespace Game.Spells
             }
 
             // select enchantment duration
-            uint duration;
-
-            // rogue family enchantments exception by duration
-            if (m_spellInfo.Id == 38615)
-                duration = 1800;                                    // 30 mins
-            // other rogue family enchantments always 1 hour (some have spell damage=0, but some have wrong data in EffBasePoints)
-            else if (m_spellInfo.SpellFamilyName == SpellFamilyNames.Rogue)
-                duration = 3600;                                    // 1 hour
-            // shaman family enchantments
-            else if (m_spellInfo.SpellFamilyName == SpellFamilyNames.Shaman)
-                duration = 3600;                                    // 30 mins
-            // other cases with this SpellVisual already selected
-            else if (m_spellInfo.GetSpellVisual() == 215)
-                duration = 1800;                                    // 30 mins
-            // some fishing pole bonuses except Glow Worm which lasts full hour
-            else if (m_spellInfo.GetSpellVisual() == 563 && m_spellInfo.Id != 64401)
-                duration = 600;                                     // 10 mins
-            else if (m_spellInfo.Id == 29702)
-                duration = 300;                                     // 5 mins
-            else if (m_spellInfo.Id == 37360)
-                duration = 300;                                     // 5 mins
-            // default case
-            else
-                duration = 3600;                                    // 1 hour
+            uint duration = (uint)pEnchant.Duration;
 
             // item can be in trade slot and have owner diff. from caster
             Player item_owner = itemTarget.GetOwner();
@@ -3863,7 +3828,7 @@ namespace Game.Spells
                     continue;
 
                 if (RandomHelper.randChance(aura.CalcDispelChance(unitTarget, !unitTarget.IsFriendlyTo(m_caster))))
-                    if (Convert.ToBoolean(aura.GetSpellInfo().GetAllEffectsMechanicMask() & (1 << mechanic)))
+                    if ((aura.GetSpellInfo().GetAllEffectsMechanicMask() & (1ul << mechanic)) != 0)
                         dispel_list.Add(new KeyValuePair<uint, ObjectGuid>(aura.GetId(), aura.GetCasterGUID()));
             }
 
@@ -4764,7 +4729,7 @@ namespace Game.Spells
             if (!CliDB.CurrencyTypesStorage.ContainsKey(effectInfo.MiscValue))
                 return;
 
-            unitTarget.ToPlayer().ModifyCurrency((CurrencyTypes)effectInfo.MiscValue, damage);
+            unitTarget.ToPlayer().ModifyCurrency((uint)effectInfo.MiscValue, damage);
         }
 
         [SpellEffectHandler(SpellEffectName.CastButton)]
@@ -5167,6 +5132,34 @@ namespace Game.Spells
             playerCaster.GetSession().GetBattlePetMgr().GrantBattlePetLevel(unitTarget.GetBattlePetCompanionGUID(), (ushort)damage);
         }
 
+        [SpellEffectHandler(SpellEffectName.GiveExperience)]
+        void EffectGiveExperience()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player playerTarget = unitTarget?.ToPlayer();
+            if (!playerTarget)
+                return;
+
+            uint xp = Quest.XPValue(playerTarget, (uint)effectInfo.MiscValue, (uint)effectInfo.MiscValueB);
+            playerTarget.GiveXP(xp, null);
+        }
+
+        [SpellEffectHandler(SpellEffectName.GiveRestedEcperienceBonus)]
+        void EffectGiveRestedExperience()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player playerTarget = unitTarget?.ToPlayer();
+            if (!playerTarget)
+                return;
+
+            // effect value is number of resting hours
+            playerTarget.GetRestMgr().AddRestBonus(RestTypes.XP, damage * Time.Hour * playerTarget.GetRestMgr().CalcExtraPerSec(RestTypes.XP, 0.125f));
+        }
+
         [SpellEffectHandler(SpellEffectName.HealBattlepetPct)]
         void EffectHealBattlePetPct()
         {
@@ -5208,19 +5201,11 @@ namespace Game.Spells
             if (unitTarget == null || !unitTarget.IsCreature())
                 return;
 
-            var quality = BattlePetBreedQuality.Poor;
-            switch (damage)
-            {
-                case 85:
-                    quality = BattlePetBreedQuality.Rare;
-                    break;
-                case 75:
-                    quality = BattlePetBreedQuality.Uncommon;
-                    break;
-                default:
-                    // Ignore Epic Battle-Stones
-                    break;
-            }
+            var qualityRecord = CliDB.BattlePetBreedQualityStorage.Values.FirstOrDefault(a1 => a1.MaxQualityRoll < damage);
+
+            BattlePetBreedQuality quality = BattlePetBreedQuality.Poor;
+            if (qualityRecord != null)
+                quality = (BattlePetBreedQuality)qualityRecord.QualityEnum;
 
             playerCaster.GetSession().GetBattlePetMgr().ChangeBattlePetQuality(unitTarget.GetBattlePetCompanionGUID(), quality);
         }
@@ -5633,6 +5618,114 @@ namespace Game.Spells
                 return;
 
             player.GetSession().GetCollectionMgr().AddTransmogIllusion(illusionId);
+        }
+
+        [SpellEffectHandler(SpellEffectName.ModifyAuraStacks)]
+        void EffectModifyAuraStacks()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Aura targetAura = unitTarget.GetAura(effectInfo.TriggerSpell);
+            if (targetAura == null)
+                return;
+
+            switch (effectInfo.MiscValue)
+            {
+                case 0:
+                    targetAura.ModStackAmount(damage);
+                    break;
+                case 1:
+                    targetAura.SetStackAmount((byte)damage);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        [SpellEffectHandler(SpellEffectName.ModifyCooldown)]
+        void EffectModifyCooldown()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            unitTarget.GetSpellHistory().ModifyCooldown(effectInfo.TriggerSpell, TimeSpan.FromMilliseconds(damage));
+        }
+
+        [SpellEffectHandler(SpellEffectName.ModifyCooldowns)]
+        void EffectModifyCooldowns()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            unitTarget.GetSpellHistory().ModifyCoooldowns(itr =>
+            {
+                SpellInfo spellOnCooldown = Global.SpellMgr.GetSpellInfo(itr.SpellId, Difficulty.None);
+                if ((int)spellOnCooldown.SpellFamilyName != effectInfo.MiscValue)
+                    return false;
+
+                int bitIndex = effectInfo.MiscValueB - 1;
+                if (bitIndex < 0 || bitIndex >= sizeof(uint) * 8)
+                    return false;
+
+                FlagArray128 reqFlag = new();
+                reqFlag[bitIndex / 32] = 1u << (bitIndex % 32);
+                return (spellOnCooldown.SpellFamilyFlags & reqFlag);
+            }, TimeSpan.FromMilliseconds(damage));
+        }
+
+        [SpellEffectHandler(SpellEffectName.ModifyCooldownsByCategory)]
+        void EffectModifyCooldownsByCategory()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            unitTarget.GetSpellHistory().ModifyCoooldowns(itr => Global.SpellMgr.GetSpellInfo(itr.SpellId, Difficulty.None).CategoryId == effectInfo.MiscValue, TimeSpan.FromMilliseconds(damage));
+        }
+
+        [SpellEffectHandler(SpellEffectName.ModifyCharges)]
+        void EffectModifySpellCharges()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            for (int i = 0; i < damage; ++i)
+                unitTarget.GetSpellHistory().RestoreCharge((uint)effectInfo.MiscValue);
+        }
+
+        [SpellEffectHandler(SpellEffectName.CreateTraitTreeConfig)]
+        void EffectCreateTraitTreeConfig()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            TraitConfigPacket newConfig = new();
+            newConfig.Type = TraitMgr.GetConfigTypeForTree(effectInfo.MiscValue);
+            if (newConfig.Type != TraitConfigType.Generic)
+                return;
+
+            newConfig.TraitSystemID = CliDB.TraitTreeStorage.LookupByKey(effectInfo.MiscValue).TraitSystemID;
+            target.CreateTraitConfig(newConfig);
+        }
+
+        [SpellEffectHandler(SpellEffectName.ChangeActiveCombatTraitConfig)]
+        void EffectChangeActiveCombatTraitConfig()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            if (m_customArg is not TraitConfigPacket)
+                return;
+
+            target.UpdateTraitConfig(m_customArg as TraitConfigPacket, damage, false);
         }
     }
 

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -33,7 +19,7 @@ using System.Numerics;
 
 namespace Game.BattleGrounds
 {
-    public class Battleground : IDisposable
+    public class Battleground : ZoneScript, IDisposable
     {
         public Battleground(BattlegroundTemplate battlegroundTemplate)
         {
@@ -68,7 +54,14 @@ namespace Game.BattleGrounds
             Global.BattlegroundMgr.RemoveBattleground(GetTypeID(), GetInstanceID());
             // unload map
             if (m_Map)
-                m_Map.SetUnload();
+            {
+                m_Map.UnloadAll(); // unload all objects (they may hold a reference to bg in their ZoneScript pointer)
+                m_Map.SetUnload(); // mark for deletion by MapManager
+
+                //unlink to prevent crash, always unlink all pointer reference before destruction
+                m_Map.SetBG(null);
+                m_Map = null;
+            }
 
             // remove from bg free slot queue
             RemoveFromBGFreeSlotQueue();
@@ -1836,9 +1829,10 @@ namespace Game.BattleGrounds
             return Global.ObjectMgr.GetClosestGraveYard(player, GetPlayerTeam(player.GetGUID()), player);
         }
 
-        public void TriggerGameEvent(uint gameEventId)
+        public override void TriggerGameEvent(uint gameEventId, WorldObject source = null, WorldObject target = null)
         {
-            GameEvents.TriggerForMap(gameEventId, GetBgMap());
+            ProcessEvent(target, gameEventId, source);
+            GameEvents.TriggerForMap(gameEventId, GetBgMap(), source, target);
             foreach (var guid in GetPlayers().Keys)
             {
                 Player player = Global.ObjAccessor.FindPlayer(guid);
@@ -2035,7 +2029,7 @@ namespace Game.BattleGrounds
         public virtual void EventPlayerDroppedFlag(Player player) { }
         public virtual void EventPlayerClickedOnFlag(Player player, GameObject target_obj) { }
 
-        public virtual void ProcessEvent(WorldObject obj, uint eventId, WorldObject invoker = null) { }
+        public override void ProcessEvent(WorldObject obj, uint eventId, WorldObject invoker = null) { }
 
         // this function can be used by spell to interact with the BG map
         public virtual void DoAction(uint action, ulong arg) { }

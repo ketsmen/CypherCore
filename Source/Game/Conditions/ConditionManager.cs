@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -656,7 +642,7 @@ namespace Game
             var pMenuItemBounds = Global.ObjectMgr.GetGossipMenuItemsMapBounds(cond.SourceGroup);
             foreach (var gossipMenuItem in pMenuItemBounds)
             {
-                if (gossipMenuItem.MenuId == cond.SourceGroup && gossipMenuItem.OptionId == cond.SourceEntry)
+                if (gossipMenuItem.MenuID == cond.SourceGroup && gossipMenuItem.OrderIndex == cond.SourceEntry)
                 {
                     gossipMenuItem.Conditions.Add(cond);
                     return true;
@@ -2442,6 +2428,45 @@ namespace Game
             if (condition.CovenantID != 0 && player.m_playerData.CovenantID != condition.CovenantID)
                 return false;
 
+            if (condition.TraitNodeEntryID.Any(traitNodeEntryId => traitNodeEntryId != 0))
+            {
+                var getTraitNodeEntryRank = ushort? (int traitNodeEntryId) =>
+                {
+                    foreach (var traitConfig in player.m_activePlayerData.TraitConfigs)
+                    {
+                        if ((TraitConfigType)(int)traitConfig.Type == TraitConfigType.Combat)
+                        {
+                            if (player.m_activePlayerData.ActiveCombatTraitConfigID != traitConfig.ID
+                                || !((TraitCombatConfigFlags)(int)traitConfig.CombatConfigFlags).HasFlag(TraitCombatConfigFlags.ActiveForSpec))
+                                continue;
+                        }
+
+                        foreach (var traitEntry in traitConfig.Entries)
+                            if (traitEntry.TraitNodeEntryID == traitNodeEntryId)
+                                return (ushort)traitEntry.Rank;
+                    }
+                    return null;
+                };
+
+                results = new bool[condition.TraitNodeEntryID.Length];
+                Array.Fill(results, true);
+                for (var i = 0; i < condition.TraitNodeEntryID.Count(); ++i)
+                {
+                    if (condition.TraitNodeEntryID[i] == 0)
+                        continue;
+
+                    var rank = getTraitNodeEntryRank(condition.TraitNodeEntryID[i]);
+                    if (!rank.HasValue)
+                        results[i] = false;
+                    else if (condition.TraitNodeEntryMinRank[i] != 0 && rank < condition.TraitNodeEntryMinRank[i])
+                        results[i] = false;
+                    else if (condition.TraitNodeEntryMaxRank[i] != 0 && rank > condition.TraitNodeEntryMaxRank[i])
+                        results[i] = false;
+                }
+
+                if (!PlayerConditionLogic(condition.TraitNodeEntryLogic, results))
+                    return false;
+            }
             return true;
         }
 
@@ -2530,13 +2555,13 @@ namespace Game
                 case UnitConditionVariable.HasHelpfulAuraDispelType:
                     return unit.GetAuraApplication(aurApp => !aurApp.GetFlags().HasFlag(AuraFlags.Negative) && (int)aurApp.GetBase().GetSpellInfo().Dispel == value) != null ? value : 0;
                 case UnitConditionVariable.HasHelpfulAuraMechanic:
-                    return unit.GetAuraApplication(aurApp => !aurApp.GetFlags().HasFlag(AuraFlags.Negative) && (aurApp.GetBase().GetSpellInfo().GetSpellMechanicMaskByEffectMask(aurApp.GetEffectMask()) & (1 << value)) != 0) != null ? value : 0;
+                    return unit.GetAuraApplication(aurApp => !aurApp.GetFlags().HasFlag(AuraFlags.Negative) && (aurApp.GetBase().GetSpellInfo().GetSpellMechanicMaskByEffectMask(aurApp.GetEffectMask()) & (1ul << value)) != 0) != null ? value : 0;
                 case UnitConditionVariable.HasHarmfulAuraSpell:
                     return unit.GetAuraApplication((uint)value, aurApp => aurApp.GetFlags().HasFlag(AuraFlags.Negative)) != null ? value : 0;
                 case UnitConditionVariable.HasHarmfulAuraDispelType:
                     return unit.GetAuraApplication(aurApp => aurApp.GetFlags().HasFlag(AuraFlags.Negative) && (int)aurApp.GetBase().GetSpellInfo().Dispel == value) != null ? value : 0;
                 case UnitConditionVariable.HasHarmfulAuraMechanic:
-                    return unit.GetAuraApplication(aurApp => aurApp.GetFlags().HasFlag(AuraFlags.Negative) && (aurApp.GetBase().GetSpellInfo().GetSpellMechanicMaskByEffectMask(aurApp.GetEffectMask()) & (1 << value)) != 0) != null ? value : 0;
+                    return unit.GetAuraApplication(aurApp => aurApp.GetFlags().HasFlag(AuraFlags.Negative) && (aurApp.GetBase().GetSpellInfo().GetSpellMechanicMaskByEffectMask(aurApp.GetEffectMask()) & (1ul << value)) != 0) != null ? value : 0;
                 case UnitConditionVariable.HasHarmfulAuraSchool:
                     return unit.GetAuraApplication(aurApp => aurApp.GetFlags().HasFlag(AuraFlags.Negative) && ((int)aurApp.GetBase().GetSpellInfo().GetSchoolMask() & (1 << value)) != 0) != null ? value : 0;
                 case UnitConditionVariable.DamagePhysicalPct:
@@ -2685,13 +2710,13 @@ namespace Game
                 case UnitConditionVariable.IsEnemy:
                     return (otherUnit && unit.GetReactionTo(otherUnit) <= ReputationRank.Hostile) ? 1 : 0;
                 case UnitConditionVariable.IsSpecMelee:
-                    return (unit.IsPlayer() && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Flags.HasFlag(ChrSpecializationFlag.Melee)) ? 1 : 0;
+                    return (unit.IsPlayer() && unit.ToPlayer().GetPrimarySpecialization() != 0 && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Flags.HasFlag(ChrSpecializationFlag.Melee)) ? 1 : 0;
                 case UnitConditionVariable.IsSpecTank:
-                    return (unit.IsPlayer() && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Role == 0) ? 1 : 0;
+                    return (unit.IsPlayer() && unit.ToPlayer().GetPrimarySpecialization() != 0 && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Role == 0) ? 1 : 0;
                 case UnitConditionVariable.IsSpecRanged:
-                    return (unit.IsPlayer() && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Flags.HasFlag(ChrSpecializationFlag.Ranged)) ? 1 : 0;
+                    return (unit.IsPlayer() && unit.ToPlayer().GetPrimarySpecialization() != 0 && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Flags.HasFlag(ChrSpecializationFlag.Ranged)) ? 1 : 0;
                 case UnitConditionVariable.IsSpecHealer:
-                    return (unit.IsPlayer() && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Role == 1) ? 1 : 0;
+                    return (unit.IsPlayer() && unit.ToPlayer().GetPrimarySpecialization() != 0 && CliDB.ChrSpecializationStorage.LookupByKey(unit.ToPlayer().GetPrimarySpecialization()).Role == 1) ? 1 : 0;
                 case UnitConditionVariable.IsPlayerControlledNPC:
                     return unit.IsCreature() && unit.HasUnitFlag(UnitFlags.PlayerControlled) ? 1 : 0;
                 case UnitConditionVariable.IsDying:

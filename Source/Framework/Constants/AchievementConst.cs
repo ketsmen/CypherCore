@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using System;
 
@@ -421,10 +407,26 @@ namespace Framework.Constants
         PlayerBestWeeklyWinPvpTierInBracketEqualOrGreaterThan = 325, // (Mainline) Player has best weekly win at or above "{@PVP_TIER_ENUM}" for "{@PVP_BRACKET}"
         PlayerHasVanillaCollectorsEdition = 326, // Player has Vanilla Collector's Edition
         PlayerHasItemWithKeystoneLevelModifierEqualOrGreaterThan = 327,
-
         PlayerMythicPlusRatingInDisplaySeasonEqualOrGreaterThan = 329, /*NYI*/ // Player has Mythic+ Rating of at least "{#DungeonScore}" in {DisplaySeason}
+        PlayerMythicPlusLadderRatingInDisplaySeasonEqualOrGreaterThan = 333, /*NYI*/ // Player has Mythic+ Ladder Rating of at least "{#DungeonScore}" in {DisplaySeason}
+        MythicPlusRatingIsInTop01Percent = 334, /*NYI*/ // top 0.1% rating
+        PlayerAuraWithLabelStackCountEqualOrGreaterThan = 335, // Player has at least {#Stacks} stacks of aura "{Label}"
+        PlayerAuraWithLabelStackCountEqual = 336, // Target has exactly {#Stacks} stacks of aura with label "{Label}"
+        PlayerAuraWithLabelStackCountEqualOrLessThan = 337, // Player has at most {#Stacks} stacks of aura "{Label}"
+        PlayerIsInCrossFactionGroup = 338, // Player is in a cross faction group
+        PlayerHasTraitNodeEntryInActiveConfig = 340, // Player has {TraitNodeEntry} node in currently active config
+        PlayerHasTraitNodeEntryInActiveConfigRankGreaterOrEqualThan = 341, // Player has at least {#Rank} for {TraitNodeEntry} node in currently active config
+        PlayerHasPurchasedCombatTraitRanks = 342, /*NYI*/ // Player has purchased at least {#Count} talent points in active combat config
+        PlayerHasPurchasedTraitRanksInTraitTree = 343, /*NYI*/ // Player has purchased at least {#Count} ranks in {#TraitTree}
+        PlayerDaysSinceLogout = 344,
+        CraftingOrderSkillLineAbility = 347, /*NYI*/
+        CraftingOrderProfession = 348, /*NYI*/ // ProfessionEnum
 
-        MythicPlusRatingIsInTop01Percent = 334, // top 0.1% rating
+        PlayerHasPerksProgramPendingReward = 350,
+        PlayerCanUseItem = 351, // Player can use item {#Item}
+
+        PlayerHasAtLeastProfPathRanks = 355, // Player has purchased or granted at least {#Count} ranks in {SkillLine} config
+        PlayerHasAtLeastMissingProfPathRanks = 356, /*NYI*/ // Player is missing least {#Count} ranks in {SkillLine} config
     }
 
     public enum CriteriaFailEvent : byte
@@ -714,6 +716,13 @@ namespace Framework.Constants
         MythicPlusRatingAttained = 230, /*NYI*/ // (Player) Mythic+ Rating "{#DungeonScore}" attained
         SpentTalentPoint = 231, /*NYI*/ // (Player) spent talent point
         MythicPlusDisplaySeasonEnded = 234, /*NYI*/ // {DisplaySeason}
+        WinRatedSoloShuffleRound = 239, /*NYI*/
+        ParticipateInRatedSoloShuffleRound = 240, /*NYI*/
+        ReputationAmountGained = 243, /*NYI*/ // Gain reputation amount with {FactionID}; accumulate, not highest
+        FulfillAnyCraftingOrder = 245, /*NYI*/
+        FulfillCraftingOrderType = 246, /*NYI*/ // {CraftingOrderType}
+
+        PerksProgramMonthComplete = 249, /*NYI*/
 
         Count
     }

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Collections;
 using Framework.Constants;
@@ -88,10 +74,11 @@ namespace Game.Entities
         public int WidgetSetID;
         public int WidgetSetUnitConditionID;
         public bool RegenHealth;
-        public uint MechanicImmuneMask;
+        public ulong MechanicImmuneMask;
         public uint SpellSchoolImmuneMask;
         public CreatureFlagsExtra FlagsExtra;
         public uint ScriptID;
+        public string StringId;
 
         public QueryCreatureResponse QueryData;
 
@@ -421,8 +408,11 @@ namespace Game.Entities
     {
         public uint path_id;
         public uint mount;
-        public uint bytes1;
-        public uint bytes2;
+        public byte standState;
+        public byte animTier;
+        public byte sheathState;
+        public byte pvpFlags;
+        public byte visFlags;
         public uint emote;
         public ushort aiAnimKit;
         public ushort movementAnimKit;
@@ -451,9 +441,6 @@ namespace Game.Entities
         public List<uint> BonusListIDs = new();
         public uint PlayerConditionId;
         public bool IgnoreFiltering;
-
-        //helpers
-        public bool IsGoldRequired(ItemTemplate pProto) { return pProto.HasFlag(ItemFlags2.DontIgnoreBuyPrice) || ExtendedCost == 0; }
     }
 
     public class VendorItemData

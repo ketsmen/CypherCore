@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -2326,7 +2312,7 @@ namespace Game.Spells
 
             // trigger linked auras remove/apply
             // @todo remove/cleanup this, as this table is not documented and people are doing stupid things with it
-            var spellTriggered = Global.SpellMgr.GetSpellLinked((int)m_spellInfo.Id + (int)SpellLinkedType.Hit);
+            var spellTriggered = Global.SpellMgr.GetSpellLinked(SpellLinkedType.Hit, m_spellInfo.Id);
             if (spellTriggered != null)
             {
                 foreach (var id in spellTriggered)
@@ -2908,7 +2894,7 @@ namespace Game.Spells
 
             CallScriptAfterCastHandlers();
 
-            var spell_triggered = Global.SpellMgr.GetSpellLinked((int)m_spellInfo.Id);
+            var spell_triggered = Global.SpellMgr.GetSpellLinked(SpellLinkedType.Cast, m_spellInfo.Id);
             if (spell_triggered != null)
             {
                 foreach (var spellId in spell_triggered)
@@ -3394,7 +3380,14 @@ namespace Game.Spells
                 Unit.ProcSkillsAndAuras(unitCaster, null, new ProcFlagsInit(ProcFlags.CastEnded), new ProcFlagsInit(), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, this, null, null);
 
             if (!ok)
+            {
+                // on failure (or manual cancel) send TraitConfigCommitFailed to revert talent UI saved config selection
+                if (m_caster.IsPlayer() && m_spellInfo.HasEffect(SpellEffectName.ChangeActiveCombatTraitConfig))
+                    if (m_customArg is TraitConfig)
+                        m_caster.ToPlayer().SendPacket(new TraitConfigCommitFailed((m_customArg as TraitConfig).ID));
+
                 return;
+            }
 
             if (unitCaster.IsTypeId(TypeId.Unit) && unitCaster.ToCreature().IsSummon())
             {
@@ -3714,7 +3707,7 @@ namespace Game.Spells
 
             SpellCastFlags castFlags = SpellCastFlags.HasTrajectory;
             uint schoolImmunityMask = 0;
-            uint mechanicImmunityMask = 0;
+            ulong mechanicImmunityMask = 0;
             Unit unitCaster = m_caster.ToUnit();
             if (unitCaster != null)
             {
@@ -3801,7 +3794,7 @@ namespace Game.Spells
             if (castFlags.HasAnyFlag(SpellCastFlags.Immunity))
             {
                 castData.Immunities.School = schoolImmunityMask;
-                castData.Immunities.Value = mechanicImmunityMask;
+                castData.Immunities.Value = (uint)mechanicImmunityMask;
             }
 
             /** @todo implement heal prediction packet data
@@ -4194,7 +4187,7 @@ namespace Game.Spells
             spellChannelStart.ChannelDuration = duration;
 
             uint schoolImmunityMask = unitCaster.GetSchoolImmunityMask();
-            uint mechanicImmunityMask = unitCaster.GetMechanicImmunityMask();
+            ulong mechanicImmunityMask = unitCaster.GetMechanicImmunityMask();
 
             if (schoolImmunityMask != 0 || mechanicImmunityMask != 0)
             {
@@ -4508,7 +4501,7 @@ namespace Game.Spells
             }
 
             foreach (var reagentsCurrency in m_spellInfo.ReagentsCurrency)
-                p_caster.ModifyCurrency((CurrencyTypes)reagentsCurrency.CurrencyTypesID, -reagentsCurrency.CurrencyCount, false, true);
+                p_caster.ModifyCurrency(reagentsCurrency.CurrencyTypesID, -reagentsCurrency.CurrencyCount, false, true);
         }
 
         void HandleThreatSpells()
@@ -4761,6 +4754,11 @@ namespace Game.Spells
                     if (m_spellInfo.CasterAuraSpell != 0 && !unitCaster.HasAura(m_spellInfo.CasterAuraSpell))
                         return SpellCastResult.CasterAurastate;
                     if (m_spellInfo.ExcludeCasterAuraSpell != 0 && unitCaster.HasAura(m_spellInfo.ExcludeCasterAuraSpell))
+                        return SpellCastResult.CasterAurastate;
+
+                    if (m_spellInfo.CasterAuraType != 0 && !unitCaster.HasAuraType(m_spellInfo.CasterAuraType))
+                        return SpellCastResult.CasterAurastate;
+                    if (m_spellInfo.ExcludeCasterAuraType != 0 && unitCaster.HasAuraType(m_spellInfo.ExcludeCasterAuraType))
                         return SpellCastResult.CasterAurastate;
 
                     if (reqCombat && unitCaster.IsInCombat() && !m_spellInfo.CanBeUsedInCombat())
@@ -5589,21 +5587,15 @@ namespace Game.Spells
 
                                     if (spellEffectInfo.Effect == SpellEffectName.ChangeBattlepetQuality)
                                     {
+                                        var qualityRecord = CliDB.BattlePetBreedQualityStorage.Values.FirstOrDefault(a1 => a1.MaxQualityRoll < spellEffectInfo.BasePoints);
+
                                         BattlePetBreedQuality quality = BattlePetBreedQuality.Poor;
-                                        switch (spellEffectInfo.BasePoints)
-                                        {
-                                            case 85:
-                                                quality = BattlePetBreedQuality.Rare;
-                                                break;
-                                            case 75:
-                                                quality = BattlePetBreedQuality.Uncommon;
-                                                break;
-                                            default:
-                                                // Ignore Epic Battle-Stones
-                                                break;
-                                        }
+                                        if (qualityRecord != null)
+                                            quality = (BattlePetBreedQuality)qualityRecord.QualityEnum;
+
                                         if (battlePet.PacketInfo.Quality >= (byte)quality)
                                             return SpellCastResult.CantUpgradeBattlePet;
+
                                     }
 
                                     if (spellEffectInfo.Effect == SpellEffectName.GrantBattlepetLevel || spellEffectInfo.Effect == SpellEffectName.GrantBattlepetExperience)
@@ -5876,7 +5868,7 @@ namespace Game.Spells
                 var auras = unitCaster.GetAuraEffectsByType(auraType);
                 foreach (AuraEffect aurEff in auras)
                 {
-                    uint mechanicMask = aurEff.GetSpellInfo().GetAllEffectsMechanicMask();
+                    ulong mechanicMask = aurEff.GetSpellInfo().GetAllEffectsMechanicMask();
                     if (mechanicMask != 0 && !Convert.ToBoolean(mechanicMask & GetSpellInfo().GetAllowedMechanicMask()))
                     {
                         foundNotMechanic = true;
@@ -5895,6 +5887,7 @@ namespace Game.Spells
                     switch (auraType)
                     {
                         case AuraType.ModStun:
+                        case AuraType.ModStunDisableGravity:
                             return SpellCastResult.Stunned;
                         case AuraType.ModFear:
                             return SpellCastResult.Fleeing;
@@ -5933,6 +5926,12 @@ namespace Game.Spells
                     SpellCastResult mechanicResult = mechanicCheck(AuraType.ModFear, ref param1);
                     if (mechanicResult != SpellCastResult.SpellCastOk)
                         result = mechanicResult;
+                    else
+                    {
+                        mechanicResult = mechanicCheck(AuraType.ModStunDisableGravity, ref param1);
+                        if (mechanicResult != SpellCastResult.SpellCastOk)
+                            result = mechanicResult;
+                    }
                 }
                 else if (!CheckSpellCancelsFear(ref param1))
                     result = SpellCastResult.Fleeing;
@@ -6634,21 +6633,21 @@ namespace Game.Spells
                     {
                         Item item = m_targets.GetItemTarget();
                         if (!item)
-                            return SpellCastResult.CantBeDisenchanted;
+                            return SpellCastResult.CantBeSalvaged;
 
                         // prevent disenchanting in trade slot
                         if (item.GetOwnerGUID() != player.GetGUID())
-                            return SpellCastResult.CantBeDisenchanted;
+                            return SpellCastResult.CantBeSalvaged;
 
                         ItemTemplate itemProto = item.GetTemplate();
                         if (itemProto == null)
-                            return SpellCastResult.CantBeDisenchanted;
+                            return SpellCastResult.CantBeSalvaged;
 
                         ItemDisenchantLootRecord itemDisenchantLoot = item.GetDisenchantLoot(m_caster.ToPlayer());
                         if (itemDisenchantLoot == null)
-                            return SpellCastResult.CantBeDisenchanted;
+                            return SpellCastResult.CantBeSalvaged;
                         if (itemDisenchantLoot.SkillRequired > player.GetSkillValue(SkillType.Enchanting))
-                            return SpellCastResult.LowCastlevel;
+                            return SpellCastResult.CantBeSalvagedSkill;
                         break;
                     }
                     case SpellEffectName.Prospecting:
@@ -7969,6 +7968,7 @@ namespace Game.Spells
         public bool m_fromClient;
         public SpellCastFlagsEx m_castFlagsEx;
         public SpellMisc m_misc;
+        public object m_customArg;
         public SpellCastVisual m_SpellVisual;
         public SpellCastTargets m_targets;
         public sbyte m_comboPointGain;
@@ -9203,6 +9203,7 @@ namespace Game.Spells
         public ObjectGuid OriginalCastId = ObjectGuid.Empty;
         public int? OriginalCastItemLevel;
         public Dictionary<SpellValueMod, int> SpellValueOverrides = new();
+        public object CustomArg;
 
         public CastSpellExtraArgs() { }
 
@@ -9297,6 +9298,12 @@ namespace Game.Spells
         public CastSpellExtraArgs AddSpellMod(SpellValueMod mod, int val)
         {
             SpellValueOverrides.Add(mod, val);
+            return this;
+        }
+
+        public CastSpellExtraArgs SetCustomArg(object customArg)
+        {
+            CustomArg = customArg;
             return this;
         }
     }

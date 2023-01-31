@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -25,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static Game.AI.SmartAction;
 
 namespace Game.AI
 {
@@ -223,16 +210,17 @@ namespace Game.AI
                 temp.Action.raw.param4 = result.Read<uint>(18);
                 temp.Action.raw.param5 = result.Read<uint>(19);
                 temp.Action.raw.param6 = result.Read<uint>(20);
+                temp.Action.raw.param7 = result.Read<uint>(21);
 
-                temp.Target.type = (SmartTargets)result.Read<byte>(21);
-                temp.Target.raw.param1 = result.Read<uint>(22);
-                temp.Target.raw.param2 = result.Read<uint>(23);
-                temp.Target.raw.param3 = result.Read<uint>(24);
-                temp.Target.raw.param4 = result.Read<uint>(25);
-                temp.Target.x = result.Read<float>(26);
-                temp.Target.y = result.Read<float>(27);
-                temp.Target.z = result.Read<float>(28);
-                temp.Target.o = result.Read<float>(29);
+                temp.Target.type = (SmartTargets)result.Read<byte>(22);
+                temp.Target.raw.param1 = result.Read<uint>(23);
+                temp.Target.raw.param2 = result.Read<uint>(24);
+                temp.Target.raw.param3 = result.Read<uint>(25);
+                temp.Target.raw.param4 = result.Read<uint>(26);
+                temp.Target.x = result.Read<float>(27);
+                temp.Target.y = result.Read<float>(28);
+                temp.Target.z = result.Read<float>(29);
+                temp.Target.o = result.Read<float>(30);
 
                 //check target
                 if (!IsTargetValid(temp))
@@ -469,12 +457,38 @@ namespace Game.AI
                 {
                     if (e.Target.unitGUID.entry != 0 && !IsCreatureValid(e, e.Target.unitGUID.entry))
                         return false;
+
+                    ulong guid = e.Target.unitGUID.dbGuid;
+                    CreatureData data = Global.ObjectMgr.GetCreatureData(guid);
+                    if (data == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} using invalid creature guid {guid} as target_param1, skipped.");
+                        return false;
+                    }
+                    else if (e.Target.unitGUID.entry != 0 && e.Target.unitGUID.entry != data.Id)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} using invalid creature entry {e.Target.unitGUID.entry} (expected {data.Id}) for guid {guid} as target_param1, skipped.");
+                        return false;
+                    }
                     break;
                 }
                 case SmartTargets.GameobjectGuid:
                 {
                     if (e.Target.goGUID.entry != 0 && !IsGameObjectValid(e, e.Target.goGUID.entry))
                         return false;
+
+                    ulong guid = e.Target.goGUID.dbGuid;
+                    GameObjectData data = Global.ObjectMgr.GetGameObjectData(guid);
+                    if (data == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} using invalid gameobject guid {guid} as target_param1, skipped.");
+                        return false;
+                    }
+                    else if (e.Target.goGUID.entry != 0 && e.Target.goGUID.entry != data.Id)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} using invalid gameobject entry {e.Target.goGUID.entry} (expected {data.Id}) for guid {guid} as target_param1, skipped.");
+                        return false;
+                    }
                     break;
                 }
                 case SmartTargets.PlayerDistance:
@@ -776,7 +790,7 @@ namespace Game.AI
                 SmartActions.GameEventStop => Marshal.SizeOf(typeof(SmartAction.GameEventStop)),
                 SmartActions.GameEventStart => Marshal.SizeOf(typeof(SmartAction.GameEventStart)),
                 SmartActions.StartClosestWaypoint => Marshal.SizeOf(typeof(SmartAction.ClosestWaypointFromList)),
-                SmartActions.MoveOffset => 0,
+                SmartActions.MoveOffset => Marshal.SizeOf(typeof(SmartAction.MoveOffset)),
                 SmartActions.RandomSound => Marshal.SizeOf(typeof(SmartAction.RandomSound)),
                 SmartActions.SetCorpseDelay => Marshal.SizeOf(typeof(SmartAction.CorpseDelay)),
                 SmartActions.DisableEvade => Marshal.SizeOf(typeof(SmartAction.DisableEvade)),
@@ -1461,6 +1475,32 @@ namespace Game.AI
                 {
                     if (!IsSpellValid(e, e.Action.crossCast.spell))
                         return false;
+
+                    SmartTargets targetType = (SmartTargets)e.Action.crossCast.targetType;
+                    if (targetType == SmartTargets.CreatureGuid || targetType == SmartTargets.GameobjectGuid)
+                    {
+                        if (e.Action.crossCast.targetParam2 != 0)
+                        {
+                            if (targetType == SmartTargets.CreatureGuid && !IsCreatureValid(e, e.Action.crossCast.targetParam2))
+                                return false;
+                            else if (targetType == SmartTargets.GameobjectGuid && !IsGameObjectValid(e, e.Action.crossCast.targetParam2))
+                                return false;
+                        }
+
+                        ulong guid = e.Action.crossCast.targetParam1;
+                        SpawnObjectType spawnType = targetType == SmartTargets.CreatureGuid ? SpawnObjectType.Creature : SpawnObjectType.GameObject;
+                        var data = Global.ObjectMgr.GetSpawnData(spawnType, guid);
+                        if (data == null)
+                        {
+                            Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} specifies invalid CasterTargetType guid ({spawnType},{guid})");
+                            return false;
+                        }
+                        else if (e.Action.crossCast.targetParam2 != 0 && e.Action.crossCast.targetParam2 != data.Id)
+                        {
+                            Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} specifies invalid entry {e.Action.crossCast.targetParam2} (expected {data.Id}) for CasterTargetType guid ({spawnType},{guid})");
+                            return false;
+                        }
+                    }
                     break;
                 }
                 case SmartActions.InvokerCast:
@@ -3063,6 +3103,9 @@ namespace Game.AI
         public ClosestWaypointFromList closestWaypointFromList;
 
         [FieldOffset(4)]
+        public MoveOffset moveOffset;
+
+        [FieldOffset(4)]
         public RandomSound randomSound;
 
         [FieldOffset(4)]
@@ -3478,8 +3521,12 @@ namespace Game.AI
         }
         public struct Jump
         {
-            public uint speedxy;
-            public uint speedz;
+            public uint SpeedXY;
+            public uint SpeedZ;
+            public uint Gravity;
+            public uint UseDefaultGravity;
+            public uint PointId;
+            public uint ContactDistance;
         }
         public struct FleeAssist
         {
@@ -3552,6 +3599,10 @@ namespace Game.AI
             public uint wp4;
             public uint wp5;
             public uint wp6;
+        }
+        public struct MoveOffset
+        {
+            public uint PointId;
         }
         public struct RandomSound
         {
@@ -3696,6 +3747,7 @@ namespace Game.AI
             public uint param4;
             public uint param5;
             public uint param6;
+            public uint param7;
         }
         #endregion
     }

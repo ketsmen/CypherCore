@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.BattleGrounds;
@@ -361,57 +347,6 @@ namespace Game
                         bg.HandleQuestComplete(packet.QuestID, _player);
 
                     GetPlayer().RewardQuest(quest, packet.Choice.LootItemType, packet.Choice.Item.ItemID, obj);
-
-                    switch (obj.GetTypeId())
-                    {
-                        case TypeId.Unit:
-                        case TypeId.Player:
-                        {
-                            //For AutoSubmition was added plr case there as it almost same exclute AI script cases.
-                            // Send next quest
-                            Quest nextQuest = _player.GetNextQuest(packet.QuestGiverGUID, quest);
-                            if (nextQuest != null)
-                            {
-                                // Only send the quest to the player if the conditions are met
-                                if (_player.CanTakeQuest(nextQuest, false))
-                                {
-                                    if (nextQuest.IsAutoAccept() && _player.CanAddQuest(nextQuest, true))
-                                        _player.AddQuestAndCheckCompletion(nextQuest, obj);
-
-                                    _player.PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, packet.QuestGiverGUID, true, false);
-                                }
-                            }
-
-                            _player.PlayerTalkClass.ClearMenus();
-                            Creature creatureQGiver = obj.ToCreature();
-                            if (creatureQGiver != null)
-                                creatureQGiver.GetAI().OnQuestReward(_player, quest, packet.Choice.LootItemType, packet.Choice.Item.ItemID);
-                            break;
-                        }
-                        case TypeId.GameObject:
-                        {
-                            GameObject questGiver = obj.ToGameObject();
-                            // Send next quest
-                            Quest nextQuest = _player.GetNextQuest(packet.QuestGiverGUID, quest);
-                            if (nextQuest != null)
-                            {
-                                // Only send the quest to the player if the conditions are met
-                                if (_player.CanTakeQuest(nextQuest, false))
-                                {
-                                    if (nextQuest.IsAutoAccept() && _player.CanAddQuest(nextQuest, true))
-                                        _player.AddQuestAndCheckCompletion(nextQuest, obj);
-
-                                    _player.PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, packet.QuestGiverGUID, true, false);
-                                }
-                            }
-
-                            _player.PlayerTalkClass.ClearMenus();
-                            questGiver.GetAI().OnQuestReward(_player, quest, packet.Choice.LootItemType, packet.Choice.Item.ItemID);
-                            break;
-                        }
-                        default:
-                            break;
-                    }
                 }
             }
             else
@@ -769,6 +704,12 @@ namespace Game
             _player.SendQuestGiverStatusMultiple();
         }
 
+        [WorldPacketHandler(ClientOpcodes.QuestGiverStatusTrackedQuery)]
+        void HandleQuestgiverStatusTrackedQueryOpcode(QuestGiverStatusTrackedQuery questGiverStatusTrackedQuery)
+        {
+            _player.SendQuestGiverStatusMultiple(questGiverStatusTrackedQuery.QuestGiverGUIDs);
+        }
+
         [WorldPacketHandler(ClientOpcodes.RequestWorldQuestUpdate)]
         void HandleRequestWorldQuestUpdate(RequestWorldQuestUpdate packet)
         {
@@ -834,7 +775,7 @@ namespace Game
                 }
 
                 foreach (PlayerChoiceResponseRewardEntry currency in reward.Currency)
-                    _player.ModifyCurrency((CurrencyTypes)currency.Id, currency.Quantity);
+                    _player.ModifyCurrency(currency.Id, currency.Quantity);
 
                 foreach (PlayerChoiceResponseRewardEntry faction in reward.Faction)
                     _player.GetReputationMgr().ModifyReputation(CliDB.FactionStorage.LookupByKey(faction.Id), faction.Quantity);

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.Entities;
@@ -27,9 +13,11 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             Guid = _worldPacket.ReadPackedGuid();
+            IsSoftInteract = _worldPacket.HasBit();
         }
 
         public ObjectGuid Guid;
+        public bool IsSoftInteract;
     }
 
     public class GameObjReportUse : ClientPacket
@@ -39,9 +27,11 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             Guid = _worldPacket.ReadPackedGuid();
+            IsSoftInteract = _worldPacket.HasBit();
         }
 
         public ObjectGuid Guid;
+        public bool IsSoftInteract;
     }
 
     class GameObjectDespawn : ServerPacket
@@ -136,22 +126,6 @@ namespace Game.Networking.Packets
         public bool PlayAsDespawn;
     }
 
-    class GameObjectUILink : ServerPacket
-    {
-        public GameObjectUILink() : base(ServerOpcodes.GameObjectUiLink, ConnectionType.Instance) { }
-
-        public override void Write()
-        {
-            _worldPacket.WritePackedGuid(ObjectGUID);
-            _worldPacket.WriteInt32(UILink);
-            _worldPacket.WriteInt32(UIItemInteractionID);
-        }
-
-        public ObjectGuid ObjectGUID;
-        public int UILink;
-        public int UIItemInteractionID;
-    }
-
     class GameObjectPlaySpellVisual : ServerPacket
     {
         public GameObjectPlaySpellVisual() : base(ServerOpcodes.GameObjectPlaySpellVisual) { }
@@ -180,5 +154,30 @@ namespace Game.Networking.Packets
 
         public ObjectGuid ObjectGUID;
         public byte State;
+    }
+
+    class GameObjectInteraction : ServerPacket
+    {
+        public ObjectGuid ObjectGUID;
+        public PlayerInteractionType InteractionType;
+
+        public GameObjectInteraction() : base(ServerOpcodes.GameObjectInteraction) { }
+
+        public override void Write()
+        {
+            _worldPacket.WritePackedGuid(ObjectGUID);
+            _worldPacket.WriteInt32((int)InteractionType);
+        }
+    }
+    class GameObjectCloseInteraction : ServerPacket
+    {
+        public PlayerInteractionType InteractionType;
+
+        public GameObjectCloseInteraction() : base(ServerOpcodes.GameObjectCloseInteraction) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteInt32((int)InteractionType);
+        }
     }
 }

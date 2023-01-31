@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -46,6 +32,9 @@ namespace Game.Entities
 
         [FieldOffset(0)]
         public diskDatas DiskDatas;
+
+        [FieldOffset(0)]
+        public boundedPlaneDatas BoundedPlaneDatas;
 
         public struct defaultdatas
         {
@@ -94,6 +83,12 @@ namespace Game.Entities
             public float HeightTarget;
             public float LocationZOffset;
             public float LocationZOffsetTarget;
+        }
+        // AREATRIGGER_TYPE_BOUNDED_PLANE
+        public struct boundedPlaneDatas
+        {
+            public fixed float Extents[2];
+            public fixed float ExtentsTarget[2];
         }
     }
 
@@ -218,6 +213,8 @@ namespace Game.Entities
                     return Math.Max(CylinderDatas.Radius, CylinderDatas.RadiusTarget);
                 case AreaTriggerTypes.Disk:
                     return Math.Max(DiskDatas.OuterRadius, DiskDatas.OuterRadiusTarget);
+                case AreaTriggerTypes.BoundedPlane:
+                    return MathF.Sqrt(BoundedPlaneDatas.Extents[0] * BoundedPlaneDatas.Extents[0] / 4 + BoundedPlaneDatas.Extents[1] * BoundedPlaneDatas.Extents[1] / 4);
             }
 
             return 0.0f;
@@ -228,6 +225,7 @@ namespace Game.Entities
         public bool IsPolygon() { return TriggerType == AreaTriggerTypes.Polygon; }
         public bool IsCylinder() { return TriggerType == AreaTriggerTypes.Cylinder; }
         public bool IsDisk() { return TriggerType == AreaTriggerTypes.Disk; }
+        public bool IsBoudedPlane() { return TriggerType == AreaTriggerTypes.BoundedPlane; }
     }
 
     public class AreaTriggerOrbitInfo

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 
@@ -59,6 +45,7 @@ namespace Game.DataStorage
         public byte ItemGroupSoundsID;
         public int ContentTuningID;
         public int ModifiedCraftingReagentItemID;
+        public int CraftingQualityID;
     }
 
     public sealed class ItemAppearanceRecord
@@ -215,7 +202,7 @@ namespace Game.DataStorage
         public byte ArenaBracket;                                             // arena slot restrictions (min slot value)
         public byte Flags;
         public byte MinFactionID;
-        public byte MinReputation;
+        public int MinReputation;
         public byte RequiredAchievement;                                      // required personal arena rating
         public uint[] ItemID = new uint[ItemConst.MaxItemExtCostItems];                          // required item id
         public ushort[] ItemCount = new ushort[ItemConst.MaxItemExtCostItems];                      // required count of 1st item
@@ -305,7 +292,7 @@ namespace Game.DataStorage
         public byte OverallQualityID;
         public int ExpansionID;
         public ushort MinFactionID;
-        public byte MinReputation;
+        public int MinReputation;
         public int AllowableClass;
         public sbyte RequiredLevel;
         public ushort RequiredSkill;
@@ -356,6 +343,7 @@ namespace Game.DataStorage
         public int[] StatPercentEditor = new int[ItemConst.MaxStats];
         public uint Stackable;
         public uint MaxCount;
+        public uint MinReputation;
         public uint RequiredAbility;
         public uint SellPrice;
         public uint BuyPrice;
@@ -395,7 +383,6 @@ namespace Game.DataStorage
         public byte DamageType;
         public sbyte[] StatModifierBonusStat = new sbyte[ItemConst.MaxStats];
         public byte ContainerSlots;
-        public byte MinReputation;
         public byte RequiredPVPMedal;
         public byte RequiredPVPRank;
         public sbyte RequiredLevel;

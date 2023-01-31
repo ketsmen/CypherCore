@@ -1,19 +1,7 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */﻿
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
+
+using System;
 
 namespace Framework.Constants
 {
@@ -60,6 +48,7 @@ namespace Framework.Constants
         WorldPvp = 4,
     }
 
+    [Flags]
     public enum GroupFlags
     {
         None = 0x00,
@@ -71,6 +60,7 @@ namespace Framework.Constants
         OnePersonParty = 0x020, // Script_IsOnePersonParty()
         EveryoneAssistant = 0x040, // Script_IsEveryoneAssistant()
         GuildGroup = 0x100,
+        CrossFaction = 0x200,
 
         MaskBgRaid = FakeRaid | Raid
     }

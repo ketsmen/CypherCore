@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -164,6 +150,7 @@ namespace Game.DataStorage
             GlyphBindableSpellStorage = ReadDB2<GlyphBindableSpellRecord>("GlyphBindableSpell.db2", HotfixStatements.SEL_GLYPH_BINDABLE_SPELL);
             GlyphPropertiesStorage = ReadDB2<GlyphPropertiesRecord>("GlyphProperties.db2", HotfixStatements.SEL_GLYPH_PROPERTIES);
             GlyphRequiredSpecStorage = ReadDB2<GlyphRequiredSpecRecord>("GlyphRequiredSpec.db2", HotfixStatements.SEL_GLYPH_REQUIRED_SPEC);
+            GossipNPCOptionStorage = ReadDB2<GossipNPCOptionRecord>("GossipNPCOption.db2", HotfixStatements.SEL_GOSSIP_NPC_OPTION);
             GuildColorBackgroundStorage = ReadDB2<GuildColorBackgroundRecord>("GuildColorBackground.db2", HotfixStatements.SEL_GUILD_COLOR_BACKGROUND);
             GuildColorBorderStorage = ReadDB2<GuildColorBorderRecord>("GuildColorBorder.db2", HotfixStatements.SEL_GUILD_COLOR_BORDER);
             GuildColorEmblemStorage = ReadDB2<GuildColorEmblemRecord>("GuildColorEmblem.db2", HotfixStatements.SEL_GUILD_COLOR_EMBLEM);
@@ -274,6 +261,7 @@ namespace Game.DataStorage
             SceneScriptTextStorage = ReadDB2<SceneScriptTextRecord>("SceneScriptText.db2", HotfixStatements.SEL_SCENE_SCRIPT_TEXT);
             SkillLineStorage = ReadDB2<SkillLineRecord>("SkillLine.db2", HotfixStatements.SEL_SKILL_LINE, HotfixStatements.SEL_SKILL_LINE_LOCALE);
             SkillLineAbilityStorage = ReadDB2<SkillLineAbilityRecord>("SkillLineAbility.db2", HotfixStatements.SEL_SKILL_LINE_ABILITY);
+            SkillLineXTraitTreeStorage = ReadDB2<SkillLineXTraitTreeRecord>("SkillLineXTraitTree.db2", HotfixStatements.SEL_SKILL_LINE_X_TRAIT_TREE);
             SkillRaceClassInfoStorage = ReadDB2<SkillRaceClassInfoRecord>("SkillRaceClassInfo.db2", HotfixStatements.SEL_SKILL_RACE_CLASS_INFO);
             SoulbindConduitRankStorage = ReadDB2<SoulbindConduitRankRecord>("SoulbindConduitRank.db2", HotfixStatements.SEL_SOULBIND_CONDUIT_RANK);
             SoundKitStorage = ReadDB2<SoundKitRecord>("SoundKit.db2", HotfixStatements.SEL_SOUND_KIT);
@@ -325,6 +313,29 @@ namespace Game.DataStorage
             TaxiPathNodeStorage = ReadDB2<TaxiPathNodeRecord>("TaxiPathNode.db2", HotfixStatements.SEL_TAXI_PATH_NODE);
             TotemCategoryStorage = ReadDB2<TotemCategoryRecord>("TotemCategory.db2", HotfixStatements.SEL_TOTEM_CATEGORY, HotfixStatements.SEL_TOTEM_CATEGORY_LOCALE);
             ToyStorage = ReadDB2<ToyRecord>("Toy.db2", HotfixStatements.SEL_TOY, HotfixStatements.SEL_TOY_LOCALE);
+            TraitCondStorage = ReadDB2<TraitCondRecord>("TraitCond.db2", HotfixStatements.SEL_TRAIT_COND);
+            TraitCostStorage = ReadDB2<TraitCostRecord>("TraitCost.db2", HotfixStatements.SEL_TRAIT_COST);
+            TraitCurrencyStorage = ReadDB2<TraitCurrencyRecord>("TraitCurrency.db2", HotfixStatements.SEL_TRAIT_CURRENCY);
+            TraitCurrencySourceStorage = ReadDB2<TraitCurrencySourceRecord>("TraitCurrencySource.db2", HotfixStatements.SEL_TRAIT_CURRENCY_SOURCE, HotfixStatements.SEL_TRAIT_CURRENCY_SOURCE_LOCALE);
+            TraitDefinitionStorage = ReadDB2<TraitDefinitionRecord>("TraitDefinition.db2", HotfixStatements.SEL_TRAIT_DEFINITION, HotfixStatements.SEL_TRAIT_DEFINITION_LOCALE);
+            TraitDefinitionEffectPointsStorage = ReadDB2<TraitDefinitionEffectPointsRecord>("TraitDefinitionEffectPoints.db2", HotfixStatements.SEL_TRAIT_DEFINITION_EFFECT_POINTS);
+            TraitEdgeStorage = ReadDB2<TraitEdgeRecord>("TraitEdge.db2", HotfixStatements.SEL_TRAIT_EDGE);
+            TraitNodeStorage = ReadDB2<TraitNodeRecord>("TraitNode.db2", HotfixStatements.SEL_TRAIT_NODE);
+            TraitNodeEntryStorage = ReadDB2<TraitNodeEntryRecord>("TraitNodeEntry.db2", HotfixStatements.SEL_TRAIT_NODE_ENTRY);
+            TraitNodeEntryXTraitCondStorage = ReadDB2<TraitNodeEntryXTraitCondRecord>("TraitNodeEntryXTraitCond.db2", HotfixStatements.SEL_TRAIT_NODE_ENTRY_X_TRAIT_COND);
+            TraitNodeEntryXTraitCostStorage = ReadDB2<TraitNodeEntryXTraitCostRecord>("TraitNodeEntryXTraitCost.db2", HotfixStatements.SEL_TRAIT_NODE_ENTRY_X_TRAIT_COST);
+            TraitNodeGroupStorage = ReadDB2<TraitNodeGroupRecord>("TraitNodeGroup.db2", HotfixStatements.SEL_TRAIT_NODE_GROUP);
+            TraitNodeGroupXTraitCondStorage = ReadDB2<TraitNodeGroupXTraitCondRecord>("TraitNodeGroupXTraitCond.db2", HotfixStatements.SEL_TRAIT_NODE_GROUP_X_TRAIT_COND);
+            TraitNodeGroupXTraitCostStorage = ReadDB2<TraitNodeGroupXTraitCostRecord>("TraitNodeGroupXTraitCost.db2", HotfixStatements.SEL_TRAIT_NODE_GROUP_X_TRAIT_COST);
+            TraitNodeGroupXTraitNodeStorage = ReadDB2<TraitNodeGroupXTraitNodeRecord>("TraitNodeGroupXTraitNode.db2", HotfixStatements.SEL_TRAIT_NODE_GROUP_X_TRAIT_NODE);
+            TraitNodeXTraitCondStorage = ReadDB2<TraitNodeXTraitCondRecord>("TraitNodeXTraitCond.db2", HotfixStatements.SEL_TRAIT_NODE_X_TRAIT_COND);
+            TraitNodeXTraitCostStorage = ReadDB2<TraitNodeXTraitCostRecord>("TraitNodeXTraitCost.db2", HotfixStatements.SEL_TRAIT_NODE_X_TRAIT_COST);
+            TraitNodeXTraitNodeEntryStorage = ReadDB2<TraitNodeXTraitNodeEntryRecord>("TraitNodeXTraitNodeEntry.db2", HotfixStatements.SEL_TRAIT_NODE_X_TRAIT_NODE_ENTRY);
+            TraitTreeStorage = ReadDB2<TraitTreeRecord>("TraitTree.db2", HotfixStatements.SEL_TRAIT_TREE);
+            TraitTreeLoadoutStorage = ReadDB2<TraitTreeLoadoutRecord>("TraitTreeLoadout.db2", HotfixStatements.SEL_TRAIT_TREE_LOADOUT);
+            TraitTreeLoadoutEntryStorage = ReadDB2<TraitTreeLoadoutEntryRecord>("TraitTreeLoadoutEntry.db2", HotfixStatements.SEL_TRAIT_TREE_LOADOUT_ENTRY);
+            TraitTreeXTraitCostStorage = ReadDB2<TraitTreeXTraitCostRecord>("TraitTreeXTraitCost.db2", HotfixStatements.SEL_TRAIT_TREE_X_TRAIT_COST);
+            TraitTreeXTraitCurrencyStorage = ReadDB2<TraitTreeXTraitCurrencyRecord>("TraitTreeXTraitCurrency.db2", HotfixStatements.SEL_TRAIT_TREE_X_TRAIT_CURRENCY);
             TransmogHolidayStorage = ReadDB2<TransmogHolidayRecord>("TransmogHoliday.db2", HotfixStatements.SEL_TRANSMOG_HOLIDAY);
             TransmogIllusionStorage = ReadDB2<TransmogIllusionRecord>("TransmogIllusion.db2", HotfixStatements.SEL_TRANSMOG_ILLUSION);
             TransmogSetStorage = ReadDB2<TransmogSetRecord>("TransmogSet.db2", HotfixStatements.SEL_TRANSMOG_SET, HotfixStatements.SEL_TRANSMOG_SET_LOCALE);
@@ -401,16 +412,16 @@ namespace Game.DataStorage
             }
 
             // Check loaded DB2 files proper version
-            if (!AreaTableStorage.ContainsKey(14083) ||               // last area added in 9.2.7 (45114)
-                !CharTitlesStorage.ContainsKey(727) ||                // last char title added in 9.2.7 (45114)
-                !GemPropertiesStorage.ContainsKey(3922) ||            // last gem property added in 9.2.7 (45114)
-                !ItemStorage.ContainsKey(199202) ||                   // last item added in 9.2.7 (45114)
-                !ItemExtendedCostStorage.ContainsKey(7316) ||         // last item extended cost added in 9.2.7 (45114)
-                !MapStorage.ContainsKey(2559) ||                      // last map added in 9.2.7 (45114)
-                !SpellNameStorage.ContainsKey(387936))                // last spell added in 9.2.7 (45114)
+            if (!AreaTableStorage.ContainsKey(14618) ||               // last area added in 10.0.5 (47660)
+                !CharTitlesStorage.ContainsKey(753) ||                // last char title added in 10.0.5 (47660)
+                !GemPropertiesStorage.ContainsKey(4028) ||            // last gem property added in 10.0.5 (47660)
+                !ItemStorage.ContainsKey(203716) ||                   // last item added in 10.0.5 (47660)
+                !ItemExtendedCostStorage.ContainsKey(7882) ||         // last item extended cost added in 10.0.5 (47660)
+                !MapStorage.ContainsKey(2582) ||                      // last map added in 10.0.5 (47660)
+                !SpellNameStorage.ContainsKey(401848))                // last spell added in 10.0.5 (47660)
             {
                 Log.outError(LogFilter.Misc, "You have _outdated_ DB2 files. Please extract correct versions from current using client.");
-                Global.WorldMgr.ShutdownServ(10, ShutdownMask.Force, ShutdownExitCode.Error);
+                Environment.Exit(1);
             }
 
             Log.outInfo(LogFilter.ServerLoading, "Initialized {0} DB2 data storages in {1} ms", loadedFileCount, Time.GetMSTimeDiffToNow(oldMSTime));
@@ -562,6 +573,7 @@ namespace Game.DataStorage
         public static DB6Storage<GlyphBindableSpellRecord> GlyphBindableSpellStorage;
         public static DB6Storage<GlyphPropertiesRecord> GlyphPropertiesStorage;
         public static DB6Storage<GlyphRequiredSpecRecord> GlyphRequiredSpecStorage;
+        public static DB6Storage<GossipNPCOptionRecord> GossipNPCOptionStorage;
         public static DB6Storage<GuildColorBackgroundRecord> GuildColorBackgroundStorage;
         public static DB6Storage<GuildColorBorderRecord> GuildColorBorderStorage;
         public static DB6Storage<GuildColorEmblemRecord> GuildColorEmblemStorage;
@@ -672,6 +684,7 @@ namespace Game.DataStorage
         public static DB6Storage<SceneScriptTextRecord> SceneScriptTextStorage;
         public static DB6Storage<SkillLineRecord> SkillLineStorage;
         public static DB6Storage<SkillLineAbilityRecord> SkillLineAbilityStorage;
+        public static DB6Storage<SkillLineXTraitTreeRecord> SkillLineXTraitTreeStorage;
         public static DB6Storage<SkillRaceClassInfoRecord> SkillRaceClassInfoStorage;
         public static DB6Storage<SoulbindConduitRankRecord> SoulbindConduitRankStorage;
         public static DB6Storage<SoundKitRecord> SoundKitStorage;
@@ -723,6 +736,29 @@ namespace Game.DataStorage
         public static DB6Storage<TaxiPathNodeRecord> TaxiPathNodeStorage;
         public static DB6Storage<TotemCategoryRecord> TotemCategoryStorage;
         public static DB6Storage<ToyRecord> ToyStorage;
+        public static DB6Storage<TraitCondRecord> TraitCondStorage;
+        public static DB6Storage<TraitCostRecord> TraitCostStorage;
+        public static DB6Storage<TraitCurrencyRecord> TraitCurrencyStorage;
+        public static DB6Storage<TraitCurrencySourceRecord> TraitCurrencySourceStorage;
+        public static DB6Storage<TraitDefinitionRecord> TraitDefinitionStorage;
+        public static DB6Storage<TraitDefinitionEffectPointsRecord> TraitDefinitionEffectPointsStorage;
+        public static DB6Storage<TraitEdgeRecord> TraitEdgeStorage;
+        public static DB6Storage<TraitNodeRecord> TraitNodeStorage;
+        public static DB6Storage<TraitNodeEntryRecord> TraitNodeEntryStorage;
+        public static DB6Storage<TraitNodeEntryXTraitCondRecord> TraitNodeEntryXTraitCondStorage;
+        public static DB6Storage<TraitNodeEntryXTraitCostRecord> TraitNodeEntryXTraitCostStorage;
+        public static DB6Storage<TraitNodeGroupRecord> TraitNodeGroupStorage;
+        public static DB6Storage<TraitNodeGroupXTraitCondRecord> TraitNodeGroupXTraitCondStorage;
+        public static DB6Storage<TraitNodeGroupXTraitCostRecord> TraitNodeGroupXTraitCostStorage;
+        public static DB6Storage<TraitNodeGroupXTraitNodeRecord> TraitNodeGroupXTraitNodeStorage;
+        public static DB6Storage<TraitNodeXTraitCondRecord> TraitNodeXTraitCondStorage;
+        public static DB6Storage<TraitNodeXTraitCostRecord> TraitNodeXTraitCostStorage;
+        public static DB6Storage<TraitNodeXTraitNodeEntryRecord> TraitNodeXTraitNodeEntryStorage;
+        public static DB6Storage<TraitTreeRecord> TraitTreeStorage;
+        public static DB6Storage<TraitTreeLoadoutRecord> TraitTreeLoadoutStorage;
+        public static DB6Storage<TraitTreeLoadoutEntryRecord> TraitTreeLoadoutEntryStorage;
+        public static DB6Storage<TraitTreeXTraitCostRecord> TraitTreeXTraitCostStorage;
+        public static DB6Storage<TraitTreeXTraitCurrencyRecord> TraitTreeXTraitCurrencyStorage;
         public static DB6Storage<TransmogHolidayRecord> TransmogHolidayStorage;
         public static DB6Storage<TransmogIllusionRecord> TransmogIllusionStorage;
         public static DB6Storage<TransmogSetRecord> TransmogSetStorage;
@@ -799,6 +835,10 @@ namespace Game.DataStorage
                     return row.Druid;
                 case Class.DemonHunter:
                     return row.DemonHunter;
+                case Class.Evoker:
+                    return row.Evoker;
+                case Class.Adventurer:
+                    return row.Adventurer;
                 default:
                     break;
             }
@@ -834,6 +874,10 @@ namespace Game.DataStorage
                     return row.Druid;
                 case (int)Class.DemonHunter:
                     return row.DemonHunter;
+                case (int)Class.Evoker:
+                    return row.Evoker;
+                case (int)Class.Adventurer:
+                    return row.Adventurer;
                 case -1:
                 case -7:
                     return row.Item;
@@ -851,6 +895,8 @@ namespace Game.DataStorage
                     return row.DamageReplaceStat;
                 case -9:
                     return row.DamageSecondary;
+                case -10:
+                    return row.ManaConsumable;
                 default:
                     break;
             }
@@ -862,7 +908,7 @@ namespace Game.DataStorage
         {
             return row.Wins * row.Xp;
         }
-        
+
         public static float GetIlvlStatMultiplier(GtGenericMultByILvlRecord row, InventoryType invType)
         {
             switch (invType)

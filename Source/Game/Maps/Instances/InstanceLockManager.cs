@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Configuration;
 using Framework.Constants;
@@ -310,8 +296,9 @@ namespace Game.Maps
         {
             var sharedData = _instanceLockDataById.LookupByKey(updateEvent.InstanceId);
             Cypher.Assert(sharedData != null);
-            Cypher.Assert(sharedData.InstanceId == updateEvent.InstanceId);
+            Cypher.Assert(sharedData.InstanceId == 0 || sharedData.InstanceId == updateEvent.InstanceId);
             sharedData.Data = updateEvent.NewData;
+            sharedData.InstanceId = updateEvent.InstanceId;
             if (updateEvent.CompletedEncounter != null)
             {
                 sharedData.CompletedEncountersMask |= 1u << updateEvent.CompletedEncounter.Bit;
@@ -519,7 +506,7 @@ namespace Game.Maps
 
         public uint GetInstanceId() { return _instanceId; }
 
-        public virtual void SetInstanceId(uint instanceId) { _instanceId = instanceId; }
+        public void SetInstanceId(uint instanceId) { _instanceId = instanceId; }
 
         public DateTime GetExpiryTime() { return _expiryTime; }
 
@@ -552,7 +539,6 @@ namespace Game.Maps
 
     class SharedInstanceLock : InstanceLock
     {
-
         /// <summary>
         /// Instance id based locks have two states
         /// One shared by everyone, which is the real state used by instance
@@ -563,12 +549,6 @@ namespace Game.Maps
         public SharedInstanceLock(uint mapId, Difficulty difficultyId, DateTime expiryTime, uint instanceId, SharedInstanceLockData sharedData) : base(mapId, difficultyId, expiryTime, instanceId)
         {
             _sharedData = sharedData;            
-        }
-
-        public override void SetInstanceId(uint instanceId)
-        {
-            base.SetInstanceId(instanceId);
-            _sharedData.InstanceId = instanceId;
         }
 
         public override InstanceLockData GetInstanceInitializationData() { return _sharedData; }

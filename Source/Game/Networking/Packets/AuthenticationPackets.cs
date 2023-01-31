@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Cryptography;
@@ -138,6 +124,7 @@ namespace Game.Networking.Packets
                         _worldPacket.WriteUInt8(classAvailability.ClassID);
                         _worldPacket.WriteUInt8(classAvailability.ActiveExpansionLevel);
                         _worldPacket.WriteUInt8(classAvailability.AccountExpansionLevel);
+                        _worldPacket.WriteUInt8(classAvailability.MinActiveExpansionLevel);
                     }
                 }
 
@@ -166,7 +153,7 @@ namespace Game.Networking.Packets
                     _worldPacket.WriteUInt16(SuccessInfo.NumPlayersAlliance.Value);
 
                 if(SuccessInfo.ExpansionTrialExpiration.HasValue)
-                    _worldPacket.WriteInt32(SuccessInfo.ExpansionTrialExpiration.Value);
+                    _worldPacket.WriteInt64(SuccessInfo.ExpansionTrialExpiration.Value);
 
                 foreach (VirtualRealmInfo virtualRealm in SuccessInfo.VirtualRealms)
                     virtualRealm.Write(_worldPacket);
@@ -220,7 +207,7 @@ namespace Game.Networking.Packets
             public bool ForceCharacterTemplate; // forces the client to always use a character template when creating a new character. @see Templates. @todo implement
             public ushort? NumPlayersHorde; // number of horde players in this realm. @todo implement
             public ushort? NumPlayersAlliance; // number of alliance players in this realm. @todo implement
-            public int? ExpansionTrialExpiration; // expansion trial expiration unix timestamp
+            public long? ExpansionTrialExpiration; // expansion trial expiration unix timestamp
 
             public struct GameTime
             {

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -63,7 +49,7 @@ namespace Game.Networking.Packets
         }
 
         public ObjectGuid Mailbox;
-        public uint MailID;
+        public ulong MailID;
     }
 
     public class SendMail : ClientPacket
@@ -129,20 +115,20 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt32(MailID);
-            _worldPacket.WriteUInt32(Command);
-            _worldPacket.WriteUInt32(ErrorCode);
-            _worldPacket.WriteUInt32(BagResult);
-            _worldPacket.WriteUInt32(AttachID);
-            _worldPacket.WriteUInt32(QtyInInventory);
+            _worldPacket.WriteUInt64(MailID);
+            _worldPacket.WriteInt32(Command);
+            _worldPacket.WriteInt32(ErrorCode);
+            _worldPacket.WriteInt32(BagResult);
+            _worldPacket.WriteUInt64(AttachID);
+            _worldPacket.WriteInt32(QtyInInventory);
         }
 
-        public uint MailID;
-        public uint Command;
-        public uint ErrorCode;
-        public uint BagResult;
-        public uint AttachID;
-        public uint QtyInInventory;
+        public ulong MailID;
+        public int Command;
+        public int ErrorCode;
+        public int BagResult;
+        public ulong AttachID;
+        public int QtyInInventory;
     }
 
     public class MailReturnToSender : ClientPacket
@@ -155,7 +141,7 @@ namespace Game.Networking.Packets
             SenderGUID = _worldPacket.ReadPackedGuid();
         }
 
-        public uint MailID;
+        public ulong MailID;
         public ObjectGuid SenderGUID;
     }
 
@@ -170,7 +156,7 @@ namespace Game.Networking.Packets
         }
 
         public ObjectGuid Mailbox;
-        public uint MailID;
+        public ulong MailID;
     }
 
     public class MailDelete : ClientPacket
@@ -183,7 +169,7 @@ namespace Game.Networking.Packets
             DeleteReason = _worldPacket.ReadInt32();
         }
 
-        public uint MailID;
+        public ulong MailID;
         public int DeleteReason;
     }
 
@@ -199,8 +185,8 @@ namespace Game.Networking.Packets
         }
 
         public ObjectGuid Mailbox;
-        public uint MailID;
-        public uint AttachID;
+        public ulong MailID;
+        public ulong AttachID;
     }
 
     public class MailTakeMoney : ClientPacket
@@ -211,12 +197,12 @@ namespace Game.Networking.Packets
         {
             Mailbox = _worldPacket.ReadPackedGuid();
             MailID = _worldPacket.ReadUInt32();
-            Money = _worldPacket.ReadInt64();
+            Money = _worldPacket.ReadUInt64();
         }
 
         public ObjectGuid Mailbox;
-        public uint MailID;
-        public long Money;
+        public ulong MailID;
+        public ulong Money;
     }
 
     public class MailQueryNextMailTime : ClientPacket
@@ -293,25 +279,13 @@ namespace Game.Networking.Packets
         public float Delay = 0.0f;
     }
 
-    class ShowMailbox : ServerPacket
-    {
-        public ShowMailbox() : base(ServerOpcodes.ShowMailbox) { }
-
-        public override void Write()
-        {
-            _worldPacket.WritePackedGuid(PostmasterGUID);
-        }
-
-        public ObjectGuid PostmasterGUID;
-    }
-
     //Structs
     public class MailAttachedItem
     {
         public MailAttachedItem(Item item, byte pos)
         {
             Position = pos;
-            AttachID = (int)item.GetGUID().GetCounter();
+            AttachID = item.GetGUID().GetCounter();
             Item = new ItemInstance(item);
             Count = item.GetCount();
             Charges = item.GetSpellCharges();
@@ -344,7 +318,7 @@ namespace Game.Networking.Packets
         public void Write(WorldPacket data)
         {
             data.WriteUInt8(Position);
-            data.WriteInt32(AttachID);
+            data.WriteUInt64(AttachID);
             data.WriteUInt32(Count);
             data.WriteInt32(Charges);
             data.WriteUInt32(MaxDurability);
@@ -363,7 +337,7 @@ namespace Game.Networking.Packets
         }
 
         public byte Position;
-        public int AttachID;
+        public ulong AttachID;
         public ItemInstance Item;
         public uint Count;
         public int Charges;
@@ -378,7 +352,7 @@ namespace Game.Networking.Packets
     {
         public MailListEntry(Mail mail, Player player)
         {
-            MailID = (int)mail.messageID;
+            MailID = mail.messageID;
             SenderType = (byte)mail.messageType;
 
             switch (mail.messageType)
@@ -413,7 +387,7 @@ namespace Game.Networking.Packets
 
         public void Write(WorldPacket data)
         {
-            data.WriteInt32(MailID);
+            data.WriteUInt64(MailID);
             data.WriteUInt8(SenderType);
             data.WriteUInt64(Cod);
             data.WriteInt32(StationeryID);
@@ -441,7 +415,7 @@ namespace Game.Networking.Packets
             data.WriteString(Body);
         }
 
-        public int MailID;
+        public ulong MailID;
         public byte SenderType;
         public ObjectGuid? SenderCharacter;
         public uint? AltSenderID;

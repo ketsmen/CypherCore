@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.Networking;
@@ -67,6 +53,29 @@ namespace Game.Entities
         T GetValue();
     }
 
+    public class UpdateFieldString : IUpdateField<string>
+    {
+        public string _value;
+        public int BlockBit;
+        public int Bit;
+
+        public UpdateFieldString(int blockBit, int bit)
+        {
+            BlockBit = blockBit;
+            Bit = bit;
+            _value = "";
+        }
+
+        public static implicit operator string(UpdateFieldString updateField)
+        {
+            return updateField._value;
+        }
+
+        public void SetValue(string value) { _value = value; }
+
+        public string GetValue() { return _value; }
+    }
+
     public class UpdateField<T> : IUpdateField<T> where T : new()
     {
         public T _value;
@@ -118,7 +127,7 @@ namespace Game.Entities
 
         public bool HasValue() { return _hasValue; }
     }
-    
+
     public class UpdateFieldArray<T> where T : new()
     {
         public T[] _values;
@@ -380,6 +389,8 @@ namespace Game.Entities
                 ((IHasChangesMask)updateField._value).ClearChangesMask();
         }
 
+        public void ClearChangesMask(UpdateFieldString updateField) { }
+
         public void ClearChangesMask<U>(OptionalUpdateField<U> updateField) where U : new()
         {
             if (typeof(IHasChangesMask).IsAssignableFrom(typeof(U)) && updateField.HasValue())
@@ -407,6 +418,12 @@ namespace Game.Entities
         }
 
         public UpdateField<U> ModifyValue<U>(UpdateField<U> updateField) where U : new()
+        {
+            MarkChanged(updateField);
+            return updateField;
+        }
+
+        public UpdateFieldString ModifyValue(UpdateFieldString updateField)
         {
             MarkChanged(updateField);
             return updateField;
@@ -442,6 +459,12 @@ namespace Game.Entities
         }
 
         public void MarkChanged<U>(UpdateField<U> updateField) where U : new()
+        {
+            _changesMask.Set(updateField.BlockBit);
+            _changesMask.Set(updateField.Bit);
+        }
+
+        public void MarkChanged(UpdateFieldString updateField)
         {
             _changesMask.Set(updateField.BlockBit);
             _changesMask.Set(updateField.Bit);

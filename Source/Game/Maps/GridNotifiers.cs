@@ -1,20 +1,7 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Bgs.Protocol.Notification.V1;
 using Framework.Constants;
 using Game.Chat;
 using Game.Entities;
@@ -189,7 +176,7 @@ namespace Game.Maps
                 {
                     if (visionPlayer.seerView == player)
                         visionPlayer.UpdateVisibilityOf(i_objects);
-                }                
+                }
             }
         }
 
@@ -404,19 +391,23 @@ namespace Game.Maps
     {
         WorldObject i_source;
         T i_packetSender;
+        PhaseShift i_phaseShift;
         float i_distSq;
         Team team;
         Player skipped_receiver;
+        bool required3dDist;
 
-        public MessageDistDeliverer(WorldObject src, T packetSender, float dist, bool own_team_only = false, Player skipped = null)
+        public MessageDistDeliverer(WorldObject src, T packetSender, float dist, bool own_team_only = false, Player skipped = null, bool req3dDist = false)
         {
             i_source = src;
             i_packetSender = packetSender;
+            i_phaseShift = src.GetPhaseShift();
             i_distSq = dist * dist;
             if (own_team_only && src.IsPlayer())
                 team = src.ToPlayer().GetEffectiveTeam();
 
             skipped_receiver = skipped;
+            required3dDist = req3dDist;
         }
 
         public override void Visit(IList<Player> objs)
@@ -424,10 +415,10 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(i_source))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
-                if (player.GetExactDist2dSq(i_source.GetPosition()) > i_distSq)
+                if ((!required3dDist ? player.GetExactDist2dSq(i_source) : player.GetExactDistSq(i_source)) > i_distSq)
                     continue;
 
                 // Send packet to all who are sharing the player's vision
@@ -448,10 +439,10 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(i_source))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
-                if (creature.GetExactDist2dSq(i_source.GetPosition()) > i_distSq)
+                if ((!required3dDist ? creature.GetExactDist2dSq(i_source) : creature.GetExactDistSq(i_source)) > i_distSq)
                     continue;
 
                 // Send packet to all who are sharing the creature's vision
@@ -469,10 +460,10 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 DynamicObject dynamicObject = objs[i];
-                if (!dynamicObject.IsInPhase(i_source))
+                if (!dynamicObject.InSamePhase(i_phaseShift))
                     continue;
 
-                if (dynamicObject.GetExactDist2dSq(i_source.GetPosition()) > i_distSq)
+                if ((!required3dDist ? dynamicObject.GetExactDist2dSq(i_source) : dynamicObject.GetExactDistSq(i_source)) > i_distSq)
                     continue;
 
                 // Send packet back to the caster if the caster has vision of dynamic object
@@ -503,12 +494,14 @@ namespace Game.Maps
     {
         Unit i_source;
         T i_packetSender;
+        PhaseShift i_phaseShift;
         float i_distSq;
 
         public MessageDistDelivererToHostile(Unit src, T packetSender, float dist)
         {
             i_source = src;
             i_packetSender = packetSender;
+            i_phaseShift = src.GetPhaseShift();
             i_distSq = dist * dist;
         }
 
@@ -517,7 +510,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(i_source))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (player.GetExactDist2dSq(i_source) > i_distSq)
@@ -541,7 +534,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(i_source))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (creature.GetExactDist2dSq(i_source) > i_distSq)
@@ -562,7 +555,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 DynamicObject dynamicObject = objs[i];
-                if (!dynamicObject.IsInPhase(i_source))
+                if (!dynamicObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (dynamicObject.GetExactDist2dSq(i_source) > i_distSq)
@@ -615,9 +608,12 @@ namespace Game.Maps
 
     public class PlayerWorker : Notifier
     {
+        PhaseShift i_phaseShift;
+        Action<Player> action;
+
         public PlayerWorker(WorldObject searcher, Action<Player> _action)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             action = _action;
         }
 
@@ -626,20 +622,20 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (player.IsInPhase(_searcher))
+                if (player.InSamePhase(i_phaseShift))
                     action.Invoke(player);
             }
         }
-
-        WorldObject _searcher;
-        Action<Player> action;
     }
 
     public class CreatureWorker : Notifier
     {
+        PhaseShift i_phaseShift;
+        IDoWork<Creature> Do;
+
         public CreatureWorker(WorldObject searcher, IDoWork<Creature> _Do)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             Do = _Do;
         }
 
@@ -648,21 +644,21 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (creature.IsInPhase(_searcher))
+                if (creature.InSamePhase(i_phaseShift))
                     Do.Invoke(creature);
             }
         }
-
-        WorldObject _searcher;
-        IDoWork<Creature> Do;
     }
 
     public class GameObjectWorker : Notifier
     {
-        public GameObjectWorker(WorldObject searcher, IDoWork<GameObject> _Do)
+        PhaseShift i_phaseShift;
+        IDoWork<GameObject> _do;
+
+        public GameObjectWorker(WorldObject searcher, IDoWork<GameObject> @do)
         {
-            Do = _Do;
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
+            _do = @do;
         }
 
         public override void Visit(IList<GameObject> objs)
@@ -670,21 +666,22 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (gameObject.IsInPhase(_searcher))
-                    Do.Invoke(gameObject);
+                if (gameObject.InSamePhase(i_phaseShift))
+                    _do.Invoke(gameObject);
             }
         }
-
-        WorldObject _searcher;
-        IDoWork<GameObject> Do;
     }
 
     public class WorldObjectWorker : Notifier
     {
+        GridMapTypeMask i_mapTypeMask;
+        PhaseShift i_phaseShift;
+        IDoWork<WorldObject> i_do;
+
         public WorldObjectWorker(WorldObject searcher, IDoWork<WorldObject> _do, GridMapTypeMask mapTypeMask = GridMapTypeMask.All)
         {
             i_mapTypeMask = mapTypeMask;
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_do = _do;
         }
 
@@ -696,7 +693,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (gameObject.IsInPhase(_searcher))
+                if (gameObject.InSamePhase(i_phaseShift))
                     i_do.Invoke(gameObject);
             }
         }
@@ -709,7 +706,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (player.IsInPhase(_searcher))
+                if (player.InSamePhase(i_phaseShift))
                     i_do.Invoke(player);
             }
         }
@@ -722,7 +719,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (creature.IsInPhase(_searcher))
+                if (creature.InSamePhase(i_phaseShift))
                     i_do.Invoke(creature);
             }
         }
@@ -735,7 +732,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Corpse corpse = objs[i];
-                if (corpse.IsInPhase(_searcher))
+                if (corpse.InSamePhase(i_phaseShift))
                     i_do.Invoke(corpse);
             }
         }
@@ -748,7 +745,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 DynamicObject dynamicObject = objs[i];
-                if (dynamicObject.IsInPhase(_searcher))
+                if (dynamicObject.InSamePhase(i_phaseShift))
                     i_do.Invoke(dynamicObject);
             }
         }
@@ -761,7 +758,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 AreaTrigger areaTrigger = objs[i];
-                if (areaTrigger.IsInPhase(_searcher))
+                if (areaTrigger.InSamePhase(i_phaseShift))
                     i_do.Invoke(areaTrigger);
             }
         }
@@ -774,7 +771,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 SceneObject sceneObject = objs[i];
-                if (sceneObject.IsInPhase(_searcher))
+                if (sceneObject.InSamePhase(i_phaseShift))
                     i_do.Invoke(sceneObject);
             }
         }
@@ -787,14 +784,10 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Conversation conversation = objs[i];
-                if (conversation.IsInPhase(_searcher))
+                if (conversation.InSamePhase(i_phaseShift))
                     i_do.Invoke(conversation);
             }
         }
-
-        GridMapTypeMask i_mapTypeMask;
-        WorldObject _searcher;
-        IDoWork<WorldObject> i_do;
     }
 
     public class ResetNotifier : Notifier
@@ -889,11 +882,15 @@ namespace Game.Maps
 
     public class PlayerDistWorker : Notifier
     {
-        public PlayerDistWorker(WorldObject searcher, float _dist, IDoWork<Player> _Do)
+        WorldObject i_searcher;
+        float i_dist;
+        IDoWork<Player> _do;
+
+        public PlayerDistWorker(WorldObject searcher, float _dist, IDoWork<Player> @do)
         {
             i_searcher = searcher;
             i_dist = _dist;
-            Do = _Do;
+            _do = @do;
         }
 
         public override void Visit(IList<Player> objs)
@@ -901,14 +898,10 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (player.IsInPhase(i_searcher) && player.IsWithinDist(i_searcher, i_dist))
-                    Do.Invoke(player);
+                if (player.InSamePhase(i_searcher) && player.IsWithinDist(i_searcher, i_dist))
+                    _do.Invoke(player);
             }
         }
-
-        WorldObject i_searcher;
-        float i_dist;
-        IDoWork<Player> Do;
     }
 
     public class CallOfHelpCreatureInRangeDo : IDoWork<Creature>
@@ -930,7 +923,7 @@ namespace Game.Maps
 
             // too far
             // Don't use combat reach distance, range must be an absolute value, otherwise the chain aggro range will be too big
-            if (!u.IsWithinDistInMap(i_funit, i_range, true, false, false))
+            if (!u.IsWithinDist(i_funit, i_range, true, false, false))
                 return;
 
             // only if see assisted creature's enemy
@@ -996,10 +989,15 @@ namespace Game.Maps
     //Searchers
     public class WorldObjectSearcher : Notifier
     {
+        GridMapTypeMask i_mapTypeMask;
+        PhaseShift i_phaseShift;
+        WorldObject i_object;
+        ICheck<WorldObject> i_check;
+
         public WorldObjectSearcher(WorldObject searcher, ICheck<WorldObject> check, GridMapTypeMask mapTypeMask = GridMapTypeMask.All)
         {
             i_mapTypeMask = mapTypeMask;
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1015,7 +1013,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (!gameObject.IsInPhase(_searcher))
+                if (!gameObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(gameObject))
@@ -1038,7 +1036,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(_searcher))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(player))
@@ -1061,7 +1059,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(_searcher))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(creature))
@@ -1084,7 +1082,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Corpse corpse = objs[i];
-                if (!corpse.IsInPhase(_searcher))
+                if (!corpse.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(corpse))
@@ -1107,7 +1105,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 DynamicObject dynamicObject = objs[i];
-                if (!dynamicObject.IsInPhase(_searcher))
+                if (!dynamicObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(dynamicObject))
@@ -1130,7 +1128,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 AreaTrigger areaTrigger = objs[i];
-                if (!areaTrigger.IsInPhase(_searcher))
+                if (!areaTrigger.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(areaTrigger))
@@ -1153,7 +1151,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 SceneObject sceneObject = objs[i];
-                if (!sceneObject.IsInPhase(_searcher))
+                if (!sceneObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(sceneObject))
@@ -1176,7 +1174,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Conversation conversation = objs[i];
-                if (!conversation.IsInPhase(_searcher))
+                if (!conversation.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(conversation))
@@ -1188,18 +1186,19 @@ namespace Game.Maps
         }
 
         public WorldObject GetTarget() { return i_object; }
-
-        GridMapTypeMask i_mapTypeMask;
-        WorldObject i_object;
-        WorldObject _searcher;
-        ICheck<WorldObject> i_check;
     }
+
     public class WorldObjectLastSearcher : Notifier
     {
+        GridMapTypeMask i_mapTypeMask;
+        PhaseShift i_phaseShift;
+        WorldObject i_object;
+        ICheck<WorldObject> i_check;
+
         public WorldObjectLastSearcher(WorldObject searcher, ICheck<WorldObject> check, GridMapTypeMask mapTypeMask = GridMapTypeMask.All)
         {
             i_mapTypeMask = mapTypeMask;
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1211,7 +1210,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (!gameObject.IsInPhase(_searcher))
+                if (!gameObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(gameObject))
@@ -1227,7 +1226,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(_searcher))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(player))
@@ -1243,7 +1242,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(_searcher))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(creature))
@@ -1259,7 +1258,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Corpse corpse = objs[i];
-                if (!corpse.IsInPhase(_searcher))
+                if (!corpse.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(corpse))
@@ -1275,7 +1274,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 DynamicObject dynamicObject = objs[i];
-                if (!dynamicObject.IsInPhase(_searcher))
+                if (!dynamicObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(dynamicObject))
@@ -1291,7 +1290,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 AreaTrigger areaTrigger = objs[i];
-                if (!areaTrigger.IsInPhase(_searcher))
+                if (!areaTrigger.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(areaTrigger))
@@ -1307,7 +1306,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 SceneObject sceneObject = objs[i];
-                if (!sceneObject.IsInPhase(_searcher))
+                if (!sceneObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(sceneObject))
@@ -1323,7 +1322,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Conversation conversation = objs[i];
-                if (!conversation.IsInPhase(_searcher))
+                if (!conversation.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(conversation))
@@ -1332,19 +1331,19 @@ namespace Game.Maps
         }
 
         public WorldObject GetTarget() { return i_object; }
-
-        GridMapTypeMask i_mapTypeMask;
-        WorldObject i_object;
-        WorldObject _searcher;
-        ICheck<WorldObject> i_check;
     }
 
     public class WorldObjectListSearcher : Notifier
     {
+        GridMapTypeMask i_mapTypeMask;
+        List<WorldObject> i_objects;
+        PhaseShift i_phaseShift;
+        ICheck<WorldObject> i_check;
+
         public WorldObjectListSearcher(WorldObject searcher, List<WorldObject> objects, ICheck<WorldObject> check, GridMapTypeMask mapTypeMask = GridMapTypeMask.All)
         {
             i_mapTypeMask = mapTypeMask;
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_objects = objects;
             i_check = check;
         }
@@ -1452,18 +1451,17 @@ namespace Game.Maps
                     i_objects.Add(conversation);
             }
         }
-
-        GridMapTypeMask i_mapTypeMask;
-        List<WorldObject> i_objects;
-        WorldObject _searcher;
-        ICheck<WorldObject> i_check;
     }
 
     public class GameObjectSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        GameObject i_object;
+        ICheck<GameObject> i_check;
+
         public GameObjectSearcher(WorldObject searcher, ICheck<GameObject> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1476,7 +1474,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (!gameObject.IsInPhase(_searcher))
+                if (!gameObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(gameObject))
@@ -1488,16 +1486,17 @@ namespace Game.Maps
         }
 
         public GameObject GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        GameObject i_object;
-        ICheck<GameObject> i_check;
     }
+
     public class GameObjectLastSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        GameObject i_object;
+        ICheck<GameObject> i_check;
+
         public GameObjectLastSearcher(WorldObject searcher, ICheck<GameObject> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1506,7 +1505,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (!gameObject.IsInPhase(_searcher))
+                if (!gameObject.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(gameObject))
@@ -1515,16 +1514,17 @@ namespace Game.Maps
         }
 
         public GameObject GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        GameObject i_object;
-        ICheck<GameObject> i_check;
     }
+
     public class GameObjectListSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        List<GameObject> i_objects;
+        ICheck<GameObject> i_check;
+
         public GameObjectListSearcher(WorldObject searcher, List<GameObject> objects, ICheck<GameObject> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_objects = objects;
             i_check = check;
         }
@@ -1534,22 +1534,22 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 GameObject gameObject = objs[i];
-                if (gameObject.IsInPhase(_searcher))
+                if (gameObject.InSamePhase(i_phaseShift))
                     if (i_check.Invoke(gameObject))
                         i_objects.Add(gameObject);
             }
         }
-
-        WorldObject _searcher;
-        List<GameObject> i_objects;
-        ICheck<GameObject> i_check;
     }
 
     public class UnitSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        Unit i_object;
+        ICheck<Unit> i_check;
+
         public UnitSearcher(WorldObject searcher, ICheck<Unit> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1558,7 +1558,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(_searcher))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(player))
@@ -1574,7 +1574,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(_searcher))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(creature))
@@ -1586,16 +1586,17 @@ namespace Game.Maps
         }
 
         public Unit GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        Unit i_object;
-        ICheck<Unit> i_check;
     }
+
     public class UnitLastSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        Unit i_object;
+        ICheck<Unit> i_check;
+
         public UnitLastSearcher(WorldObject searcher, ICheck<Unit> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1604,7 +1605,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(_searcher))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(player))
@@ -1617,7 +1618,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(_searcher))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(creature))
@@ -1626,16 +1627,17 @@ namespace Game.Maps
         }
 
         public Unit GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        Unit i_object;
-        ICheck<Unit> i_check;
     }
+
     public class UnitListSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        List<Unit> i_objects;
+        ICheck<Unit> i_check;
+
         public UnitListSearcher(WorldObject searcher, List<Unit> objects, ICheck<Unit> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_objects = objects;
             i_check = check;
         }
@@ -1645,7 +1647,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (player.IsInPhase(_searcher))
+                if (player.InSamePhase(i_phaseShift))
                     if (i_check.Invoke(player))
                         i_objects.Add(player);
             }
@@ -1656,22 +1658,22 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (creature.IsInPhase(_searcher))
+                if (creature.InSamePhase(i_phaseShift))
                     if (i_check.Invoke(creature))
                         i_objects.Add(creature);
             }
         }
-
-        WorldObject _searcher;
-        List<Unit> i_objects;
-        ICheck<Unit> i_check;
     }
 
     public class CreatureSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        Creature i_object;
+        ICheck<Creature> i_check;
+
         public CreatureSearcher(WorldObject searcher, ICheck<Creature> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1684,7 +1686,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(_searcher))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(creature))
@@ -1696,16 +1698,17 @@ namespace Game.Maps
         }
 
         public Creature GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        Creature i_object;
-        ICheck<Creature> i_check;
     }
+
     public class CreatureLastSearcher : Notifier
     {
+        internal PhaseShift i_phaseShift;
+        Creature i_object;
+        ICheck<Creature> i_check;
+
         public CreatureLastSearcher(WorldObject searcher, ICheck<Creature> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1714,7 +1717,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (!creature.IsInPhase(_searcher))
+                if (!creature.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(creature))
@@ -1723,16 +1726,17 @@ namespace Game.Maps
         }
 
         public Creature GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        Creature i_object;
-        ICheck<Creature> i_check;
     }
+
     public class CreatureListSearcher : Notifier
     {
+        internal PhaseShift i_phaseShift;
+        List<Creature> i_objects;
+        ICheck<Creature> i_check;
+
         public CreatureListSearcher(WorldObject searcher, List<Creature> objects, ICheck<Creature> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_objects = objects;
             i_check = check;
         }
@@ -1742,22 +1746,22 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Creature creature = objs[i];
-                if (creature.IsInPhase(_searcher))
+                if (creature.InSamePhase(i_phaseShift))
                     if (i_check.Invoke(creature))
                         i_objects.Add(creature);
             }
         }
-
-        WorldObject _searcher;
-        List<Creature> i_objects;
-        ICheck<Creature> i_check;
     }
 
     public class PlayerSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        Player i_object;
+        ICheck<Player> i_check;
+
         public PlayerSearcher(WorldObject searcher, ICheck<Player> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1770,7 +1774,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(_searcher))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(player))
@@ -1782,16 +1786,17 @@ namespace Game.Maps
         }
 
         public Player GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        Player i_object;
-        ICheck<Player> i_check;
     }
+
     public class PlayerLastSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        Player i_object;
+        ICheck<Player> i_check;
+
         public PlayerLastSearcher(WorldObject searcher, ICheck<Player> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
             i_check = check;
         }
 
@@ -1800,7 +1805,7 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (!player.IsInPhase(_searcher))
+                if (!player.InSamePhase(i_phaseShift))
                     continue;
 
                 if (i_check.Invoke(player))
@@ -1809,16 +1814,23 @@ namespace Game.Maps
         }
 
         public Player GetTarget() { return i_object; }
-
-        WorldObject _searcher;
-        Player i_object;
-        ICheck<Player> i_check;
     }
+
     public class PlayerListSearcher : Notifier
     {
+        PhaseShift i_phaseShift;
+        List<Unit> i_objects;
+        ICheck<Player> i_check;
+
         public PlayerListSearcher(WorldObject searcher, List<Unit> objects, ICheck<Player> check)
         {
-            _searcher = searcher;
+            i_phaseShift = searcher.GetPhaseShift();
+            i_objects = objects;
+            i_check = check;
+        }
+        public PlayerListSearcher(PhaseShift phaseShift, List<Unit> objects, ICheck<Player> check)
+        {
+            i_phaseShift = phaseShift;
             i_objects = objects;
             i_check = check;
         }
@@ -1828,15 +1840,11 @@ namespace Game.Maps
             for (var i = 0; i < objs.Count; ++i)
             {
                 Player player = objs[i];
-                if (player.IsInPhase(_searcher))
+                if (player.InSamePhase(i_phaseShift))
                     if (i_check.Invoke(player))
                         i_objects.Add(player);
             }
         }
-
-        WorldObject _searcher;
-        List<Unit> i_objects;
-        ICheck<Player> i_check;
     }
 
     //Checks
@@ -1852,7 +1860,7 @@ namespace Game.Maps
 
         public bool Invoke(T u)
         {
-            if (u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDistInMap(u, i_range) && u.GetMaxHealth() - u.GetHealth() > i_hp)
+            if (u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDist(u, i_range) && u.GetMaxHealth() - u.GetHealth() > i_hp)
             {
                 i_hp = (uint)(u.GetMaxHealth() - u.GetHealth());
                 return true;
@@ -1884,7 +1892,7 @@ namespace Game.Maps
 
         public bool Invoke(Unit u)
         {
-            if (u.IsAlive() && u.IsInCombat() && !_obj.IsHostileTo(u) && _obj.IsWithinDistInMap(u, _range) && _minHpPct <= u.GetHealthPct() && u.GetHealthPct() <= _maxHpPct && u.GetHealthPct() < _hpPct)
+            if (u.IsAlive() && u.IsInCombat() && !_obj.IsHostileTo(u) && _obj.IsWithinDist(u, _range) && _minHpPct <= u.GetHealthPct() && u.GetHealthPct() <= _maxHpPct && u.GetHealthPct() < _hpPct)
             {
                 _hpPct = u.GetHealthPct();
                 return true;
@@ -1892,7 +1900,7 @@ namespace Game.Maps
             return false;
         }
     }
-    
+
     public class FriendlyBelowHpPctEntryInRange : ICheck<Unit>
     {
         public FriendlyBelowHpPctEntryInRange(Unit obj, uint entry, float range, byte pct, bool excludeSelf)
@@ -1908,7 +1916,7 @@ namespace Game.Maps
         {
             if (i_excludeSelf && i_obj.GetGUID() == u.GetGUID())
                 return false;
-            if (u.GetEntry() == i_entry && u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDistInMap(u, i_range) && u.HealthBelowPct(i_pct))
+            if (u.GetEntry() == i_entry && u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDist(u, i_range) && u.HealthBelowPct(i_pct))
                 return true;
             return false;
         }
@@ -1930,7 +1938,7 @@ namespace Game.Maps
 
         public bool Invoke(Creature u)
         {
-            if (u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDistInMap(u, i_range) &&
+            if (u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDist(u, i_range) &&
                 (u.IsFeared() || u.IsCharmed() || u.HasRootAura() || u.HasUnitState(UnitState.Stunned) || u.HasUnitState(UnitState.Confused)))
                 return true;
             return false;
@@ -1951,7 +1959,7 @@ namespace Game.Maps
 
         public bool Invoke(Creature u)
         {
-            if (u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDistInMap(u, i_range) &&
+            if (u.IsAlive() && u.IsInCombat() && !i_obj.IsHostileTo(u) && i_obj.IsWithinDist(u, i_range) &&
                 !(u.HasAura(i_spell)))
             {
                 return true;
@@ -1975,7 +1983,7 @@ namespace Game.Maps
 
         public bool Invoke(Unit u)
         {
-            if (u.IsAlive() && i_obj.IsWithinDistInMap(u, i_range) && !i_funit.IsFriendlyTo(u))
+            if (u.IsAlive() && i_obj.IsWithinDist(u, i_range) && !i_funit.IsFriendlyTo(u))
                 return true;
             else
                 return false;
@@ -2008,7 +2016,7 @@ namespace Game.Maps
             if (!u.IsTargetableForAttack(false))
                 return false;
 
-            if (!i_obj.IsWithinDistInMap(u, i_range) || i_obj.IsValidAttackTarget(u))
+            if (!i_obj.IsWithinDist(u, i_range) || i_obj.IsValidAttackTarget(u))
                 return false;
 
             i_range = i_obj.GetDistance(u);
@@ -2042,7 +2050,7 @@ namespace Game.Maps
             if (i_incTargetRadius)
                 searchRadius += u.GetCombatReach();
 
-            if (!u.IsInMap(i_obj) || !u.IsInPhase(i_obj) || !u.IsWithinDoubleVerticalCylinder(i_obj, searchRadius, searchRadius))
+            if (!u.IsInMap(i_obj) || !u.InSamePhase(i_obj) || !u.IsWithinDoubleVerticalCylinder(i_obj, searchRadius, searchRadius))
                 return false;
 
             if (!i_funit.IsFriendlyTo(u))
@@ -2075,7 +2083,7 @@ namespace Game.Maps
         public bool Invoke(Unit u)
         {
             if (_playerOnly && !u.IsPlayer())
-                    return false;
+                return false;
 
             if (_raid)
             {
@@ -2097,7 +2105,7 @@ namespace Game.Maps
             if (i_incTargetRadius)
                 searchRadius += u.GetCombatReach();
 
-            return u.IsInMap(_source) && u.IsInPhase(_source) && u.IsWithinDoubleVerticalCylinder(_source, searchRadius, searchRadius);
+            return u.IsInMap(_source) && u.InSamePhase(_source) && u.IsWithinDoubleVerticalCylinder(_source, searchRadius, searchRadius);
         }
 
         WorldObject _source;
@@ -2120,7 +2128,7 @@ namespace Game.Maps
 
         public bool Invoke(Unit u)
         {
-            if (u.IsAlive() && i_obj.IsWithinDistInMap(u, i_range, i_check3D))
+            if (u.IsAlive() && i_obj.IsWithinDist(u, i_range, i_check3D))
                 return true;
 
             return false;
@@ -2143,7 +2151,7 @@ namespace Game.Maps
 
         public bool Invoke(Unit u)
         {
-            if (u.IsTargetableForAttack() && i_obj.IsWithinDistInMap(u, i_range) &&
+            if (u.IsTargetableForAttack() && i_obj.IsWithinDist(u, i_range) &&
                 (i_funit.IsInCombatWith(u) || i_funit.IsHostileTo(u)) && i_obj.CanSeeOrDetect(u))
             {
                 i_range = i_obj.GetDistance(u);        // use found unit range as new range limit for next check
@@ -2199,7 +2207,7 @@ namespace Game.Maps
             if (i_incTargetRadius)
                 searchRadius += u.GetCombatReach();
 
-            return u.IsInMap(i_obj) && u.IsInPhase(i_obj) && u.IsWithinDoubleVerticalCylinder(i_obj, searchRadius, searchRadius);
+            return u.IsInMap(i_obj) && u.InSamePhase(i_obj) && u.IsWithinDoubleVerticalCylinder(i_obj, searchRadius, searchRadius);
         }
 
         WorldObject i_obj;
@@ -2227,7 +2235,7 @@ namespace Game.Maps
 
         public bool Invoke(Unit u)
         {
-            if (!me.IsWithinDistInMap(u, m_range))
+            if (!me.IsWithinDist(u, m_range))
                 return false;
 
             if (!me.IsValidAttackTarget(u))
@@ -2256,7 +2264,7 @@ namespace Game.Maps
 
         public bool Invoke(Unit u)
         {
-            if (!me.IsWithinDistInMap(u, m_range))
+            if (!me.IsWithinDist(u, m_range))
                 return false;
 
             if (!me.CanSeeOrDetect(u))
@@ -2293,7 +2301,7 @@ namespace Game.Maps
             if (!u.IsHostileTo(_me))
                 return false;
 
-            if (!u.IsWithinDistInMap(_me, _me.GetAggroRange(u)))
+            if (!u.IsWithinDist(_me, _me.GetAggroRange(u)))
                 return false;
 
             if (!_me.IsValidAttackTarget(u))
@@ -2339,7 +2347,7 @@ namespace Game.Maps
 
             // too far
             // Don't use combat reach distance, range must be an absolute value, otherwise the chain aggro range will be too big
-            if (!i_funit.IsWithinDistInMap(u, i_range, true, false, false))
+            if (!i_funit.IsWithinDist(u, i_range, true, false, false))
                 return false;
 
             // only if see assisted creature
@@ -2372,7 +2380,7 @@ namespace Game.Maps
                 return false;
 
             // Don't use combat reach distance, range must be an absolute value, otherwise the chain aggro range will be too big
-            if (!i_obj.IsWithinDistInMap(u, i_range, true, false, false))
+            if (!i_obj.IsWithinDist(u, i_range, true, false, false))
                 return false;
 
             if (!i_obj.IsWithinLOSInMap(u))
@@ -2400,7 +2408,7 @@ namespace Game.Maps
 
         public bool Invoke(Creature u)
         {
-            if (u.GetDeathState() != DeathState.Dead && u.GetEntry() == i_entry && u.IsAlive() == i_alive && u.GetGUID() != i_obj.GetGUID() && i_obj.IsWithinDistInMap(u, i_range) && u.CheckPrivateObjectOwnerVisibility(i_obj))
+            if (u.GetDeathState() != DeathState.Dead && u.GetEntry() == i_entry && u.IsAlive() == i_alive && u.GetGUID() != i_obj.GetGUID() && i_obj.IsWithinDist(u, i_range) && u.CheckPrivateObjectOwnerVisibility(i_obj))
             {
                 i_range = i_obj.GetDistance(u);         // use found unit range as new range limit for next check
                 return true;
@@ -2414,40 +2422,66 @@ namespace Game.Maps
         float i_range;
     }
 
-    public class NearestCreatureEntryWithLiveStateAndAuraInObjectRangeCheck : ICheck<Creature>
+    public class CreatureWithOptionsInObjectRangeCheck<T> : ICheck<Creature> where T : NoopCheckCustomizer
     {
         WorldObject i_obj;
-        uint i_entry;
-        uint i_spellId;
-        bool i_alive;
-        float i_range;
+        FindCreatureOptions i_args;
+        T i_customizer;
 
-        public NearestCreatureEntryWithLiveStateAndAuraInObjectRangeCheck(WorldObject obj, uint entry, uint spellId, bool alive, float range)
+        public CreatureWithOptionsInObjectRangeCheck(WorldObject obj, T customizer, FindCreatureOptions args)
         {
             i_obj = obj;
-            i_entry = entry;
-            i_spellId = spellId;
-            i_alive = alive;
-            i_range = range;
+            i_args = args;
+            i_customizer = customizer;
         }
 
         public bool Invoke(Creature u)
         {
-            if (u.GetDeathState() != DeathState.Dead
-                && u.GetEntry() == i_entry
-                && u.HasAura(i_spellId)
-                && u.IsAlive() == i_alive
-                && u.GetGUID() != i_obj.GetGUID()
-                && i_obj.IsWithinDistInMap(u, i_range)
-                && u.CheckPrivateObjectOwnerVisibility(i_obj))
-            {
-                i_range = i_obj.GetDistance(u);         // use found unit range as new range limit for next check
-                return true;
-            }
-            return false;
+            if (u.GetDeathState() == DeathState.Dead) // Despawned
+                return false;
+
+            if (u.GetGUID() == i_obj.GetGUID())
+                return false;
+
+            if (!i_customizer.Test(u))
+                return false;
+
+            if (i_args.CreatureId.HasValue && u.GetEntry() != i_args.CreatureId)
+                return false;
+
+            if (i_args.StringId != null && !u.HasStringId(i_args.StringId))
+                return false;
+
+            if (i_args.IsAlive.HasValue && u.IsAlive() != i_args.IsAlive)
+                return false;
+
+            if (i_args.IsSummon.HasValue && u.IsSummon() != i_args.IsSummon)
+                return false;
+
+            if (i_args.IsInCombat.HasValue && u.IsInCombat() != i_args.IsInCombat)
+                return false;
+
+            if ((i_args.OwnerGuid.HasValue && u.GetOwnerGUID() != i_args.OwnerGuid)
+                || (i_args.CharmerGuid.HasValue && u.GetCharmerGUID() != i_args.CharmerGuid)
+                || (i_args.CreatorGuid.HasValue && u.GetCreatorGUID() != i_args.CreatorGuid)
+                || (i_args.DemonCreatorGuid.HasValue && u.GetDemonCreatorGUID() != i_args.DemonCreatorGuid)
+                || (i_args.PrivateObjectOwnerGuid.HasValue && u.GetPrivateObjectOwner() != i_args.PrivateObjectOwnerGuid))
+                return false;
+
+            if (i_args.IgnorePrivateObjects && u.IsPrivateObject())
+                return false;
+
+            if (i_args.IgnoreNotOwnedPrivateObjects && !u.CheckPrivateObjectOwnerVisibility(i_obj))
+                return false;
+
+            if (i_args.AuraSpellId.HasValue && !u.HasAura((uint)i_args.AuraSpellId))
+                return false;
+
+            i_customizer.Update(u);
+            return true;
         }
     }
-    
+
     public class AnyPlayerInObjectRangeCheck : ICheck<Player>
     {
         public AnyPlayerInObjectRangeCheck(WorldObject obj, float range, bool reqAlive = true)
@@ -2462,7 +2496,7 @@ namespace Game.Maps
             if (_reqAlive && !pl.IsAlive())
                 return false;
 
-            if (!_obj.IsWithinDistInMap(pl, _range))
+            if (!_obj.IsWithinDist(pl, _range))
                 return false;
 
             return true;
@@ -2497,7 +2531,7 @@ namespace Game.Maps
         float _range;
         bool _reqAlive;
     }
-    
+
     class NearestPlayerInObjectRangeCheck : ICheck<Player>
     {
         public NearestPlayerInObjectRangeCheck(WorldObject obj, float range)
@@ -2509,7 +2543,7 @@ namespace Game.Maps
 
         public bool Invoke(Player pl)
         {
-            if (pl.IsAlive() && i_obj.IsWithinDistInMap(pl, i_range))
+            if (pl.IsAlive() && i_obj.IsWithinDist(pl, i_range))
             {
                 i_range = i_obj.GetDistance(pl);
                 return true;
@@ -2647,7 +2681,7 @@ namespace Game.Maps
 
         public bool Invoke(WorldObject go)
         {
-            return m_pObject.IsWithinDist(go, m_fRange, false) && m_pObject.IsInPhase(go);
+            return m_pObject.IsWithinDist(go, m_fRange, false) && m_pObject.InSamePhase(go);
         }
 
         WorldObject m_pObject;
@@ -2751,7 +2785,7 @@ namespace Game.Maps
             return obj.GetEntry() == _entry && (!obj.IsPrivateObject() || obj.GetPrivateObjectOwner() == _ownerGUID);
         }
     }
-    
+
     class GameObjectFocusCheck : ICheck<GameObject>
     {
         public GameObjectFocusCheck(WorldObject caster, uint focusId)
@@ -2769,7 +2803,7 @@ namespace Game.Maps
                 return false;
 
             float dist = go.GetGoInfo().GetSpellFocusRadius();
-            return go.IsWithinDistInMap(_caster, dist);
+            return go.IsWithinDist(_caster, dist);
         }
 
         WorldObject _caster;
@@ -2787,7 +2821,7 @@ namespace Game.Maps
 
         public bool Invoke(GameObject go)
         {
-            if (go.GetGoInfo().type == GameObjectTypes.FishingHole && go.IsSpawned() && i_obj.IsWithinDistInMap(go, i_range) && i_obj.IsWithinDistInMap(go, go.GetGoInfo().FishingHole.radius))
+            if (go.GetGoInfo().type == GameObjectTypes.FishingHole && go.IsSpawned() && i_obj.IsWithinDist(go, i_range) && i_obj.IsWithinDist(go, go.GetGoInfo().FishingHole.radius))
             {
                 i_range = i_obj.GetDistance(go);
                 return true;
@@ -2809,7 +2843,7 @@ namespace Game.Maps
 
         public bool Invoke(GameObject go)
         {
-            if (i_obj.IsWithinDistInMap(go, i_range))
+            if (i_obj.IsWithinDist(go, i_range))
             {
                 i_range = i_obj.GetDistance(go);        // use found GO range as new range limit for next check
                 return true;
@@ -2834,7 +2868,7 @@ namespace Game.Maps
 
         public bool Invoke(GameObject go)
         {
-            if ((!_spawnedOnly || go.IsSpawned()) && go.GetEntry() == _entry && go.GetGUID() != _obj.GetGUID() && _obj.IsWithinDistInMap(go, _range))
+            if ((!_spawnedOnly || go.IsSpawned()) && go.GetEntry() == _entry && go.GetGUID() != _obj.GetGUID() && _obj.IsWithinDist(go, _range))
             {
                 _range = _obj.GetDistance(go);        // use found GO range as new range limit for next check
                 return true;
@@ -2864,7 +2898,7 @@ namespace Game.Maps
 
         public bool Invoke(GameObject go)
         {
-            if (!go.IsSpawned() && go.GetEntry() == i_entry && go.GetGUID() != i_obj.GetGUID() && i_obj.IsWithinDistInMap(go, i_range))
+            if (!go.IsSpawned() && go.GetEntry() == i_entry && go.GetGUID() != i_obj.GetGUID() && i_obj.IsWithinDist(go, i_range))
             {
                 i_range = i_obj.GetDistance(go);        // use found GO range as new range limit for next check
                 return true;
@@ -2872,7 +2906,7 @@ namespace Game.Maps
             return false;
         }
     }
-    
+
     // Success at unit in range, range update for next check (this can be use with GameobjectLastSearcher to find nearest GO with a certain type)
     class NearestGameObjectTypeInObjectRangeCheck : ICheck<GameObject>
     {
@@ -2885,7 +2919,7 @@ namespace Game.Maps
 
         public bool Invoke(GameObject go)
         {
-            if (go.GetGoType() == i_type && i_obj.IsWithinDistInMap(go, i_range))
+            if (go.GetGoType() == i_type && i_obj.IsWithinDist(go, i_range))
             {
                 i_range = i_obj.GetDistance(go);        // use found GO range as new range limit for next check
                 return true;
@@ -2898,6 +2932,36 @@ namespace Game.Maps
         float i_range;
     }
 
+    // CHECK modifiers
+    public class NoopCheckCustomizer
+    {
+        public virtual bool Test(WorldObject o) { return true; }
+
+        public virtual void Update(WorldObject o) { }
+    }
+
+    class NearestCheckCustomizer : NoopCheckCustomizer
+    {
+        WorldObject i_obj;
+        float i_range;
+
+        public NearestCheckCustomizer(WorldObject obj, float range)
+        {
+            i_obj = obj;
+            i_range = range;
+        }
+
+        public override bool Test(WorldObject o)
+        {
+            return i_obj.IsWithinDist(o, i_range);
+        }
+
+        public override void Update(WorldObject o)
+        {
+            i_range = i_obj.GetDistance(o);
+        }
+    }
+    
     public class AnyDeadUnitObjectInRangeCheck<T> : ICheck<T> where T : WorldObject
     {
         public AnyDeadUnitObjectInRangeCheck(WorldObject searchObj, float range)

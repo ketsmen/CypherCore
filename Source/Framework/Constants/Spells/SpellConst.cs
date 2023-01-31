@@ -1,19 +1,6 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
+
 using System;
 
 namespace Framework.Constants
@@ -52,10 +39,10 @@ namespace Framework.Constants
 
     public enum SpellLinkedType
     {
-        Cast = 0,            // +: cast; -: remove
-        Hit = 1 * 200000,
-        Aura = 2 * 200000,   // +: aura; -: immune
-        Remove = 0
+        Cast = 0,   // +: cast; -: remove
+        Hit = 1,
+        Aura = 2,   // +: aura; -: immune
+        Remove = 3
     }
 
     //Spell targets used by SelectSpell
@@ -337,7 +324,11 @@ namespace Framework.Constants
         Sapped = 30,
         Enraged = 31,
         Wounded = 32,
-        Max = 33,
+        Infected2 = 33,
+        Infected3 = 34,
+        Infected4 = 35,
+        Taunted = 36,
+        Max = 37,
 
         ImmuneToMovementImpairmentAndLossControlMask = ((1 << Charm) | (1 << Disoriented) |
             (1 << Fear) | (1 << Root) | (1 << Sleep) | (1 << Snare) | (1 << Stun) |
@@ -469,8 +460,8 @@ namespace Framework.Constants
         BadTargets = 13,
         PvpTargetWhileUnflagged = 14,
         CantBeCharmed = 15,
-        CantBeDisenchanted = 16,
-        CantBeDisenchantedSkill = 17,
+        CantBeSalvaged = 16,
+        CantBeSalvagedSkill = 17,
         CantBeEnchanted = 18,
         CantBeMilled = 19,
         CantBeProspected = 20,
@@ -763,13 +754,16 @@ namespace Framework.Constants
         IneligibleWeaponAppearance = 307,
         PlayerCondition = 308,
         NotWhileChromieTimed = 309,
-        OptionalReagents = 310,
+        CraftingReagents = 310,
         SpectatorOrCommentator = 311,
         SoulbindConduitLearnFailedInvalidCovenant = 312,
         ShadowlandsRidingRequirement = 313,
         NotInMageTower = 314,
         GarrisonFollowerAtMinLevel = 315,
-        Unknown = 316,
+        CantBeRecrafted = 316,
+        PassiveReplaced = 317,
+        CantFlyHere = 318,
+        Unknown = 319,
 
         // Ok Cast Value - Here In Case A Future Version Removes Success And We Need To Use A Custom Value (Not Sent To Client Either Way)
         SpellCastOk = Success
@@ -1353,7 +1347,45 @@ namespace Framework.Constants
         YouHaveOtherWaysToSummonPocopoc = 635, // You Have Other Ways To Summon Pocopoc While In Zereth Mortis.
         RequiresMoreSyllabicRecall = 636, // Requires More Syllabic Recall.
         ThisBattlePetCannotRideOnMagicSaucer = 637, // This Battle Pet Is Unable To Ride On The Magic Saucer.
+        YouCanOnlyDoThisWhileMidair = 638, // You Can Only Do This While Midair.
+        YouCannotDoThatWhileAirborne = 639, // You Cannot Do That While Airborne.
         PocopocIsUnavailableOnQuestline = 640, // Pocopoc Is Unavailable To Summon During The Questline A Means To An End.
+        RequiresSulfuronSlammer = 711, // Requires Sulfuron Slammer
+        NotReadyYet = 788, // Not Ready Yet.
+        QualityOfTieredMedallionSettingIsTooLow = 789, // The Quality Of Your Tiered Medallion Setting Is Too Low To Add Another Socket To This Item.
+        YouHaveNotLearnedBarrelRoll = 790, // You Have Not Learned Barrel Roll.
+        TargetMustBeAnEliteElemental = 791, // Target Must Be An Elite Elemental.
+        SkillCheckAlreadyFailed = 792, // Skill Check Already Failed.
+        YourTargetWasRecentlyFed = 793, // Your Target Was Recently Fed.
+        CannotLureElusiveCreatureTowardsTown = 794, // You Cannot Lure An Elusive Creature Towards A Town.
+        NoWorthwhileCreaturesInAreaToLureOut = 795, // There Are No Worthwhile Creatures In This Area To Lure Out.
+        CannotLureWildBeast = 796, // This Is A Daycare For Whelps. Why Would You Try To Lure A Wild Beast Here...?
+        YouHaveNoArcaneEssencesInYourInventory = 797, // You Have No Arcane Essences In Your Inventory.
+        ThatPlayerIsCurrentlyNotInterestedInEngagingWithYourShenanigans = 798, // That Player Is Currently Not Interested In Engaging With Your Shenanigans.
+        CantBeCastOnNonPlayerCharacters = 799, // Can'T Be Cast On Non Player Characters.
+        ASignalFlareWasRecentlyFiredAtThisLocation = 800, // A Signal Flare Was Recently Fired At This Location.
+        ThisTinkerIsTooComplicatedForYou = 801, // This Tinker Is Too Complicated For You.
+        TheDuckRefusesToPlayWhileAnotherMaestroIsNearby = 802, // The Duck Refuses To Play While Another Maestro Is Nearby.
+        YouHaveStudiedTheseNotesExtensivelyandThereIsNothingNewToLearnFromThem = 803, // You Have Studied These Notes Extensively And There Is Nothing New To Learn From Them.
+        YouDontHaveEnoughGold = 804, // You Don'T Have Enough Gold.
+        YouDoNotKnowHowToTameOttuk = 805, // You Do Not Know How To Tame Ottuk.
+        ClanAylaagIsCurrentlyTravellingandCannotBeTeleportedTo = 806, // Clan Aylaag Is Currently Travelling And Cannot Be Teleported To.
+        NotEnoughInsanity = 807, // Not Enough Insanity
+        YouMustWaitToAccessThisAgain = 808, // You Must Wait To Access This Again.
+        YouDoNotKnowHowToTameDragonkin = 809, // You Do Not Know How To Tame Dragonkin.
+        RequiresAnEmptySoulCage = 810, // Requires An Empty Soul Cage.
+        YouAlreadyHaveACagedSoulOfThatType = 811, // You Already Have A Caged Soul Of That Type.
+        YouCantDoThatHere = 812, // You Can'T Do That Here.
+        YouDoNotHaveAnyElementalGemsSocketed = 813, // You Do Not Have Any Elemental Gems Socketed.
+        YouMustBeInTheDragonIsles = 814, // You Must Be In The Dragon Isles.
+        YouCannotDoThatWhileUnderwater = 815, // You Cannot Do That While Underwater.
+        YouMustBeRidingAStolenTameMagmammoth = 816, // You Must Be Riding A Stolen Tame Magmammoth.
+        YouMustBeFlyingAboveWaterInsideAnActiveTuskarrFishingHole = 817, // You Must Be Flying Above Water Inside An Active Tuskarr Fishing Hole.
+        YouAreAlreadyBraveEnoughToContinueWithYourExperimentation = 818, // You Are Already Brave Enough To Continue With Your Experimentation.
+        YouDontKnowHowToRepairThisItem = 819, // You Don'T Know How To Repair This Item.
+        ThereIsNoMoreRoomOnThatHandhold = 820, // There Is No More Room On That Handhold.
+        YouMustUnblockThisSpotByCompletingADailyQuest = 821, // You Must Unblock This Spot By Completing A Daily Quest.
+        YouMustBeCloserToAnIceHoleToDoThat = 822, // You Must Be Closer To An Ice Hole To Do That.
     }
 
     public enum SpellMissInfo
@@ -1464,7 +1496,8 @@ namespace Framework.Constants
         Unk78 = 78,
         Unk91 = 91,
         Unk100 = 100,
-        DemonHunter = 107
+        DemonHunter = 107,
+        Evoker = 224
     }
 
     [Flags]
@@ -2036,11 +2069,11 @@ namespace Framework.Constants
         Unk28 = 0x10000000, // 28
         Unk29 = 0x20000000, // 29
         Unk30 = 0x40000000, // 30
-        Unk31 = 0x80000000  // 31
+        OnlyProcFromClassAbilities = 0x80000000  // 31 Only Proc From Class Abilities
     }
     public enum SpellAttr13 : uint
     {
-        Unk0 = 0x01, //  0
+        AllowClassAbilityProcs = 0x01, //  0 Allow Class Ability Procs
         Unk1 = 0x02, //  1
         PassiveIsUpgrade = 0x04, //  2 Displays "Upgrade" in spell tooltip instead of "Passive"
         Unk3 = 0x08, //  3
@@ -2430,8 +2463,23 @@ namespace Framework.Constants
         ModifyKeystone2 = 285,
         GrantBattlepetExperience = 286,
         SetGarrisonFollowerLevel = 287,
-        Unk288 = 288,
-        Unk289 = 289,
+        CraftItem = 288, // Miscvalue[0] = Craftingdataid
+        ModifyAuraStacks = 289, // Miscvalue[0] = 0 Means Add, = 1 Means Set
+        ModifyCooldown = 290,
+        ModifyCooldowns = 291, // Miscvalue[0] = Spellfamily, Miscvalue[1] = Maybe Bit Index For Family Flags? Off By 1 For The Only Spell Using This Effect
+        ModifyCooldownsByCategory = 292, // Miscvalue[0] = Category
+        ModifyCharges = 293, // Miscvalue[0] = Charge Category
+        CraftLoot = 294, // Miscvalue[0] = Craftingdataid
+        SalvageItem = 295, // Miscvalue[0] = Itemsalvageid
+        CraftSalvageItem = 296, // Miscvalue[0] = Itemsalvageid, Miscvalue[1] = Craftingdataid
+        RecraftItem = 297,
+        CancelAllPrivateConversations = 298,
+        Unk299 = 299, // Something With Items, As Of 10.0.2 All Spells Are Named "Downgrading"
+        Unk300 = 300,
+        CraftEnchant = 301, // Miscvalue[0] = Craftingdataid, Miscvalue[1] = ?
+        Gathering = 302,
+        CreateTraitTreeConfig = 303, // Miscvalue[0] = Traittreeid
+        ChangeActiveCombatTraitConfig = 304,
         TotalSpellEffects
     }
 

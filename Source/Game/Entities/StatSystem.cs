@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.DataStorage;
@@ -1634,7 +1620,9 @@ namespace Game.Entities
                 0.9830f,  // Warlock
                 0.9830f,  // Monk
                 0.9720f,  // Druid
-                0.9830f   // Demon Hunter
+                0.9830f,  // Demon Hunter
+                0.9880f,  // Evoker
+                1.0f,     // Adventurer
             };
 
             //  1     1     k              cx
@@ -1670,7 +1658,9 @@ namespace Game.Entities
             0.0f,           // Warlock
             90.6425f,       // Monk
             0.0f,           // Druid
-            65.631440f      // Demon Hunter
+            65.631440f,     // Demon Hunter
+            0.0f,           // Evoker
+            0.0f,           // Adventurer
         };
 
         public void UpdateParryPercentage()
@@ -1708,7 +1698,9 @@ namespace Game.Entities
             150.375940f,    // Warlock
             145.560408f,    // Monk
             116.890707f,    // Druid
-            145.560408f     // Demon Hunter
+            145.560408f,    // Demon Hunter
+            145.560408f,    // Evoker
+            0.0f,           // Adventurer
         };
 
         public void UpdateDodgePercentage()

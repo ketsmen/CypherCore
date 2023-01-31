@@ -1,19 +1,6 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
+
 using System;
 
 namespace Framework.Constants
@@ -1491,7 +1478,13 @@ namespace Framework.Constants
         OneshotStandVar0 = 991,
         OneshotFlycustomspell01 = 992,
         OneshotSpelleffectDecay = 993,
-        CreatureSpecial = 994,
+        StateCreatureSpecial = 994,
+        OneshotWareact01 = 1001,
+        OneshotFlycustomspell04 = 1004,
+        OneshotTalkSubdued = 1005,
+        StateEmotetalk = 1006,
+        StateWainteraction = 1007,
+        OneshotTakeOffStart = 1009,
     }
 
     public enum GlyphSlotType
@@ -1713,6 +1706,75 @@ namespace Framework.Constants
         VoteKickCount = 6,
         BootCount = 7,
         GearDiff = 8
+    }
+
+    public enum PlayerInteractionType
+    {
+        None = 0,
+        TradePartner = 1,
+        Item = 2,
+        Gossip = 3,
+        QuestGiver = 4,
+        Merchant = 5,
+        TaxiNode = 6,
+        Trainer = 7,
+        Banker = 8,
+        AlliedRaceDetailsGiver = 9,
+        GuildBanker = 10,
+        Registrar = 11,
+        Vendor = 12,
+        PetitionVendor = 13,
+        TabardVendor = 14,
+        TalentMaster = 15,
+        SpecializationMaster = 16,
+        MailInfo = 17,
+        SpiritHealer = 18,
+        AreaSpiritHealer = 19,
+        Binder = 20,
+        Auctioneer = 21,
+        StableMaster = 22,
+        BattleMaster = 23,
+        Transmogrifier = 24,
+        LFGDungeon = 25,
+        VoidStorageBanker = 26,
+        BlackMarketAuctioneer = 27,
+        AdventureMap = 28,
+        WorldMap = 29,
+        GarrArchitect = 30,
+        GarrTradeskill = 31,
+        GarrMission = 32,
+        ShipmentCrafter = 33,
+        GarrRecruitment = 34,
+        GarrTalent = 35,
+        Trophy = 36,
+        PlayerChoice = 37,
+        ArtifactForge = 38,
+        ObliterumForge = 39,
+        ScrappingMachine = 40,
+        ContributionCollector = 41,
+        AzeriteRespec = 42,
+        IslandQueue = 43,
+        ItemInteraction = 44,
+        ChromieTime = 45,
+        CovenantPreview = 46,
+        AnimaDiversion = 47,
+        LegendaryCrafting = 48,
+        WeeklyRewards = 49,
+        Soulbind = 50,
+        CovenantSanctum = 51,
+        NewPlayerGuide = 52,
+        ItemUpgrade = 53,
+        AdventureJournal = 54,
+        Renown = 55,
+        AzeriteForge = 56,
+        PerksProgramVendor = 57,
+        ProfessionsCraftingOrder = 58,
+        Professions = 59,
+        ProfessionsCustomerOrder = 60,
+        TraitSystem = 61,
+        BarbersChoice = 62,
+        JailersTowerBuffs = 63,
+        MajorFactionRenown = 64
     }
 
     public enum PrestigeLevelInfoFlags : byte
@@ -2129,6 +2191,100 @@ namespace Framework.Constants
         CreatureSpellDamage = 9
     }
 
+    [Flags]
+    public enum TraitCombatConfigFlags
+    {
+        None = 0x0,
+        ActiveForSpec = 0x1,
+        StarterBuild = 0x2,
+        SharedActionBars = 0x4
+    }
+
+    [Flags]
+    public enum TraitCondFlags
+    {
+        None = 0x0,
+        IsGate = 0x1,
+        IsAlwaysMet = 0x2,
+        IsSufficient = 0x4,
+    }
+
+    public enum TraitConditionType
+    {
+        Available = 0,
+        Visible = 1,
+        Granted = 2,
+        Increased = 3
+    }
+
+    public enum TraitConfigType
+    {
+        Invalid = 0,
+        Combat = 1,
+        Profession = 2,
+        Generic = 3
+    }
+
+    public enum TraitCurrencyType
+    {
+        Gold = 0,
+        CurrencyTypesBased = 1,
+        TraitSourced = 2
+    }
+
+    public enum TraitEdgeType
+    {
+        VisualOnly = 0,
+        DeprecatedRankConnection = 1,
+        SufficientForAvailability = 2,
+        RequiredForAvailability = 3,
+        MutuallyExclusive = 4,
+        DeprecatedSelectionOption = 5
+    }
+
+    public enum TraitNodeEntryType
+    {
+        SpendHex = 0,
+        SpendSquare = 1,
+        SpendCircle = 2,
+        SpendSmallCircle = 3,
+        DeprecatedSelect = 4,
+        DragAndDrop = 5,
+        SpendDiamond = 6,
+        ProfPath = 7,
+        ProfPerk = 8,
+        ProfPathUnlock = 9
+    }
+
+    [Flags]
+    public enum TraitNodeGroupFlag
+    {
+        None = 0x0,
+        AvailableByDefault = 0x1
+    }
+
+    public enum TraitNodeType
+    {
+        Single = 0,
+        Tiered = 1,
+        Selection = 2
+    }
+
+    public enum TraitPointsOperationType
+    {
+        None = -1,
+        Set = 0,
+        Multiply = 1
+    }
+
+    [Flags]
+    public enum TraitTreeFlag
+    {
+        None = 0x0,
+        CannotRefund = 0x1,
+        HideSingleRankNumbers = 0x2
+    }
+
     public enum UiMapFlag
     {
         None = 0x00,
@@ -2426,7 +2582,7 @@ namespace Framework.Constants
         ContentTuningPvpItemLevelDamageScaling = 15,
     }
 
-    public enum BattlePetSpeciesFlags : ushort
+    public enum BattlePetSpeciesFlags : int
     {
         NoRename = 0x01,
         WellKnown = 0x02,
@@ -2443,7 +2599,8 @@ namespace Framework.Constants
         NoLicenseRequired = 0x1000,
         AddsAllowedWithBoss = 0x2000,
         HideUntilLearned = 0x4000,
-        MatchPlayerHighPetLevel = 0x8000
+        MatchPlayerHighPetLevel = 0x8000,
+        NoWildPetAddsAllowed = 0x10000,
     }
 
     public enum SpellVisualEffectNameType

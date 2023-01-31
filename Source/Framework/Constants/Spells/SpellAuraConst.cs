@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 namespace Framework.Constants
 {
@@ -528,10 +514,35 @@ namespace Framework.Constants
         ModHealingTakenFromCaster = 504,
         ModPlayerChoiceRerolls = 505, // NYI
         DisableInertia = 506, // NYI
-        Unk507 = 507,
+        ModDamageTakenFromCasterByLabel = 507,
         Unk508 = 508,
         Unk509 = 509,
-        ModifiedRaidInstance = 510, // Related to "Fated" raid affixes
+        ModifiedRaidInstance = 510, // NYI; Related to "Fated" raid affixes
+        ApplyProfessionEffect = 511, // Nyi; Miscvalue[0] = Professioneffectid
+        Unk512 = 512,
+        Unk513 = 513,
+        Unk514 = 514,
+        Unk515 = 515,
+        Unk516 = 516,
+        Unk517 = 517,
+        Unk518 = 518,
+        ModCooldownRecoveryRateAll = 519, // Nyi; Applies To All Spells, Not Filtered By Familyflags Or Label
+        Unk520 = 520,
+        Unk521 = 521,
+        Unk522 = 522,
+        Unk523 = 523,
+        Unk524 = 524,
+        DisplayProfessionEquipment = 525, // Nyi; Miscvalue[0] = Profession (Enum, Not Id)
+        Unk526 = 526,
+        Unk527 = 527,
+        AllowBlockingSpells = 528, // Nyi
+        ModSpellBlockChance = 529, // Nyi
+        Unk530 = 530,
+        Unk531 = 531,
+        Unk532 = 532,
+        DisableNavigation = 533, // Disables Map Pins
+        Unk534 = 534,
+        Unk535 = 535,
         Total
     }
 

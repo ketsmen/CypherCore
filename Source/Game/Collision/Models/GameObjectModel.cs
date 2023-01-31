@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.GameMath;
@@ -155,7 +141,9 @@ namespace Game.Collision
             Vector3 pModel = iInvRot.Multiply(point - iPos) * iInvScale;
             Vector3 zDirModel = iInvRot.Multiply(new Vector3(0.0f, 0.0f, -1.0f));
             float zDist;
-            if (iModel.GetLocationInfo(pModel, zDirModel, out zDist, info))
+
+            GroupLocationInfo groupInfo = new();
+            if (iModel.GetLocationInfo(pModel, zDirModel, out zDist, groupInfo))
             {
                 Vector3 modelGround = pModel + zDist * zDirModel;
                 float world_Z = (iInvRot.Multiply(modelGround) * iScale + iPos).Z;
@@ -225,14 +213,14 @@ namespace Game.Collision
         public bool IsMapObject() { return isWmo; }
         public byte GetNameSetId() { return owner.GetNameSetId(); }
         
-        public static void LoadGameObjectModelList()
+        public static bool LoadGameObjectModelList()
         {
             uint oldMSTime = Time.GetMSTime();
             var filename = Global.WorldMgr.GetDataPath() + "/vmaps/GameObjectModels.dtree";
             if (!File.Exists(filename))
             {
                 Log.outWarn(LogFilter.Server, "Unable to open '{0}' file.", filename);
-                return;
+                return false;
             }
             try
             {
@@ -241,7 +229,7 @@ namespace Game.Collision
                 if (magic != MapConst.VMapMagic)
                 {
                     Log.outError(LogFilter.Misc, $"File '{filename}' has wrong header, expected {MapConst.VMapMagic}.");
-                    return;
+                    return false;
                 }
 
                 long length = reader.BaseStream.Length;
@@ -266,6 +254,7 @@ namespace Game.Collision
             }
 
             Log.outInfo(LogFilter.ServerLoading, "Loaded {0} GameObject models in {1} ms", StaticModelList.models.Count, Time.GetMSTimeDiffToNow(oldMSTime));
+            return true;
         }
 
         bool _collisionEnabled;

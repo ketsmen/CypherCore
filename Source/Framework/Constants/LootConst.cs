@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */﻿
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.﻿
 
 namespace Framework.Constants
 {
@@ -110,5 +96,16 @@ namespace Framework.Constants
         Locked = 2,                        // Item Is Shown In Red. Player Cannot Loot.
         Master = 3,                        // Item Can Only Be Distributed By Group Loot Master.
         Owner = 4                         // Ignore Binding Confirmation And Etc, For Single Player Looting
+    }
+
+    public enum LootRollIneligibilityReason
+    {
+        None = 0,
+        UnusableByClass = 1, // Your class may not roll need on this item.
+        MaxUniqueItemCount = 2, // You already have the maximum amount of this item.
+        CannotBeDisenchanted = 3, // This item may not be disenchanted.
+        EnchantingSkillTooLow = 4, // You do not have an Enchanter of skill %d in your group.
+        NeedDisabled = 5, // Need rolls are disabled for this item.
+        OwnBetterItem = 6  // You already have a powerful version of this item.
     }
 }

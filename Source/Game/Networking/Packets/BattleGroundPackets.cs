@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -492,7 +478,11 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt32(BattlemasterListID);
             _worldPacket.WriteBit(Registered);
             _worldPacket.WriteBit(AffectsRating);
+            _worldPacket.WriteBit(DeserterPenalty != null);
             _worldPacket.FlushBits();
+
+            if (DeserterPenalty != null)
+                DeserterPenalty.Write(_worldPacket);
         }
 
         public enum MatchState
@@ -506,6 +496,7 @@ namespace Game.Networking.Packets
         public MatchState State = MatchState.Inactive;
         public long StartTime;
         public int Duration;
+        public RatedMatchDeserterPenalty DeserterPenalty;
         public byte ArenaFaction;
         public uint BattlemasterListID;
         public bool Registered;
@@ -573,12 +564,15 @@ namespace Game.Networking.Packets
         public int Unused2;
         public int WeeklyPlayed;
         public int WeeklyWon;
+        public int RoundsSeasonPlayed;
+        public int RoundsSeasonWon;
+        public int RoundsWeeklyPlayed;
+        public int RoundsWeeklyWon;
         public int BestWeeklyRating;
         public int LastWeeksBestRating;
         public int BestSeasonRating;
         public int PvpTierID;
         public int Unused3;
-        public int WeeklyBestWinPvpTierID;
         public int Unused4;
         public int Rank;
         public bool Disqualified;
@@ -593,16 +587,33 @@ namespace Game.Networking.Packets
             data.WriteInt32(Unused2);
             data.WriteInt32(WeeklyPlayed);
             data.WriteInt32(WeeklyWon);
+            data.WriteInt32(RoundsSeasonPlayed);
+            data.WriteInt32(RoundsSeasonWon);
+            data.WriteInt32(RoundsWeeklyPlayed);
+            data.WriteInt32(RoundsWeeklyWon);
             data.WriteInt32(BestWeeklyRating);
             data.WriteInt32(LastWeeksBestRating);
             data.WriteInt32(BestSeasonRating);
             data.WriteInt32(PvpTierID);
             data.WriteInt32(Unused3);
-            data.WriteInt32(WeeklyBestWinPvpTierID);
             data.WriteInt32(Unused4);
             data.WriteInt32(Rank);
             data.WriteBit(Disqualified);
             data.FlushBits();
+        }
+    }
+
+    class RatedMatchDeserterPenalty
+    {
+        public int PersonalRatingChange;
+        public int QueuePenaltySpellID;
+        public int QueuePenaltyDuration;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteInt32(PersonalRatingChange);
+            data.WriteInt32(QueuePenaltySpellID);
+            data.WriteInt32(QueuePenaltyDuration);
         }
     }
 

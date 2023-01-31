@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.Entities;
@@ -49,6 +35,7 @@ namespace Scripts.Spells.DeathKnight
         public const uint DeathStrikeOffhand = 66188;
         public const uint FesteringWound = 194310;
         public const uint Frost = 137006;
+        public const uint FrostFever = 55095;
         public const uint FrostScythe = 207230;
         public const uint GlyphOfFoulMenagerie = 58642;
         public const uint GlyphOfTheGeist = 58640;
@@ -588,6 +575,25 @@ namespace Scripts.Spells.DeathKnight
         public override void Register()
         {
             OnEffectHitTarget.Add(new EffectHandler(HandleScriptEffect, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+
+    [Script] // 49184 - Howling Blast
+    class spell_dk_howling_blast : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.FrostFever);
+        }
+
+        void HandleFrostFever(uint effIndex)
+        {
+            GetCaster().CastSpell(GetHitUnit(), SpellIds.FrostFever);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleFrostFever, 0, SpellEffectName.SchoolDamage));
         }
     }
     

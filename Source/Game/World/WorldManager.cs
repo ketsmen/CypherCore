@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Collections;
 using Framework.Configuration;
@@ -410,7 +396,7 @@ namespace Game
                 || !TerrainManager.ExistMapAndVMap(1, 10311.3f, 832.463f) || !TerrainManager.ExistMapAndVMap(1, -2917.58f, -257.98f)
                 || (WorldConfig.GetIntValue(WorldCfg.Expansion) != 0 && (!TerrainManager.ExistMapAndVMap(530, 10349.6f, -6357.29f) || !TerrainManager.ExistMapAndVMap(530, -3961.64f, -13931.2f))))
             {
-                Log.outError(LogFilter.ServerLoading, "Unable to load critical files - server shutting down !!!");
+                Log.outError(LogFilter.ServerLoading, "Unable to load map and vmap data for starting zones - server shutting down!");
                 Environment.Exit(1);
             }
 
@@ -421,7 +407,8 @@ namespace Game
             Global.GameEventMgr.Initialize();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Cypher Strings...");
-            Global.ObjectMgr.LoadCypherStrings();
+            if (!Global.ObjectMgr.LoadCypherStrings())
+                Environment.Exit(1);
 
             // not send custom type REALM_FFA_PVP to realm list
             RealmType server_type = IsFFAPvPRealm() ? RealmType.PVP : (RealmType)WorldConfig.GetIntValue(WorldCfg.GameType);
@@ -500,6 +487,9 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Spell Totem models...");
             Global.SpellMgr.LoadSpellTotemModel();
 
+            Log.outInfo(LogFilter.ServerLoading, "Loading Traits...");
+            TraitMgr.Load();
+
             Log.outInfo(LogFilter.ServerLoading, "Loading languages...");
             Global.LanguageMgr.LoadLanguages();
 
@@ -507,7 +497,11 @@ namespace Game
             Global.LanguageMgr.LoadLanguagesWords();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading GameObject models...");
-            GameObjectModel.LoadGameObjectModelList();
+            if (!GameObjectModel.LoadGameObjectModelList())
+            {
+                Log.outFatal(LogFilter.ServerLoading, "Unable to load gameobject models, objects using WMO models will crash the client - server shutting down!");                
+                Environment.Exit(1);
+            }
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Instance Template...");
             Global.ObjectMgr.LoadInstanceTemplate();
@@ -889,9 +883,6 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu addon...");
             Global.ObjectMgr.LoadGossipMenuAddon();
-
-            Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu item addon...");
-            Global.ObjectMgr.LoadGossipMenuItemAddon();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature trainers...");
             Global.ObjectMgr.LoadCreatureTrainers();                         // must be after LoadGossipMenuItems

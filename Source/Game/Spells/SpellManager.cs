@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -88,7 +74,7 @@ namespace Game.Entities
             if (SpellEffectsHandlers.Count == 0)
             {
                 Log.outFatal(LogFilter.ServerLoading, "Could'nt find any SpellEffectHandlers. Dev needs to check this out.");
-                Global.WorldMgr.ShutdownServ(0, ShutdownMask.Force, ShutdownExitCode.Error);
+                Environment.Exit(1);
             }
         }
 
@@ -576,9 +562,9 @@ namespace Game.Entities
             return false;
         }
 
-        public List<int> GetSpellLinked(int spell_id)
+        public List<int> GetSpellLinked(SpellLinkedType type, uint spellId)
         {
-            return mSpellLinkedMap.LookupByKey(spell_id);
+            return mSpellLinkedMap.LookupByKey((type, spellId));
         }
 
         public MultiMap<uint, uint> GetPetLevelupSpellList(CreatureFamily petFamily)
@@ -1744,7 +1730,7 @@ namespace Game.Entities
             {
                 int trigger = result.Read<int>(0);
                 int effect = result.Read<int>(1);
-                int type = result.Read<int>(2);
+                SpellLinkedType type = (SpellLinkedType)result.Read<byte>(2);
 
                 SpellInfo spellInfo = GetSpellInfo((uint)Math.Abs(trigger), Difficulty.None);
                 if (spellInfo == null)
@@ -1768,14 +1754,32 @@ namespace Game.Entities
                     continue;
                 }
 
-                if (type != 0) //we will find a better way when more types are needed
+                if (type < SpellLinkedType.Cast || type > SpellLinkedType.Remove)
                 {
-                    if (trigger > 0)
-                        trigger += 200000 * type;
-                    else
-                        trigger -= 200000 * type;
+                    Log.outError(LogFilter.Sql, $"The spell trigger {trigger}, effect {effect} listed in `spell_linked_spell` has invalid link type {type}, skipped.");
+                    continue;
                 }
-                mSpellLinkedMap.Add(trigger, effect);
+
+                if (trigger < 0)
+                {
+                    if (type != SpellLinkedType.Cast)
+                        Log.outError(LogFilter.Sql, $"The spell trigger {trigger} listed in `spell_linked_spell` has invalid link type {type}, changed to 0.");
+
+                    trigger = -trigger;
+                    type = SpellLinkedType.Remove;
+                }
+
+
+                if (type != SpellLinkedType.Aura)
+                {
+                    if (trigger == effect)
+                    {
+                        Log.outError(LogFilter.Sql, $"The spell trigger {trigger}, effect {effect} listed in `spell_linked_spell` triggers itself (infinite loop), skipped.");
+                        continue;
+                    }
+                }
+
+                mSpellLinkedMap.Add((type, (uint)trigger), effect);
 
                 ++count;
             } while (result.NextRow());
@@ -2471,17 +2475,19 @@ namespace Game.Entities
                 "AttributesEx4, AttributesEx5, AttributesEx6, AttributesEx7, AttributesEx8, AttributesEx9, AttributesEx10, AttributesEx11, AttributesEx12, AttributesEx13, " +
                 //19              20       21          22       23                  24                  25                 26               27
                 "AttributesEx14, Stances, StancesNot, Targets, TargetCreatureType, RequiresSpellFocus, FacingCasterFlags, CasterAuraState, TargetAuraState, " +
-                //28                      29                      30               31               32                      33                      34
-                "ExcludeCasterAuraState, ExcludeTargetAuraState, CasterAuraSpell, TargetAuraSpell, ExcludeCasterAuraSpell, ExcludeTargetAuraSpell, CastingTimeIndex, " +
-                //35            36                    37                     38                 39              40                   41
+                //28                      29                      30               31               32                      33
+                "ExcludeCasterAuraState, ExcludeTargetAuraState, CasterAuraSpell, TargetAuraSpell, ExcludeCasterAuraSpell, ExcludeTargetAuraSpell, " +
+                //34              35              36                     37                     38
+                "CasterAuraType, TargetAuraType, ExcludeCasterAuraType, ExcludeTargetAuraType, CastingTimeIndex, " +
+                //39            40                    41                     42                 43              44                   45
                 "RecoveryTime, CategoryRecoveryTime, StartRecoveryCategory, StartRecoveryTime, InterruptFlags, AuraInterruptFlags1, AuraInterruptFlags2, " +
-                //42                      43                      44         45          46           47            48           49        50         51          52
+                //46                      47                      48         49          50          51           52            53           54        55         56
                 "ChannelInterruptFlags1, ChannelInterruptFlags2, ProcFlags, ProcFlags2, ProcChance, ProcCharges, ProcCooldown, ProcBasePPM, MaxLevel, BaseLevel, SpellLevel, " +
-                //53             54          55     56           57           58                 59                        60                             61
+                //57             58          59     60           61           62                 63                        64                             65
                 "DurationIndex, RangeIndex, Speed, LaunchDelay, StackAmount, EquippedItemClass, EquippedItemSubClassMask, EquippedItemInventoryTypeMask, ContentTuningId, " +
-                //62         63         64         65              66                  67               68                 69                 70                 71
+                //66         67         68         69              70                  71               72                 73                 74                 75
                 "SpellName, ConeAngle, ConeWidth, MaxTargetLevel, MaxAffectedTargets, SpellFamilyName, SpellFamilyFlags1, SpellFamilyFlags2, SpellFamilyFlags3, SpellFamilyFlags4, " +
-                //72        73              74           75          76
+                //76        77              78           79          80
                 "DmgClass, PreventionType, AreaGroupId, SchoolMask, ChargeCategoryId FROM serverside_spell");
 
             if (!spellsResult.IsEmpty())
@@ -2496,7 +2502,7 @@ namespace Game.Entities
                         continue;
                     }
 
-                    mServersideSpellNames.Add(new(spellId, spellsResult.Read<string>(62)));
+                    mServersideSpellNames.Add(new(spellId, spellsResult.Read<string>(66)));
 
                     SpellInfo spellInfo = new(mServersideSpellNames.Last().Name, difficulty, spellEffects[(spellId, difficulty)]);
                     spellInfo.CategoryId = spellsResult.Read<uint>(2);
@@ -2531,44 +2537,48 @@ namespace Game.Entities
                     spellInfo.TargetAuraSpell = spellsResult.Read<uint>(31);
                     spellInfo.ExcludeCasterAuraSpell = spellsResult.Read<uint>(32);
                     spellInfo.ExcludeTargetAuraSpell = spellsResult.Read<uint>(33);
-                    spellInfo.CastTimeEntry = CliDB.SpellCastTimesStorage.LookupByKey(spellsResult.Read<uint>(34));
-                    spellInfo.RecoveryTime = spellsResult.Read<uint>(35);
-                    spellInfo.CategoryRecoveryTime = spellsResult.Read<uint>(36);
-                    spellInfo.StartRecoveryCategory = spellsResult.Read<uint>(37);
-                    spellInfo.StartRecoveryTime = spellsResult.Read<uint>(38);
-                    spellInfo.InterruptFlags = (SpellInterruptFlags)spellsResult.Read<uint>(39);
-                    spellInfo.AuraInterruptFlags = (SpellAuraInterruptFlags)spellsResult.Read<uint>(40);
-                    spellInfo.AuraInterruptFlags2 = (SpellAuraInterruptFlags2)spellsResult.Read<uint>(41);
-                    spellInfo.ChannelInterruptFlags = (SpellAuraInterruptFlags)spellsResult.Read<uint>(42);
-                    spellInfo.ChannelInterruptFlags2 = (SpellAuraInterruptFlags2)spellsResult.Read<uint>(43);
-                    spellInfo.ProcFlags = new ProcFlagsInit(spellsResult.Read<int>(44), spellsResult.Read<int>(45));
-                    spellInfo.ProcChance = spellsResult.Read<uint>(46);
-                    spellInfo.ProcCharges = spellsResult.Read<uint>(47);
-                    spellInfo.ProcCooldown = spellsResult.Read<uint>(48);
-                    spellInfo.ProcBasePPM = spellsResult.Read<float>(49);
-                    spellInfo.MaxLevel = spellsResult.Read<uint>(50);
-                    spellInfo.BaseLevel = spellsResult.Read<uint>(51);
-                    spellInfo.SpellLevel = spellsResult.Read<uint>(52);
-                    spellInfo.DurationEntry = CliDB.SpellDurationStorage.LookupByKey(spellsResult.Read<uint>(53));
-                    spellInfo.RangeEntry = CliDB.SpellRangeStorage.LookupByKey(spellsResult.Read<uint>(54));
-                    spellInfo.Speed = spellsResult.Read<float>(55);
-                    spellInfo.LaunchDelay = spellsResult.Read<float>(56);
-                    spellInfo.StackAmount = spellsResult.Read<uint>(57);
-                    spellInfo.EquippedItemClass = (ItemClass)spellsResult.Read<int>(58);
-                    spellInfo.EquippedItemSubClassMask = spellsResult.Read<int>(59);
-                    spellInfo.EquippedItemInventoryTypeMask = spellsResult.Read<int>(60);
-                    spellInfo.ContentTuningId = spellsResult.Read<uint>(61);
-                    spellInfo.ConeAngle = spellsResult.Read<float>(63);
-                    spellInfo.Width = spellsResult.Read<float>(64);
-                    spellInfo.MaxTargetLevel = spellsResult.Read<uint>(65);
-                    spellInfo.MaxAffectedTargets = spellsResult.Read<uint>(66);
-                    spellInfo.SpellFamilyName = (SpellFamilyNames)spellsResult.Read<uint>(67);
-                    spellInfo.SpellFamilyFlags = new FlagArray128(spellsResult.Read<uint>(68), spellsResult.Read<uint>(69), spellsResult.Read<uint>(70), spellsResult.Read<uint>(71));
-                    spellInfo.DmgClass = (SpellDmgClass)spellsResult.Read<uint>(72);
-                    spellInfo.PreventionType = (SpellPreventionType)spellsResult.Read<uint>(73);
-                    spellInfo.RequiredAreasID = spellsResult.Read<int>(74);
-                    spellInfo.SchoolMask = (SpellSchoolMask)spellsResult.Read<uint>(75);
-                    spellInfo.ChargeCategoryId = spellsResult.Read<uint>(76);
+                    spellInfo.CasterAuraType = (AuraType)spellsResult.Read<int>(34);
+                    spellInfo.TargetAuraType = (AuraType)spellsResult.Read<int>(35);
+                    spellInfo.ExcludeCasterAuraType = (AuraType)spellsResult.Read<int>(36);
+                    spellInfo.ExcludeTargetAuraType = (AuraType)spellsResult.Read<int>(37);
+                    spellInfo.CastTimeEntry = CliDB.SpellCastTimesStorage.LookupByKey(spellsResult.Read<uint>(38));
+                    spellInfo.RecoveryTime = spellsResult.Read<uint>(39);
+                    spellInfo.CategoryRecoveryTime = spellsResult.Read<uint>(40);
+                    spellInfo.StartRecoveryCategory = spellsResult.Read<uint>(41);
+                    spellInfo.StartRecoveryTime = spellsResult.Read<uint>(42);
+                    spellInfo.InterruptFlags = (SpellInterruptFlags)spellsResult.Read<uint>(43);
+                    spellInfo.AuraInterruptFlags = (SpellAuraInterruptFlags)spellsResult.Read<uint>(44);
+                    spellInfo.AuraInterruptFlags2 = (SpellAuraInterruptFlags2)spellsResult.Read<uint>(45);
+                    spellInfo.ChannelInterruptFlags = (SpellAuraInterruptFlags)spellsResult.Read<uint>(46);
+                    spellInfo.ChannelInterruptFlags2 = (SpellAuraInterruptFlags2)spellsResult.Read<uint>(47);
+                    spellInfo.ProcFlags = new ProcFlagsInit(spellsResult.Read<int>(48), spellsResult.Read<int>(49));
+                    spellInfo.ProcChance = spellsResult.Read<uint>(50);
+                    spellInfo.ProcCharges = spellsResult.Read<uint>(51);
+                    spellInfo.ProcCooldown = spellsResult.Read<uint>(52);
+                    spellInfo.ProcBasePPM = spellsResult.Read<float>(53);
+                    spellInfo.MaxLevel = spellsResult.Read<uint>(54);
+                    spellInfo.BaseLevel = spellsResult.Read<uint>(55);
+                    spellInfo.SpellLevel = spellsResult.Read<uint>(56);
+                    spellInfo.DurationEntry = CliDB.SpellDurationStorage.LookupByKey(spellsResult.Read<uint>(57));
+                    spellInfo.RangeEntry = CliDB.SpellRangeStorage.LookupByKey(spellsResult.Read<uint>(58));
+                    spellInfo.Speed = spellsResult.Read<float>(59);
+                    spellInfo.LaunchDelay = spellsResult.Read<float>(60);
+                    spellInfo.StackAmount = spellsResult.Read<uint>(61);
+                    spellInfo.EquippedItemClass = (ItemClass)spellsResult.Read<int>(62);
+                    spellInfo.EquippedItemSubClassMask = spellsResult.Read<int>(63);
+                    spellInfo.EquippedItemInventoryTypeMask = spellsResult.Read<int>(64);
+                    spellInfo.ContentTuningId = spellsResult.Read<uint>(65);
+                    spellInfo.ConeAngle = spellsResult.Read<float>(67);
+                    spellInfo.Width = spellsResult.Read<float>(68);
+                    spellInfo.MaxTargetLevel = spellsResult.Read<uint>(69);
+                    spellInfo.MaxAffectedTargets = spellsResult.Read<uint>(70);
+                    spellInfo.SpellFamilyName = (SpellFamilyNames)spellsResult.Read<uint>(71);
+                    spellInfo.SpellFamilyFlags = new FlagArray128(spellsResult.Read<uint>(72), spellsResult.Read<uint>(73), spellsResult.Read<uint>(74), spellsResult.Read<uint>(75));
+                    spellInfo.DmgClass = (SpellDmgClass)spellsResult.Read<uint>(76);
+                    spellInfo.PreventionType = (SpellPreventionType)spellsResult.Read<uint>(77);
+                    spellInfo.RequiredAreasID = spellsResult.Read<int>(78);
+                    spellInfo.SchoolMask = (SpellSchoolMask)spellsResult.Read<uint>(79);
+                    spellInfo.ChargeCategoryId = spellsResult.Read<uint>(80);
 
                     mSpellInfoMap.Add(spellId, spellInfo);
 
@@ -2629,7 +2639,7 @@ namespace Game.Entities
                 foreach (var spellEffectInfo in spellInfo.GetEffects())
                 {
                     // all bleed effects and spells ignore armor
-                    if ((spellInfo.GetEffectMechanicMask(spellEffectInfo.EffectIndex) & (1 << (int)Mechanics.Bleed)) != 0)
+                    if ((spellInfo.GetEffectMechanicMask(spellEffectInfo.EffectIndex) & (1ul << (int)Mechanics.Bleed)) != 0)
                         spellInfo.AttributesCu |= SpellCustomAttributes.IgnoreArmor;
 
                     switch (spellEffectInfo.ApplyAuraName)
@@ -2718,6 +2728,9 @@ namespace Game.Entities
                             {
                                 uint enchantId = (uint)spellEffectInfo.MiscValue;
                                 var enchant = CliDB.SpellItemEnchantmentStorage.LookupByKey(enchantId);
+                                if (enchant == null)
+                                    break;
+
                                 for (var s = 0; s < ItemConst.MaxItemEnchantmentEffects; ++s)
                                 {
                                     if (enchant.Effect[s] != ItemEnchantmentType.CombatSpell)
@@ -4316,6 +4329,18 @@ namespace Game.Entities
                 });
             });
 
+            // Fire Cannon
+            ApplySpellFix(new[] { 181593 }, spellInfo =>
+            {
+                ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
+                {
+                    // This spell never triggers, theory is that it was supposed to be only triggered until target reaches some health percentage
+                    // but was broken and always caused visuals to break, then target was changed to immediately spawn with desired health
+                    // leaving old data in db2
+                    spellEffectInfo.TriggerSpell = 0;
+                });
+            });
+
             // Ray of Frost (Fingers of Frost charges)
             ApplySpellFix(new []{ 269748 }, spellInfo =>
             {
@@ -4673,7 +4698,7 @@ namespace Game.Entities
         public bool IsPrimaryProfessionSkill(uint skill)
         {
             SkillLineRecord pSkill = CliDB.SkillLineStorage.LookupByKey(skill);
-            return pSkill != null && pSkill.CategoryID == SkillCategory.Profession;
+            return pSkill != null && pSkill.CategoryID == SkillCategory.Profession && pSkill.ParentSkillLineID == 0;
         }
 
         public bool IsWeaponSkill(uint skill)
@@ -4734,7 +4759,7 @@ namespace Game.Entities
         Dictionary<(uint id, Difficulty difficulty), SpellProcEntry> mSpellProcMap = new();
         Dictionary<uint, SpellThreatEntry> mSpellThreatMap = new();
         Dictionary<uint, PetAura> mSpellPetAuraMap = new();
-        MultiMap<int, int> mSpellLinkedMap = new();
+        MultiMap<(SpellLinkedType, uint), int> mSpellLinkedMap = new();
         Dictionary<uint, SpellEnchantProcEntry> mSpellEnchantProcEventMap = new();
         MultiMap<uint, SpellArea> mSpellAreaMap = new();
         MultiMap<uint, SpellArea> mSpellAreaForQuestMap = new();

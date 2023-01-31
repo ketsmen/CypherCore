@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using System;
 
@@ -21,7 +7,7 @@ namespace Framework.Constants
 {
     public struct PlayerConst
     {
-        public const Expansion CurrentExpansion = Expansion.ShadowLands;
+        public const Expansion CurrentExpansion = Expansion.Dragonflight;
 
         public const int MaxTalentTiers = 7;
         public const int MaxTalentColumns = 3;
@@ -35,7 +21,7 @@ namespace Framework.Constants
         public const int ReqPrimaryTreeTalents = 31;
         public const int ExploredZonesSize = 192;
         public const ulong MaxMoneyAmount = 99999999999UL;
-        public const int MaxActionButtons = 132;
+        public const int MaxActionButtons = 180;
         public const int MaxActionButtonActionValue = 0x00FFFFFF + 1;
 
         public const int MaxDailyQuests = 25;
@@ -54,8 +40,6 @@ namespace Framework.Constants
 
         public const int MaxRunes = 7;
         public const int MaxRechargingRunes = 3;
-
-        public const int CustomDisplaySize = 3;
 
         public const int ArtifactsAllWeaponsGeneralWeaponEquippedPassive = 197886;
 
@@ -152,7 +136,9 @@ namespace Framework.Constants
         Com = 0x08, // Commentator
         Dev = 0x10,
         BossSound = 0x20, // Plays "RaidBossEmoteWarning" sound on raid boss emote/whisper
-        Mobile = 0x40
+        Mobile = 0x40,
+        Guide = 0x1000,
+        Newcomer = 0x2000
     }
 
     public enum DrunkenState
@@ -505,9 +491,9 @@ namespace Framework.Constants
 
     public enum PlayerRestState
     {
-        Rested = 0x01,
-        NotRAFLinked = 0x02,
-        RAFLinked = 0x06
+        Rested = 1,
+        Normal = 2,
+        RAFLinked = 6
     }
 
     public enum CharacterCustomizeFlags
@@ -558,7 +544,7 @@ namespace Framework.Constants
         // first slot for item stored (in any way in player items data)
         Start = 0,
         // last+1 slot for item stored (in any way in player items data)
-        End = 199,
+        End = 218,
         Count = (End - Start)
     }
 
@@ -753,7 +739,9 @@ namespace Framework.Constants
         FailedAffectingCombat = 5,
         FailedCantRemoveTalent = 6,
         FailedCantDoThatChallengeModeActive = 7,
-        FailedRestArea = 8
+        FailedRestArea = 8,
+        UnspentTalentPoints = 9,
+        InPvpMatch = 10
     }
 
     public enum TutorialsFlag

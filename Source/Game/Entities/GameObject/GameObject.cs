@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -407,6 +393,8 @@ namespace Game.Entities
         {
             m_Events.Update(diff);
 
+            base.Update(diff);
+
             if (GetAI() != null)
                 GetAI().UpdateAI(diff);
             else if (!AIM_Initialize())
@@ -514,10 +502,7 @@ namespace Game.Entities
                             // If there is no restock timer, or if the restock timer passed, the chest becomes ready to loot
                             m_restockTime = 0;
                             m_lootState = LootState.Ready;
-                            loot = null;
-                            m_personalLoot.Clear();
-                            m_unique_users.Clear();
-                            m_usetimes = 0;
+                            ClearLoot();
                             UpdateDynamicFlagsForNearbyPlayers();
                             break;
                         default:
@@ -745,10 +730,7 @@ namespace Game.Entities
                             {
                                 m_restockTime = 0;
                                 m_lootState = LootState.Ready;
-                                loot = null;
-                                m_personalLoot.Clear();
-                                m_unique_users.Clear();
-                                m_usetimes = 0;
+                                ClearLoot();
                                 UpdateDynamicFlagsForNearbyPlayers();
                             }
                             break;
@@ -833,10 +815,7 @@ namespace Game.Entities
                             return;
                     }
 
-                    loot = null;
-                    m_personalLoot.Clear();
-                    m_unique_users.Clear();
-                    m_usetimes = 0;
+                    ClearLoot();
 
                     // Do not delete chests or goobers that are not consumed on loot, while still allowing them to despawn when they expire if summoned
                     bool isSummonedAndExpired = (GetOwner() != null || GetSpellId() != 0) && m_respawnTime == 0;
@@ -1318,7 +1297,7 @@ namespace Game.Entities
             if (base.IsNeverVisibleFor(seer))
                 return true;
 
-            if (GetGoType() == GameObjectTypes.SpellFocus && GetGoInfo().SpellFocus.serverOnly == 1)
+            if (GetGoInfo().GetServerOnly() != 0)
                 return true;
 
             if (GetDisplayId() == 0)
@@ -2422,8 +2401,9 @@ namespace Game.Entities
                             if (!item)
                                 return;
 
-                            OpenHeartForge openHeartForge = new();
-                            openHeartForge.ForgeGUID = GetGUID();
+                            GameObjectInteraction openHeartForge = new();
+                            openHeartForge.ObjectGUID = GetGUID();
+                            openHeartForge.InteractionType = PlayerInteractionType.AzeriteForge;
                             player.SendPacket(openHeartForge);
                             break;
                         }
@@ -2438,9 +2418,25 @@ namespace Game.Entities
                     if (!player)
                         return;
 
-                    GameObjectUILink gameObjectUILink = new();
+                    GameObjectInteraction gameObjectUILink = new();
                     gameObjectUILink.ObjectGUID = GetGUID();
-                    gameObjectUILink.UILink = (int)GetGoInfo().UILink.UILinkType;
+                    switch (GetGoInfo().UILink.UILinkType)
+                    {
+                        case 0:
+                            gameObjectUILink.InteractionType = PlayerInteractionType.AdventureJournal;
+                            break;
+                        case 1:
+                            gameObjectUILink.InteractionType = PlayerInteractionType.ObliterumForge;
+                            break;
+                        case 2:
+                            gameObjectUILink.InteractionType = PlayerInteractionType.ScrappingMachine;
+                            break;
+                        case 3:
+                            gameObjectUILink.InteractionType = PlayerInteractionType.ItemInteraction;
+                            break;
+                        default:
+                            break;
+                    }
                     player.SendPacket(gameObjectUILink);
                     return;
                 }
@@ -2696,7 +2692,7 @@ namespace Game.Entities
 
         public bool IsWithinDistInMap(Player player)
         {
-            return IsInMap(player) && IsInPhase(player) && IsAtInteractDistance(player);
+            return IsInMap(player) && InSamePhase(player) && IsAtInteractDistance(player);
         }
 
         public SpellInfo GetSpellForLock(Player player)
@@ -2917,6 +2913,15 @@ namespace Game.Entities
 
                 EnableCollision(collision);
             }
+        }
+
+        void ClearLoot()
+        {
+            // Unlink loot objects from this GameObject before destroying to avoid accessing freed memory from Loot destructor
+            loot = null;
+            m_personalLoot.Clear();
+            m_unique_users.Clear();
+            m_usetimes = 0;
         }
 
         public bool IsFullyLooted()
@@ -3461,6 +3466,8 @@ namespace Game.Entities
                     bg.UpdateWorldState((int)GetGoInfo().CapturePoint.worldState1, (byte)m_goValue.CapturePoint.State);
                 }
             }
+
+            GetMap().UpdateSpawnGroupConditions();
         }
 
         public bool CanInteractWithCapturePoint(Player target)

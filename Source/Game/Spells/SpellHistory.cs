@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -514,30 +500,29 @@ namespace Game.Spells
             }
         }
 
-        public void ModifySpellCooldown(uint spellId, TimeSpan offset, bool withoutCategoryCooldown = false)
+        public void ModifySpellCooldown(uint spellId, TimeSpan cooldownMod, bool withoutCategoryCooldown)
         {
             var cooldownEntry = _spellCooldowns.LookupByKey(spellId);
-            if (offset.TotalMilliseconds == 0 || cooldownEntry == null)
+            if (cooldownMod.TotalMilliseconds == 0 || cooldownEntry == null)
                 return;
 
+            ModifySpellCooldown(cooldownEntry, cooldownMod, withoutCategoryCooldown);
+        }
+
+        void ModifySpellCooldown(CooldownEntry cooldownEntry, TimeSpan cooldownMod, bool withoutCategoryCooldown)
+        {
             DateTime now = GameTime.GetSystemTime();
 
-            cooldownEntry.CooldownEnd += offset;
+            cooldownEntry.CooldownEnd += cooldownMod;
 
             if (cooldownEntry.CategoryId != 0)
             {
                 if (!withoutCategoryCooldown)
-                    cooldownEntry.CategoryEnd += offset;
+                    cooldownEntry.CategoryEnd += cooldownMod;
 
                 // Because category cooldown existence is tied to regular cooldown, we cannot allow a situation where regular cooldown is shorter than category
                 if (cooldownEntry.CooldownEnd < cooldownEntry.CategoryEnd)
                     cooldownEntry.CooldownEnd = cooldownEntry.CategoryEnd;
-            }
-
-            if (cooldownEntry.CooldownEnd <= now)
-            {
-                _categoryCooldowns.Remove(cooldownEntry.CategoryId);
-                _spellCooldowns.Remove(spellId);
             }
 
             Player playerOwner = GetPlayerOwner();
@@ -545,10 +530,16 @@ namespace Game.Spells
             {
                 ModifyCooldown modifyCooldown = new();
                 modifyCooldown.IsPet = _owner != playerOwner;
-                modifyCooldown.SpellID = spellId;
-                modifyCooldown.DeltaTime = (int)offset.TotalMilliseconds;
+                modifyCooldown.SpellID = cooldownEntry.SpellId;
+                modifyCooldown.DeltaTime = (int)cooldownMod.TotalMilliseconds;
                 modifyCooldown.WithoutCategoryCooldown = withoutCategoryCooldown;
                 playerOwner.SendPacket(modifyCooldown);
+            }
+
+            if (cooldownEntry.CooldownEnd <= now)
+            {                
+                _categoryCooldowns.Remove(cooldownEntry.CategoryId);
+                _spellCooldowns.Remove(cooldownEntry.SpellId);
             }
         }
 
@@ -569,7 +560,16 @@ namespace Game.Spells
             else
                 ModifySpellCooldown(spellInfo.Id, cooldownMod, withoutCategoryCooldown);
         }
-        
+
+        public void ModifyCoooldowns(Func<CooldownEntry, bool> predicate, TimeSpan cooldownMod, bool withoutCategoryCooldown = false)
+        {
+            foreach (var cooldownEntry in _spellCooldowns.Values.ToList())
+            {
+                if (predicate(cooldownEntry))
+                    ModifySpellCooldown(cooldownEntry, cooldownMod, withoutCategoryCooldown);
+            }
+        }
+
         public void ResetCooldown(uint spellId, bool update = false)
         {
             var entry = _spellCooldowns.LookupByKey(spellId);
@@ -633,6 +633,9 @@ namespace Game.Spells
         public bool HasCooldown(SpellInfo spellInfo, uint itemId = 0)
         {
             if (_spellCooldowns.ContainsKey(spellInfo.Id))
+                return true;
+
+            if (spellInfo.CooldownAuraSpellId != 0 && _owner.HasAura(spellInfo.CooldownAuraSpellId))
                 return true;
 
             uint category = 0;

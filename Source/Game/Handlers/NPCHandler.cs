@@ -1,25 +1,12 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
 using Game.BattleGrounds;
 using Game.DataStorage;
 using Game.Entities;
+using Game.Misc;
 using Game.Networking;
 using Game.Networking.Packets;
 using System;
@@ -48,9 +35,11 @@ namespace Game
 
         public void SendTabardVendorActivate(ObjectGuid guid)
         {
-            PlayerTabardVendorActivate packet = new();
-            packet.Vendor = guid;
-            SendPacket(packet);
+            NPCInteractionOpenResult npcInteraction = new();
+            npcInteraction.Npc = guid;
+            npcInteraction.InteractionType = PlayerInteractionType.TabardVendor;
+            npcInteraction.Success = true;
+            SendPacket(npcInteraction);
         }
 
         [WorldPacketHandler(ClientOpcodes.TrainerList, Processing = PacketProcessing.Inplace)]
@@ -172,7 +161,8 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.GossipSelectOption)]
         void HandleGossipSelectOption(GossipSelectOption packet)
         {
-            if (GetPlayer().PlayerTalkClass.GetGossipMenu().GetItem(packet.GossipIndex) == null)
+            GossipMenuItem gossipMenuItem = _player.PlayerTalkClass.GetGossipMenu().GetItem(packet.GossipOptionID);
+            if (gossipMenuItem == null)
                 return;
 
             // Prevent cheating on C# scripted menus
@@ -224,26 +214,26 @@ namespace Game
             {
                 if (unit != null)
                 {
-                    if (!unit.GetAI().OnGossipSelectCode(_player, packet.GossipID, packet.GossipIndex, packet.PromotionCode))
-                        GetPlayer().OnGossipSelect(unit, packet.GossipIndex, packet.GossipID);
+                    if (!unit.GetAI().OnGossipSelectCode(_player, packet.GossipID, gossipMenuItem.OrderIndex, packet.PromotionCode))
+                        GetPlayer().OnGossipSelect(unit, packet.GossipOptionID, packet.GossipID);
                 }
                 else
                 {
-                    if (!go.GetAI().OnGossipSelectCode(_player, packet.GossipID, packet.GossipIndex, packet.PromotionCode))
-                        _player.OnGossipSelect(go, packet.GossipIndex, packet.GossipID);
+                    if (!go.GetAI().OnGossipSelectCode(_player, packet.GossipID, gossipMenuItem.OrderIndex, packet.PromotionCode))
+                        _player.OnGossipSelect(go, packet.GossipOptionID, packet.GossipID);
                 }
             }
             else
             {
                 if (unit != null)
                 {
-                    if (!unit.GetAI().OnGossipSelect(_player, packet.GossipID, packet.GossipIndex))
-                        GetPlayer().OnGossipSelect(unit, packet.GossipIndex, packet.GossipID);
+                    if (!unit.GetAI().OnGossipSelect(_player, packet.GossipID, gossipMenuItem.OrderIndex))
+                        GetPlayer().OnGossipSelect(unit, packet.GossipOptionID, packet.GossipID);
                 }
                 else
                 {
-                    if (!go.GetAI().OnGossipSelect(_player, packet.GossipID, packet.GossipIndex))
-                        GetPlayer().OnGossipSelect(go, packet.GossipIndex, packet.GossipID);
+                    if (!go.GetAI().OnGossipSelect(_player, packet.GossipID, gossipMenuItem.OrderIndex))
+                        GetPlayer().OnGossipSelect(go, packet.GossipOptionID, packet.GossipID);
                 }
             }
         }
@@ -655,7 +645,8 @@ namespace Game
                         continue;
                     }
 
-                    int price = (int)(vendorItem.IsGoldRequired(itemTemplate) ? Math.Floor(itemTemplate.GetBuyPrice() * discountMod) : 0);
+                    ulong price = (ulong)Math.Floor(itemTemplate.GetBuyPrice() * discountMod);
+                    price = itemTemplate.GetBuyPrice() > 0 ? Math.Max(1ul, price) : price;
 
                     int priceMod = GetPlayer().GetTotalAuraModifier(AuraType.ModVendorItemsPrices);
                     if (priceMod != 0)

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -50,12 +36,17 @@ namespace Game.Entities
 
         public int GetQuestMinLevel(Quest quest)
         {
-            var questLevels = Global.DB2Mgr.GetContentTuningData(quest.ContentTuningId, m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+            return GetQuestMinLevel(quest.ContentTuningId);
+        }
+
+        int GetQuestMinLevel(uint contentTuningId)
+        {
+            var questLevels = Global.DB2Mgr.GetContentTuningData(contentTuningId, m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
             if (questLevels.HasValue)
             {
                 ChrRacesRecord race = CliDB.ChrRacesStorage.LookupByKey(GetRace());
                 FactionTemplateRecord raceFaction = CliDB.FactionTemplateStorage.LookupByKey(race.FactionID);
-                int questFactionGroup = CliDB.ContentTuningStorage.LookupByKey(quest.ContentTuningId).GetScalingFactionGroup();
+                int questFactionGroup = CliDB.ContentTuningStorage.LookupByKey(contentTuningId).GetScalingFactionGroup();
                 if (questFactionGroup != 0 && raceFaction.FactionGroup != questFactionGroup)
                     return questLevels.Value.MaxLevel;
 
@@ -69,11 +60,15 @@ namespace Game.Entities
         {
             if (quest == null)
                 return 0;
+            return GetQuestLevel(quest.ContentTuningId);
+        }
 
-            var questLevels = Global.DB2Mgr.GetContentTuningData(quest.ContentTuningId, m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+        public int GetQuestLevel(uint contentTuningId)
+        {
+            var questLevels = Global.DB2Mgr.GetContentTuningData(contentTuningId, m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
             if (questLevels.HasValue)
             {
-                int minLevel = GetQuestMinLevel(quest);
+                int minLevel = GetQuestMinLevel(contentTuningId);
                 int maxLevel = questLevels.Value.MaxLevel;
                 int level = (int)GetLevel();
                 if (level >= minLevel)
@@ -973,7 +968,7 @@ namespace Game.Entities
                         DestroyItemCount((uint)obj.ObjectID, (uint)obj.Amount, true);
                         break;
                     case QuestObjectiveType.Currency:
-                        ModifyCurrency((CurrencyTypes)obj.ObjectID, -obj.Amount, false, true);
+                        ModifyCurrency((uint)obj.ObjectID, -obj.Amount, false, true);
                         break;
                 }
             }
@@ -1041,7 +1036,7 @@ namespace Game.Entities
                     {
                         for (uint i = 0; i < SharedConst.QuestRewardChoicesCount; ++i)
                             if (quest.RewardChoiceItemId[i] != 0 && quest.RewardChoiceItemType[i] == LootItemType.Currency && quest.RewardChoiceItemId[i] == rewardId)
-                                ModifyCurrency((CurrencyTypes)quest.RewardChoiceItemId[i], (int)quest.RewardChoiceItemCount[i]);
+                                ModifyCurrency(quest.RewardChoiceItemId[i], (int)quest.RewardChoiceItemCount[i]);
                     }
                     break;
             }
@@ -1049,7 +1044,7 @@ namespace Game.Entities
             for (byte i = 0; i < SharedConst.QuestRewardCurrencyCount; ++i)
             {
                 if (quest.RewardCurrencyId[i] != 0)
-                    ModifyCurrency((CurrencyTypes)quest.RewardCurrencyId[i], (int)quest.RewardCurrencyCount[i]);
+                    ModifyCurrency(quest.RewardCurrencyId[i], (int)quest.RewardCurrencyCount[i]);
             }
 
             uint skill = quest.RewardSkillId;
@@ -1187,14 +1182,73 @@ namespace Game.Entities
                 UpdatePvPState();
             }
 
-            SendQuestUpdate(questId);
             SendQuestGiverStatusMultiple();
+
+            bool conditionChanged = SendQuestUpdate(questId, false);
 
             //lets remove flag for delayed teleports
             SetCanDelayTeleport(false);
 
+            bool canHaveNextQuest = !quest.HasFlag(QuestFlags.AutoComplete) ? !questGiver.IsPlayer() : true;
+            if (canHaveNextQuest)
+            {
+                switch (questGiver.GetTypeId())
+                {
+                    case TypeId.Unit:
+                    case TypeId.Player:
+                    {
+                        //For AutoSubmition was added plr case there as it almost same exclute AI script cases.
+                        // Send next quest
+                        Quest nextQuest = GetNextQuest(questGiver.GetGUID(), quest);
+                        if (nextQuest != null)
+                        {
+                            // Only send the quest to the player if the conditions are met
+                            if (CanTakeQuest(nextQuest, false))
+                            {
+                                if (nextQuest.IsAutoAccept() && CanAddQuest(nextQuest, true))
+                                    AddQuestAndCheckCompletion(nextQuest, questGiver);
+
+                                PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, questGiver.GetGUID(), true, false);
+                            }
+                        }
+
+                        PlayerTalkClass.ClearMenus();
+                        Creature creatureQGiver = questGiver.ToCreature();
+                        if (creatureQGiver != null)
+                            creatureQGiver.GetAI().OnQuestReward(this, quest, rewardType, rewardId);
+                        break;
+                    }
+                    case TypeId.GameObject:
+                    {
+                        GameObject questGiverGob = questGiver.ToGameObject();
+                        // Send next quest
+                        Quest nextQuest = GetNextQuest(questGiverGob.GetGUID(), quest);
+                        if (nextQuest != null)
+                        {
+                            // Only send the quest to the player if the conditions are met
+                            if (CanTakeQuest(nextQuest, false))
+                            {
+                                if (nextQuest.IsAutoAccept() && CanAddQuest(nextQuest, true))
+                                    AddQuestAndCheckCompletion(nextQuest, questGiver);
+
+                                PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, questGiverGob.GetGUID(), true, false);
+                            }
+                        }
+
+                        PlayerTalkClass.ClearMenus();
+                        questGiverGob.GetAI().OnQuestReward(this, quest, rewardType, rewardId);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+
             Global.ScriptMgr.OnQuestStatusChange(this, questId);
             Global.ScriptMgr.OnQuestStatusChange(this, quest, oldStatus, QuestStatus.Rewarded);
+
+            if (conditionChanged)
+                UpdateObjectVisibility();
         }
 
         public void SetRewardedQuest(uint quest_id)
@@ -1883,7 +1937,7 @@ namespace Game.Entities
                 SendQuestUpdate(questId);
         }
 
-        void SendQuestUpdate(uint questId)
+        bool SendQuestUpdate(uint questId, bool updateVisiblity = true)
         {
             var saBounds = Global.SpellMgr.GetSpellAreaForQuestMapBounds(questId);
             if (!saBounds.Empty())
@@ -1931,7 +1985,7 @@ namespace Game.Entities
             }
 
             UpdateVisibleGameobjectsOrSpellClicks();
-            PhasingHandler.OnConditionChange(this);
+            return PhasingHandler.OnConditionChange(this, updateVisiblity);
         }
 
         public QuestGiverStatus GetQuestDialogStatus(WorldObject questgiver)
@@ -2885,9 +2939,14 @@ namespace Game.Entities
 
         public void SendQuestGiverStatusMultiple()
         {
+            SendQuestGiverStatusMultiple(m_clientGUIDs);
+        }
+        
+        public void SendQuestGiverStatusMultiple(List<ObjectGuid> guids)
+        {
             QuestGiverStatusMultiple response = new();
 
-            foreach (var itr in m_clientGUIDs)
+            foreach (var itr in guids)
             {
                 if (itr.IsAnyTypeCreature())
                 {
@@ -3113,15 +3172,6 @@ namespace Game.Entities
             }
 
             SendPacket(displayToast);
-        }
-
-        void SendGarrisonOpenTalentNpc(ObjectGuid guid, int garrTalentTreeId, int friendshipFactionId)
-        {
-            GarrisonOpenTalentNpc openTalentNpc = new();
-            openTalentNpc.NpcGUID = guid;
-            openTalentNpc.GarrTalentTreeID = garrTalentTreeId;
-            openTalentNpc.FriendshipFactionID = friendshipFactionId;
-            SendPacket(openTalentNpc);
         }
     }
 }

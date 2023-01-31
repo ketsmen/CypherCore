@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 
@@ -99,6 +85,7 @@ namespace Game.DataStorage
         public byte MaxPVPRank;
         public uint ContentTuningID;
         public int CovenantID;
+        public uint TraitNodeEntryLogic;
         public ushort[] SkillID = new ushort[4];
         public ushort[] MinSkill = new ushort[4];
         public ushort[] MaxSkill = new ushort[4];
@@ -123,6 +110,9 @@ namespace Game.DataStorage
         public uint[] CurrencyCount = new uint[4];
         public uint[] QuestKillMonster = new uint[6];
         public int[] MovementFlags = new int[2];
+        public int[]TraitNodeEntryID = new int[4];
+        public ushort[]TraitNodeEntryMinRank = new ushort[4];
+        public ushort[]TraitNodeEntryMaxRank = new ushort[4];
     }
 
     public sealed class PowerDisplayRecord
@@ -141,12 +131,12 @@ namespace Game.DataStorage
         public string CostGlobalStringTag;
         public uint Id;
         public PowerType PowerTypeEnum;
-        public sbyte MinPower;
-        public short MaxBasePower;
-        public sbyte CenterPower;
-        public sbyte DefaultPower;
-        public sbyte DisplayModifier;
-        public short RegenInterruptTimeMS;
+        public int MinPower;
+        public int MaxBasePower;
+        public int CenterPower;
+        public int DefaultPower;
+        public int DisplayModifier;
+        public int RegenInterruptTimeMS;
         public float RegenPeace;
         public float RegenCombat;
         public short Flags;
@@ -197,6 +187,7 @@ namespace Game.DataStorage
         public int ActionBarSpellID;
         public int PvpTalentCategoryID;
         public int LevelRequired;
+        public int PlayerConditionID;
     }
 
     public sealed class PvpTalentCategoryRecord

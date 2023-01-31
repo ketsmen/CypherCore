@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Game.AI;
@@ -140,6 +126,8 @@ namespace Game.Entities
                 return;
 
             _UpdateSpells(diff);
+
+            base.Update(diff);
 
             // If this is set during update SetCantProc(false) call is missing somewhere in the code
             // Having this would prevent spells from being proced, so let's crash
@@ -3423,7 +3411,7 @@ namespace Game.Entities
                     tempAbsorb = (uint)currentAbsorb;
                     absorbAurEff.GetBase().CallScriptEffectAfterAbsorbHandlers(absorbAurEff, aurApp, damageInfo, ref tempAbsorb);
 
-                    // Check if our aura is using amount to count damage
+                    // Check if our aura is using amount to count heal
                     if (absorbAurEff.GetAmount() >= 0)
                     {
                         // Reduce shield amount
@@ -3641,7 +3629,7 @@ namespace Game.Entities
                         absorbAurEff.ChangeAmount(absorbAurEff.GetAmount() - currentAbsorb);
                         // Aura cannot absorb anything more - remove it
                         if (absorbAurEff.GetAmount() <= 0)
-                            absorbAurEff.GetBase().Remove(AuraRemoveMode.EnemySpell);
+                            existExpired = true;
                     }
                 }
 
@@ -3897,7 +3885,7 @@ namespace Game.Entities
                 });
 
                 // Mod damage from spell mechanic
-                uint mechanicMask = spellProto.GetAllEffectsMechanicMask();
+                ulong mechanicMask = spellProto.GetAllEffectsMechanicMask();
 
                 // Shred, Maul - "Effects which increase Bleed damage also increase Shred damage"
                 if (spellProto.SpellFamilyName == SpellFamilyNames.Druid && spellProto.SpellFamilyFlags[0].HasAnyFlag(0x00008800u))
@@ -3907,7 +3895,7 @@ namespace Game.Entities
                 {
                     TakenTotalMod *= GetTotalAuraMultiplier(AuraType.ModMechanicDamageTakenPercent, aurEff =>
                     {
-                        if ((mechanicMask & (1 << (aurEff.GetMiscValue()))) != 0)
+                        if ((mechanicMask & (1ul << (aurEff.GetMiscValue()))) != 0)
                             return true;
                         return false;
                     });

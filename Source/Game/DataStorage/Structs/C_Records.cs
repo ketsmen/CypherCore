@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using System.Numerics;
@@ -44,8 +30,8 @@ namespace Game.DataStorage
         public uint Id;
         public long RaceMask;
         public sbyte ChrClassID;
-        public sbyte Purpose;
-        public sbyte Unused910;
+        public int Purpose;
+        public sbyte ItemContext;
 
         public bool IsForNewCharacter() { return Purpose == 9; }
     }
@@ -131,6 +117,7 @@ namespace Game.DataStorage
         public uint Id;
         public uint ChrCustomizationOptionID;
         public uint ChrCustomizationReqID;
+        public int ChrCustomizationVisReqID;
         public ushort SortOrder;
         public ushort UiOrderIndex;
         public int Flags;
@@ -159,6 +146,7 @@ namespace Game.DataStorage
         public int ChrCustomizationCondModelID;
         public int ChrCustomizationDisplayInfoID;
         public int ChrCustItemGeoModifyID;
+        public int ChrCustomizationVoiceID;
     }
 
     public sealed class ChrCustomizationOptionRecord
@@ -181,9 +169,11 @@ namespace Game.DataStorage
     public sealed class ChrCustomizationReqRecord
     {
         public uint Id;
+        public string ReqSource;
         public int Flags;
         public int ClassMask;
         public int AchievementID;
+        public int QuestID;
         public int OverrideArchive;                                          // -1: allow any, otherwise must match OverrideArchive cvar
         public uint ItemModifiedAppearanceID;
 
@@ -223,6 +213,8 @@ namespace Game.DataStorage
         public uint Id;
         public int ChrRacesID;
         public int ChrModelID;
+        public int Sex;
+        public int AllowedTransmogSlots;
     }
 
     public sealed class ChrRacesRecord
@@ -273,6 +265,7 @@ namespace Game.DataStorage
         public float AlteredFormCustomizeRotationFallback;
         public float[] Unknown910_1 = new float[3];
         public float[] Unknown910_2 = new float[3];
+        public int Unknown1000;
         public sbyte BaseLanguage;
         public sbyte CreatureType;
         public sbyte MaleModelFallbackSex;
@@ -285,7 +278,7 @@ namespace Game.DataStorage
 
     public sealed class ChrSpecializationRecord
     {
-        public string Name;
+        public LocalizedString Name;
         public string FemaleName;
         public string Description;
         public uint Id;
@@ -312,7 +305,7 @@ namespace Game.DataStorage
         public uint SoundID;                                         // Sound ID       (voiceover for cinematic)
         public float OriginFacing;                                     // Orientation in map used for basis for M2 co
         public uint FileDataID;                                      // Model
-        public int Unknown915;
+        public uint ConversationID;
     }
 
     public sealed class CinematicSequencesRecord
@@ -409,7 +402,7 @@ namespace Game.DataStorage
         public sbyte Gender;
         public int DissolveOutEffectID;
         public sbyte CreatureModelMinLod;
-        public int[] TextureVariationFileDataID = new int[3];
+        public int[] TextureVariationFileDataID = new int[4];
     }
 
     public sealed class CreatureDisplayInfoExtraRecord
@@ -542,6 +535,8 @@ namespace Game.DataStorage
         public int XpQuestDifficulty;
         public int AwardConditionID;
         public int MaxQtyWorldStateID;
+        public uint RechargingAmountPerCycle;
+        public uint RechargingCycleDurationMS;
         public int[] Flags = new int[2];
     }
 
@@ -554,9 +549,9 @@ namespace Game.DataStorage
 
     public sealed class CurvePointRecord
     {
-        public uint Id;
         public Vector2 Pos;
         public Vector2 PreSLSquishPos;
+        public uint Id;
         public ushort CurveID;
         public byte OrderIndex;
     }

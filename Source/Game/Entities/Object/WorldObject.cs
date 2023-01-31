@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -243,7 +229,7 @@ namespace Game.Entities
             updateData.BuildPacket(out UpdateObject packet);
             target.SendPacket(packet);
         }
-        
+
         public void BuildMovementUpdate(WorldPacket data, CreateObjectBits flags, Player target)
         {
             List<uint> PauseTimes = null;
@@ -278,6 +264,7 @@ namespace Game.Entities
                 bool HasFall = HasFallDirection || unit.m_movementInfo.jump.fallTime != 0;
                 bool HasSpline = unit.IsSplineEnabled();
                 bool HasInertia = unit.m_movementInfo.inertia.HasValue;
+                bool HasAdvFlying = unit.m_movementInfo.advFlying.HasValue;
 
                 data.WritePackedGuid(GetGUID());                                         // MoverGUID
 
@@ -292,7 +279,7 @@ namespace Game.Entities
                 data.WriteFloat(unit.GetOrientation());
 
                 data.WriteFloat(unit.m_movementInfo.Pitch);                     // Pitch
-                data.WriteFloat(unit.m_movementInfo.SplineElevation);           // StepUpStartElevation
+                data.WriteFloat(unit.m_movementInfo.stepUpStartElevation);           // StepUpStartElevation
 
                 data.WriteUInt32(0);                                             // RemoveForcesIDs.size()
                 data.WriteUInt32(0);                                             // MoveIndex
@@ -312,9 +299,15 @@ namespace Game.Entities
 
                 if (HasInertia)
                 {
-                    data.WritePackedGuid(unit.m_movementInfo.inertia.Value.guid);
+                    data.WriteInt32(unit.m_movementInfo.inertia.Value.id);
                     data.WriteXYZ(unit.m_movementInfo.inertia.Value.force);
                     data.WriteUInt32(unit.m_movementInfo.inertia.Value.lifetime);
+                }
+
+                if (HasAdvFlying)
+                {
+                    data.WriteFloat(unit.m_movementInfo.advFlying.Value.forwardVelocity);
+                    data.WriteFloat(unit.m_movementInfo.advFlying.Value.upVelocity);
                 }
 
                 if (HasFall)
@@ -352,6 +345,24 @@ namespace Game.Entities
                     data.WriteFloat(1.0f);                                       // MovementForcesModMagnitude
                 }
 
+                data.WriteFloat(2.0f);                                           // advFlyingAirFriction
+                data.WriteFloat(65.0f);                                          // advFlyingMaxVel
+                data.WriteFloat(1.0f);                                           // advFlyingLiftCoefficient
+                data.WriteFloat(3.0f);                                           // advFlyingDoubleJumpVelMod
+                data.WriteFloat(10.0f);                                          // advFlyingGlideStartMinHeight
+                data.WriteFloat(100.0f);                                         // advFlyingAddImpulseMaxSpeed
+                data.WriteFloat(90.0f);                                          // advFlyingMinBankingRate
+                data.WriteFloat(140.0f);                                         // advFlyingMaxBankingRate
+                data.WriteFloat(180.0f);                                         // advFlyingMinPitchingRateDown
+                data.WriteFloat(360.0f);                                         // advFlyingMaxPitchingRateDown
+                data.WriteFloat(90.0f);                                          // advFlyingMinPitchingRateUp
+                data.WriteFloat(270.0f);                                         // advFlyingMaxPitchingRateUp
+                data.WriteFloat(30.0f);                                          // advFlyingMinTurnVelocityThreshold
+                data.WriteFloat(80.0f);                                          // advFlyingMaxTurnVelocityThreshold
+                data.WriteFloat(2.75f);                                          // advFlyingSurfaceFriction
+                data.WriteFloat(7.0f);                                           // advFlyingOverMaxDeceleration
+                data.WriteFloat(0.4f);                                           // advFlyingLaunchSpeedCoefficient
+
                 data.WriteBit(HasSpline);
                 data.FlushBits();
 
@@ -377,7 +388,7 @@ namespace Game.Entities
 
             if (flags.CombatVictim)
                 data.WritePackedGuid(ToUnit().GetVictim().GetGUID());                      // CombatVictim
-            
+
             if (flags.ServerTime)
                 data.WriteUInt32(GameTime.GetGameTimeMS());
 
@@ -425,6 +436,7 @@ namespace Game.Entities
                 bool hasFaceMovementDir = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasFaceMovementDir);
                 bool hasFollowsTerrain = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasFollowsTerrain);
                 bool hasUnk1 = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.Unk1);
+                bool hasUnk2 = false;
                 bool hasTargetRollPitchYaw = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasTargetRollPitchYaw);
                 bool hasScaleCurveID = createProperties != null && createProperties.ScaleCurveId != 0;
                 bool hasMorphCurveID = createProperties != null && createProperties.MorphCurveId != 0;
@@ -435,6 +447,7 @@ namespace Game.Entities
                 bool hasAreaTriggerPolygon = createProperties != null && shape.IsPolygon();
                 bool hasAreaTriggerCylinder = shape.IsCylinder();
                 bool hasDisk = shape.IsDisk();
+                bool hasBoundedPlane = shape.IsBoudedPlane();
                 bool hasAreaTriggerSpline = areaTrigger.HasSplines();
                 bool hasOrbit = areaTrigger.HasOrbit();
                 bool hasMovementScript = false;
@@ -445,6 +458,7 @@ namespace Game.Entities
                 data.WriteBit(hasFaceMovementDir);
                 data.WriteBit(hasFollowsTerrain);
                 data.WriteBit(hasUnk1);
+                data.WriteBit(hasUnk2);
                 data.WriteBit(hasTargetRollPitchYaw);
                 data.WriteBit(hasScaleCurveID);
                 data.WriteBit(hasMorphCurveID);
@@ -455,6 +469,7 @@ namespace Game.Entities
                 data.WriteBit(hasAreaTriggerPolygon);
                 data.WriteBit(hasAreaTriggerCylinder);
                 data.WriteBit(hasDisk);
+                data.WriteBit(hasBoundedPlane);
                 data.WriteBit(hasAreaTriggerSpline);
                 data.WriteBit(hasOrbit);
                 data.WriteBit(hasMovementScript);
@@ -538,6 +553,17 @@ namespace Game.Entities
                     data.WriteFloat(shape.DiskDatas.HeightTarget);
                     data.WriteFloat(shape.DiskDatas.LocationZOffset);
                     data.WriteFloat(shape.DiskDatas.LocationZOffsetTarget);
+                }
+
+                if (hasBoundedPlane)
+                {
+                    unsafe
+                    {
+                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[0]);
+                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[1]);
+                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[0]);
+                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[1]);
+                    }
                 }
 
                 //if (hasMovementScript)
@@ -776,15 +802,15 @@ namespace Game.Entities
 
         public override string GetDebugInfo()
         {
-            return $"{base.GetDebugInfo()}\n{GetGUID()} Entry: {GetEntry()}\nName: { GetName()}";
+            return $"{base.GetDebugInfo()}\n{GetGUID()} Entry: {GetEntry()}\nName: {GetName()}";
         }
 
         public virtual Loot GetLootForPlayer(Player player) { return null; }
-        
+
         public abstract void BuildValuesCreate(WorldPacket data, Player target);
         public abstract void BuildValuesUpdate(WorldPacket data, Player target);
 
-        public void SetUpdateFieldValue<T>(IUpdateField<T> updateField, T newValue) where T : new()
+        public void SetUpdateFieldValue<T>(IUpdateField<T> updateField, T newValue)
         {
             if (!newValue.Equals(updateField.GetValue()))
             {
@@ -823,7 +849,7 @@ namespace Game.Entities
             SetUpdateFieldValue(ref value, (T)(value | (dynamic)flag));
         }
 
-        public void RemoveUpdateFieldFlagValue<T>(IUpdateField<T> updateField, T flag) where T : new()
+        public void RemoveUpdateFieldFlagValue<T>(IUpdateField<T> updateField, T flag)
         {
             //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
             SetUpdateFieldValue(updateField, (T)(updateField.GetValue() & ~(dynamic)flag));
@@ -1123,7 +1149,7 @@ namespace Game.Entities
         }
 
         public SmoothPhasing GetSmoothPhasing() { return _smoothPhasing; }
-        
+
         public bool CanSeeOrDetect(WorldObject obj, bool ignoreStealth = false, bool distanceCheck = false, bool checkAlert = false)
         {
             if (this == obj)
@@ -1142,7 +1168,7 @@ namespace Game.Entities
             if (smoothPhasing != null && smoothPhasing.IsBeingReplacedForSeer(GetGUID()))
                 return false;
 
-            if (!Global.ConditionMgr.IsObjectMeetingVisibilityByObjectIdConditions((uint)obj.GetTypeId(), obj.GetEntry(), this))
+            if (!obj.IsPrivateObject() && !Global.ConditionMgr.IsObjectMeetingVisibilityByObjectIdConditions((uint)obj.GetTypeId(), obj.GetEntry(), this))
                 return false;
 
             bool corpseVisibility = false;
@@ -1229,7 +1255,7 @@ namespace Game.Entities
 
         public virtual bool CanNeverSee(WorldObject obj)
         {
-            return GetMap() != obj.GetMap() || !IsInPhase(obj);
+            return GetMap() != obj.GetMap() || !InSamePhase(obj);
         }
 
         public virtual bool CanAlwaysSee(WorldObject obj) { return false; }
@@ -1454,13 +1480,18 @@ namespace Game.Entities
                 InstanceMap instanceMap = map.ToInstanceMap();
                 if (instanceMap != null)
                     return (ZoneScript)instanceMap.GetInstanceScript();
-                else if (!map.IsBattlegroundOrArena())
+
+                BattlegroundMap bgMap = map.ToBattlegroundMap();
+                if (bgMap != null)
+                    return (ZoneScript)bgMap.GetBG();
+
+                if (!map.IsBattlegroundOrArena())
                 {
                     BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(map, GetZoneId());
                     if (bf != null)
                         return bf;
-                    else
-                        return Global.OutdoorPvPMgr.GetOutdoorPvPToZoneId(map, GetZoneId());
+
+                    return Global.OutdoorPvPMgr.GetOutdoorPvPToZoneId(map, GetZoneId());
                 }
             }
 
@@ -1619,10 +1650,14 @@ namespace Game.Entities
             return searcher.GetTarget();
         }
 
-        public Creature FindNearestCreatureWithAura(uint entry, uint spellId, float range, bool alive = true)
+        public Creature FindNearestCreatureWithOptions(float range, FindCreatureOptions options)
         {
-            var checker = new NearestCreatureEntryWithLiveStateAndAuraInObjectRangeCheck(this, entry, spellId, alive, range);
-            var searcher = new CreatureLastSearcher(this, checker);
+            NearestCheckCustomizer checkCustomizer = new(this, range);
+            CreatureWithOptionsInObjectRangeCheck<NearestCheckCustomizer> checker = new(this, checkCustomizer, options);
+            CreatureLastSearcher searcher = new(this, checker);
+            if (options.IgnorePhases)
+                searcher.i_phaseShift = PhasingHandler.GetAlwaysVisiblePhaseShift();
+
             Cell.VisitAllObjects(this, searcher, range);
             return searcher.GetTarget();
         }
@@ -1787,7 +1822,7 @@ namespace Game.Entities
             return spellInfo.GetMinRange(!IsHostileTo(target));
         }
 
-        public float ApplyEffectModifiers(SpellInfo spellInfo, uint effIndex, float value)
+        public double ApplyEffectModifiers(SpellInfo spellInfo, uint effIndex, double value)
         {
             Player modOwner = GetSpellModOwner();
             if (modOwner != null)
@@ -1855,10 +1890,10 @@ namespace Game.Entities
 
             if (!positive)
             {
-                uint mechanicMask = spellInfo.GetSpellMechanicMaskByEffectMask(effectMask);
+                ulong mechanicMask = spellInfo.GetSpellMechanicMaskByEffectMask(effectMask);
                 bool mechanicCheck(AuraEffect aurEff)
                 {
-                    if ((mechanicMask & (1 << aurEff.GetMiscValue())) != 0)
+                    if ((mechanicMask & (1ul << aurEff.GetMiscValue())) != 0)
                         return true;
                     return false;
                 }
@@ -2153,6 +2188,25 @@ namespace Game.Entities
             if (this == target)
                 return ReputationRank.Friendly;
 
+            bool isAttackableBySummoner(Unit me, ObjectGuid targetGuid)
+            {
+                if (!me)
+                    return false;
+
+                TempSummon tempSummon = me.ToTempSummon();
+                if (tempSummon == null || tempSummon.m_Properties == null)
+                    return false;
+
+                if (tempSummon.m_Properties.GetFlags().HasFlag(SummonPropertiesFlags.AttackableBySummoner)
+                    && targetGuid == tempSummon.GetSummonerGUID())
+                    return true;
+
+                return false;
+            }
+
+            if (isAttackableBySummoner(ToUnit(), target.GetGUID()) || isAttackableBySummoner(target.ToUnit(), GetGUID()))
+                return ReputationRank.Neutral;
+
             // always friendly to charmer or owner
             if (GetCharmerOrOwnerOrSelf() == target.GetCharmerOrOwnerOrSelf())
                 return ReputationRank.Friendly;
@@ -2388,6 +2442,8 @@ namespace Game.Entities
                 }
             }
 
+            spell.m_customArg = args.CustomArg;
+
             return spell.Prepare(targets.Targets, args.TriggeringAura);
         }
 
@@ -2502,7 +2558,6 @@ namespace Game.Entities
             SendMessageToSet(cancelSpellVisualKit, true);
         }
 
-
         // function based on function Unit::CanAttack from 13850 client
         public bool IsValidAttackTarget(WorldObject target, SpellInfo bySpell = null)
         {
@@ -2561,7 +2616,7 @@ namespace Game.Entities
             Unit unitOrOwner = unit;
             GameObject go = ToGameObject();
             if (go?.GetGoType() == GameObjectTypes.Trap)
-                    unitOrOwner = go.GetOwner();
+                unitOrOwner = go.GetOwner();
 
             // ignore immunity flags when assisting
             if (unitOrOwner != null && unitTarget != null && !(isPositiveSpell && bySpell.HasAttribute(SpellAttr6.CanAssistImmunePc)))
@@ -2814,7 +2869,7 @@ namespace Game.Entities
         {
             return spellInfo.GetSpellXSpellVisualId(this);
         }
-
+        
         public List<GameObject> GetGameObjectListWithEntryInGrid(uint entry = 0, float maxSearchRange = 250.0f)
         {
             List<GameObject> gameobjectList = new();
@@ -2835,6 +2890,20 @@ namespace Game.Entities
             return creatureList;
         }
 
+        public List<Creature> GetCreatureListWithOptionsInGrid(float maxSearchRange, FindCreatureOptions options)
+        {
+            List<Creature> creatureList = new();
+            NoopCheckCustomizer checkCustomizer = new();
+            CreatureWithOptionsInObjectRangeCheck<NoopCheckCustomizer> check = new(this, checkCustomizer, options);
+            CreatureListSearcher searcher = new(this, creatureList, check);
+            if (options.IgnorePhases)
+                searcher.i_phaseShift = PhasingHandler.GetAlwaysVisiblePhaseShift();
+
+            Cell.VisitGridObjects(this, searcher, maxSearchRange);
+            return creatureList;
+        }
+
+
         public List<Unit> GetPlayerListInGrid(float maxSearchRange, bool alive = true)
         {
             List<Unit> playerList = new();
@@ -2845,25 +2914,35 @@ namespace Game.Entities
             return playerList;
         }
 
-        public bool IsInPhase(WorldObject obj)
+        public PhaseShift GetPhaseShift() { return _phaseShift; }
+
+        public void SetPhaseShift(PhaseShift phaseShift) { _phaseShift = new PhaseShift(phaseShift); }
+
+        public PhaseShift GetSuppressedPhaseShift() { return _suppressedPhaseShift; }
+
+        public void SetSuppressedPhaseShift(PhaseShift phaseShift) { _suppressedPhaseShift = new PhaseShift(phaseShift); }
+
+        public bool InSamePhase(PhaseShift phaseShift)
+        {
+            return GetPhaseShift().CanSee(phaseShift);
+        }
+
+        public bool InSamePhase(WorldObject obj)
         {
             return GetPhaseShift().CanSee(obj.GetPhaseShift());
         }
 
         public static bool InSamePhase(WorldObject a, WorldObject b)
         {
-            return a != null && b != null && a.IsInPhase(b);
+            return a != null && b != null && a.InSamePhase(b);
         }
 
-        public virtual float GetCombatReach() { return 0.0f; } // overridden (only) in Unit
-        public PhaseShift GetPhaseShift() { return _phaseShift; }
-        public void SetPhaseShift(PhaseShift phaseShift) { _phaseShift = new PhaseShift(phaseShift); }
-        public PhaseShift GetSuppressedPhaseShift() { return _suppressedPhaseShift; }
-        public void SetSuppressedPhaseShift(PhaseShift phaseShift) { _suppressedPhaseShift = new PhaseShift(phaseShift); }
         public int GetDBPhase() { return _dbPhase; }
 
         // if negative it is used as PhaseGroupId
         public void SetDBPhase(int p) { _dbPhase = p; }
+
+        public virtual float GetCombatReach() { return 0.0f; } // overridden (only) in Unit
 
         public void PlayDistanceSound(uint soundId, Player target = null)
         {
@@ -2980,7 +3059,7 @@ namespace Game.Entities
         public void SetIsNewObject(bool enable) { _isNewObject = enable; }
         public bool IsDestroyedObject() { return _isDestroyedObject; }
         public void SetDestroyedObject(bool destroyed) { _isDestroyedObject = destroyed; }
-        
+
         public bool IsCreature() { return GetTypeId() == TypeId.Unit; }
         public bool IsPlayer() { return GetTypeId() == TypeId.Player; }
         public bool IsGameObject() { return GetTypeId() == TypeId.GameObject; }
@@ -2990,7 +3069,7 @@ namespace Game.Entities
         public bool IsAreaTrigger() { return GetTypeId() == TypeId.AreaTrigger; }
         public bool IsConversation() { return GetTypeId() == TypeId.Conversation; }
         public bool IsSceneObject() { return GetTypeId() == TypeId.SceneObject; }
-        
+
         public Creature ToCreature() { return IsCreature() ? (this as Creature) : null; }
         public Player ToPlayer() { return IsPlayer() ? (this as Player) : null; }
         public GameObject ToGameObject() { return IsGameObject() ? (this as GameObject) : null; }
@@ -3155,14 +3234,14 @@ namespace Game.Entities
             return IsInDist2d(pos, dist + GetCombatReach());
         }
 
-        public bool IsWithinDist(WorldObject obj, float dist2compare, bool is3D = true)
+        public bool IsWithinDist(WorldObject obj, float dist2compare, bool is3D = true, bool incOwnRadius = true, bool incTargetRadius = true)
         {
-            return obj != null && _IsWithinDist(obj, dist2compare, is3D);
+            return obj != null && _IsWithinDist(obj, dist2compare, is3D, incOwnRadius, incTargetRadius);
         }
 
         public bool IsWithinDistInMap(WorldObject obj, float dist2compare, bool is3D = true, bool incOwnRadius = true, bool incTargetRadius = true)
         {
-            return obj && IsInMap(obj) && IsInPhase(obj) && _IsWithinDist(obj, dist2compare, is3D, incOwnRadius, incTargetRadius);
+            return obj && IsInMap(obj) && InSamePhase(obj) && _IsWithinDist(obj, dist2compare, is3D, incOwnRadius, incTargetRadius);
         }
 
         public bool IsWithinLOS(float ox, float oy, float oz, LineOfSightChecks checks = LineOfSightChecks.All, ModelIgnoreFlags ignoreFlags = ModelIgnoreFlags.Nothing)
@@ -3587,7 +3666,7 @@ namespace Game.Entities
             // Unit is flying, check for potential collision via vmaps
             if (path.GetPathType().HasFlag(PathType.NotUsingPath))
             {
-                col = Global.VMapMgr.GetObjectHitPos(PhasingHandler.GetTerrainMapId(GetPhaseShift(), GetMap().GetTerrain(), pos.posX, pos.posY),
+                col = Global.VMapMgr.GetObjectHitPos(PhasingHandler.GetTerrainMapId(GetPhaseShift(), GetMapId(), GetMap().GetTerrain(), pos.posX, pos.posY),
                     pos.posX, pos.posY, pos.posZ + halfHeight,
                     destx, desty, destz + halfHeight,
                     out destx, out desty, out destz, -0.5f);
@@ -3602,7 +3681,7 @@ namespace Game.Entities
                     dist = MathF.Sqrt((pos.posX - destx) * (pos.posX - destx) + (pos.posY - desty) * (pos.posY - desty));
                 }
             }
-            
+
             // check dynamic collision
             col = GetMap().GetObjectHitPos(GetPhaseShift(), pos.posX, pos.posY, pos.posZ + halfHeight, destx, desty, destz + halfHeight, out destx, out desty, out destz, -0.5f);
 
@@ -3744,7 +3823,8 @@ namespace Game.Entities
         public float Pitch { get; set; }
         public Inertia? inertia;
         public JumpInfo jump;
-        public float SplineElevation { get; set; }
+        public float stepUpStartElevation { get; set; }
+        public AdvFlying? advFlying;
 
         public MovementInfo()
         {
@@ -3810,7 +3890,7 @@ namespace Game.Entities
         }
         public struct Inertia
         {
-            public ObjectGuid guid;
+            public int id;
             public Position force;
             public uint lifetime;
         }
@@ -3827,6 +3907,12 @@ namespace Game.Entities
             public float sinAngle;
             public float cosAngle;
             public float xyspeed;
+        }
+        // advflying
+        public struct AdvFlying
+        {
+            public float forwardVelocity;
+            public float upVelocity;
         }
     }
 
@@ -3959,5 +4045,44 @@ namespace Game.Entities
 
             player.SendPacket(i_message);
         }
+    }
+
+    public struct FindCreatureOptions
+    {
+        public FindCreatureOptions SetCreatureId(uint creatureId) { CreatureId = creatureId; return this; }
+        public FindCreatureOptions SetStringId(string stringId) { StringId = stringId; return this; }
+
+        public FindCreatureOptions SetIsAlive(bool isAlive) { IsAlive = isAlive; return this; }
+        public FindCreatureOptions SetIsInCombat(bool isInCombat) { IsInCombat = isInCombat; return this; }
+        public FindCreatureOptions SetIsSummon(bool isSummon) { IsSummon = isSummon; return this; }
+
+        public FindCreatureOptions SetIgnorePhases(bool ignorePhases) { IgnorePhases = ignorePhases; return this; }
+        public FindCreatureOptions SetIgnoreNotOwnedPrivateObjects(bool ignoreNotOwnedPrivateObjects) { IgnoreNotOwnedPrivateObjects = ignoreNotOwnedPrivateObjects; return this; }
+        public FindCreatureOptions SetIgnorePrivateObjects(bool ignorePrivateObjects) { IgnorePrivateObjects = ignorePrivateObjects; return this; }
+
+        public FindCreatureOptions SetHasAura(uint spellId) { AuraSpellId = spellId; return this; }
+        public FindCreatureOptions SetOwner(ObjectGuid ownerGuid) { OwnerGuid = ownerGuid; return this; }
+        public FindCreatureOptions SetCharmer(ObjectGuid charmerGuid) { CharmerGuid = charmerGuid; return this; }
+        public FindCreatureOptions SetCreator(ObjectGuid creatorGuid) { CreatorGuid = creatorGuid; return this; }
+        public FindCreatureOptions SetDemonCreator(ObjectGuid demonCreatorGuid) { DemonCreatorGuid = demonCreatorGuid; return this; }
+        public FindCreatureOptions SetPrivateObjectOwner(ObjectGuid privateObjectOwnerGuid) { PrivateObjectOwnerGuid = privateObjectOwnerGuid; return this; }
+
+        public uint? CreatureId;
+        public string StringId;
+
+        public bool? IsAlive;
+        public bool? IsInCombat;
+        public bool? IsSummon;
+
+        public bool IgnorePhases;
+        public bool IgnoreNotOwnedPrivateObjects;
+        public bool IgnorePrivateObjects;
+
+        public uint? AuraSpellId;
+        public ObjectGuid? OwnerGuid;
+        public ObjectGuid? CharmerGuid;
+        public ObjectGuid? CreatorGuid;
+        public ObjectGuid? DemonCreatorGuid;
+        public ObjectGuid? PrivateObjectOwnerGuid;
     }
 }

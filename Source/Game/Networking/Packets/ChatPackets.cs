@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -31,7 +17,7 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             Language = (Language)_worldPacket.ReadInt32();
-            uint len = _worldPacket.ReadBits<uint>(9);
+            uint len = _worldPacket.ReadBits<uint>(11);
             Text = _worldPacket.ReadString(len);
         }
 
@@ -47,7 +33,7 @@ namespace Game.Networking.Packets
         {
             Language = (Language)_worldPacket.ReadInt32();
             uint targetLen = _worldPacket.ReadBits<uint>(9);
-            uint textLen = _worldPacket.ReadBits<uint>(9);
+            uint textLen = _worldPacket.ReadBits<uint>(11);
             Target = _worldPacket.ReadString(targetLen);
             Text = _worldPacket.ReadString(textLen);
         }
@@ -66,7 +52,7 @@ namespace Game.Networking.Packets
             Language = (Language)_worldPacket.ReadInt32();
             ChannelGUID = _worldPacket.ReadPackedGuid();
             uint targetLen = _worldPacket.ReadBits<uint>(9);
-            uint textLen = _worldPacket.ReadBits<uint>(9);
+            uint textLen = _worldPacket.ReadBits<uint>(11);
             Target = _worldPacket.ReadString(targetLen);
             Text = _worldPacket.ReadString(textLen);
         }
@@ -112,7 +98,7 @@ namespace Game.Networking.Packets
 
         public override void Read()
         {
-            uint len = _worldPacket.ReadBits<uint>(9);
+            uint len = _worldPacket.ReadBits<uint>(11);
             Text = _worldPacket.ReadString(len);
         }
 
@@ -125,7 +111,7 @@ namespace Game.Networking.Packets
 
         public override void Read()
         {
-            uint len = _worldPacket.ReadBits<uint>(9);
+            uint len = _worldPacket.ReadBits<uint>(11);
             Text = _worldPacket.ReadString(len);
         }
 
@@ -138,7 +124,7 @@ namespace Game.Networking.Packets
 
         public override void Read()
         {
-            uint len = _worldPacket.ReadBits<uint>(9);
+            uint len = _worldPacket.ReadBits<uint>(11);
             Text = _worldPacket.ReadString(len);
         }
 

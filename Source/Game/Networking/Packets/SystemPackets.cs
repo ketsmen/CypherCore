@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -30,9 +16,6 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WriteUInt8(ComplaintStatus);
-
-            _worldPacket.WriteUInt32(ScrollOfResurrectionRequestsRemaining);
-            _worldPacket.WriteUInt32(ScrollOfResurrectionMaxRequestsPerDay);
 
             _worldPacket.WriteUInt32(CfgRealmID);
             _worldPacket.WriteInt32(CfgRealmRecID);
@@ -58,18 +41,19 @@ namespace Game.Networking.Packets
 
             _worldPacket.WriteInt16(MaxPlayerNameQueriesPerPacket);
             _worldPacket.WriteInt16(PlayerNameQueryTelemetryInterval);
+            _worldPacket.WriteUInt32((uint)PlayerNameQueryInterval.TotalSeconds);
 
             foreach (GameRuleValuePair gameRuleValue in GameRuleValues)
                 gameRuleValue.Write(_worldPacket);
 
             _worldPacket.WriteBit(VoiceEnabled);
             _worldPacket.WriteBit(EuropaTicketSystemStatus.HasValue);
-            _worldPacket.WriteBit(ScrollOfResurrectionEnabled);
             _worldPacket.WriteBit(BpayStoreEnabled);
             _worldPacket.WriteBit(BpayStoreAvailable);
             _worldPacket.WriteBit(BpayStoreDisabledByParentalControls);
             _worldPacket.WriteBit(ItemRestorationButtonEnabled);
             _worldPacket.WriteBit(BrowserEnabled);
+
             _worldPacket.WriteBit(SessionAlert.HasValue);
             _worldPacket.WriteBit(RAFSystem.Enabled);
             _worldPacket.WriteBit(RAFSystem.RecruitingEnabled);
@@ -78,6 +62,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(CommerceSystemEnabled);
             _worldPacket.WriteBit(TutorialsEnabled);
             _worldPacket.WriteBit(TwitterEnabled);
+
             _worldPacket.WriteBit(Unk67);
             _worldPacket.WriteBit(WillKickFromWorld);
             _worldPacket.WriteBit(KioskModeEnabled);
@@ -86,6 +71,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(WarModeFeatureEnabled);
             _worldPacket.WriteBit(ClubsEnabled);
             _worldPacket.WriteBit(ClubsBattleNetClubTypeAllowed);
+
             _worldPacket.WriteBit(ClubsCharacterClubTypeAllowed);
             _worldPacket.WriteBit(ClubsPresenceUpdateEnabled);
             _worldPacket.WriteBit(VoiceChatDisabledByParentalControl);
@@ -94,10 +80,14 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(IsMuted);
             _worldPacket.WriteBit(ClubFinderEnabled);
             _worldPacket.WriteBit(Unknown901CheckoutRelated);
+
             _worldPacket.WriteBit(TextToSpeechFeatureEnabled);
             _worldPacket.WriteBit(ChatDisabledByDefault);
             _worldPacket.WriteBit(ChatDisabledByPlayer);
             _worldPacket.WriteBit(LFGListCustomRequiresAuthenticator);
+            _worldPacket.WriteBit(AddonsDisabled);
+            _worldPacket.WriteBit(Unused1000);
+
             _worldPacket.FlushBits();
 
             {
@@ -146,10 +136,7 @@ namespace Game.Networking.Packets
         public bool BpayStoreAvailable;
         public bool BpayStoreEnabled;
         public SessionAlertConfig? SessionAlert;
-        public uint ScrollOfResurrectionMaxRequestsPerDay;
-        public bool ScrollOfResurrectionEnabled;
         public EuropaTicketConfig? EuropaTicketSystemStatus;
-        public uint ScrollOfResurrectionRequestsRemaining;
         public uint CfgRealmID;
         public byte ComplaintStatus;
         public int CfgRealmRecID;
@@ -164,6 +151,7 @@ namespace Game.Networking.Packets
         public int ActiveSeason; // Currently active Classic season
         public short MaxPlayerNameQueriesPerPacket = 50;
         public short PlayerNameQueryTelemetryInterval = 600;
+        public TimeSpan PlayerNameQueryInterval = TimeSpan.FromSeconds(10);
         public bool ItemRestorationButtonEnabled;
         public bool CharUndeleteEnabled; // Implemented
         public bool BpayStoreDisabledByParentalControls;
@@ -192,6 +180,8 @@ namespace Game.Networking.Packets
         public bool ChatDisabledByDefault;
         public bool ChatDisabledByPlayer;
         public bool LFGListCustomRequiresAuthenticator;
+        public bool AddonsDisabled;
+        public bool Unused1000;
 
         public SocialQueueConfig QuickJoinConfig;
         public SquelchInfo Squelch;
@@ -264,17 +254,24 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(Unk14);
             _worldPacket.WriteBit(WillKickFromWorld);
             _worldPacket.WriteBit(IsExpansionPreorderInStore);
+
             _worldPacket.WriteBit(KioskModeEnabled);
             _worldPacket.WriteBit(CompetitiveModeEnabled);
+            _worldPacket.WriteBit(false); // unused, 10.0.2
             _worldPacket.WriteBit(TrialBoostEnabled);
             _worldPacket.WriteBit(TokenBalanceEnabled);
             _worldPacket.WriteBit(LiveRegionCharacterListEnabled);
             _worldPacket.WriteBit(LiveRegionCharacterCopyEnabled);
             _worldPacket.WriteBit(LiveRegionAccountCopyEnabled);
+
             _worldPacket.WriteBit(LiveRegionKeyBindingsCopyEnabled);
             _worldPacket.WriteBit(Unknown901CheckoutRelated);
+            _worldPacket.WriteBit(false); // unused, 10.0.2
             _worldPacket.WriteBit(EuropaTicketSystemStatus.HasValue);
+            _worldPacket.WriteBit(false); // unused, 10.0.2
             _worldPacket.WriteBit(LaunchETA.HasValue);
+            _worldPacket.WriteBit(AddonsDisabled);
+            _worldPacket.WriteBit(Unused1000);
             _worldPacket.FlushBits();
 
             if (EuropaTicketSystemStatus.HasValue)
@@ -294,6 +291,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteInt32(GameRuleValues.Count);
             _worldPacket.WriteInt16(MaxPlayerNameQueriesPerPacket);
             _worldPacket.WriteInt16(PlayerNameQueryTelemetryInterval);
+            _worldPacket.WriteUInt32((uint)PlayerNameQueryInterval.TotalSeconds);
 
             if (LaunchETA.HasValue)
                 _worldPacket.WriteInt32(LaunchETA.Value);
@@ -320,8 +318,10 @@ namespace Game.Networking.Packets
         public bool LiveRegionCharacterListEnabled; // NYI
         public bool LiveRegionCharacterCopyEnabled; // NYI
         public bool LiveRegionAccountCopyEnabled; // NYI
-        public bool LiveRegionKeyBindingsCopyEnabled = false;
-        public bool Unknown901CheckoutRelated = false; // NYI
+        public bool LiveRegionKeyBindingsCopyEnabled;
+        public bool Unknown901CheckoutRelated; // NYI
+        public bool AddonsDisabled;
+        public bool Unused1000;
         public EuropaTicketConfig? EuropaTicketSystemStatus;
         public List<int> LiveRegionCharacterCopySourceRegions = new();
         public uint TokenPollTimeSeconds;     // NYI
@@ -337,6 +337,7 @@ namespace Game.Networking.Packets
         public List<GameRuleValuePair> GameRuleValues = new();
         public short MaxPlayerNameQueriesPerPacket = 50;
         public short PlayerNameQueryTelemetryInterval = 600;
+        public TimeSpan PlayerNameQueryInterval = TimeSpan.FromSeconds(10);
         public int? LaunchETA;
     }
 
@@ -368,12 +369,18 @@ namespace Game.Networking.Packets
         {
             _worldPacket.WriteBits(ServerTimeTZ.GetByteCount(), 7);
             _worldPacket.WriteBits(GameTimeTZ.GetByteCount(), 7);
+            _worldPacket.WriteBits(ServerRegionalTZ.GetByteCount(), 7);
+            _worldPacket.FlushBits();
+
             _worldPacket.WriteString(ServerTimeTZ);
             _worldPacket.WriteString(GameTimeTZ);
+            _worldPacket.WriteString(ServerRegionalTZ);
+
         }
 
         public string ServerTimeTZ;
         public string GameTimeTZ;
+        public string ServerRegionalTZ;
     }
 
     public struct SavedThrottleObjectState

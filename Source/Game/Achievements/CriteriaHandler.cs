@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Database;
@@ -2758,7 +2744,7 @@ namespace Game.Achievements
 
                     bool bagScanReachedEnd = referencePlayer.ForEachItem(ItemSearchLocation.Everywhere, item =>
                     {
-                        bool hasBonus = item.m_itemData.BonusListIDs._value.Any(bonusListID => bonusListIDs.Contains(bonusListID));
+                        bool hasBonus = item.GetBonusListIDs().Any(bonusListID => bonusListIDs.Contains(bonusListID));
                         return !hasBonus;
                     });
 
@@ -2880,11 +2866,11 @@ namespace Game.Achievements
                     if (pvpTier == null)
                         return false;
 
-                    if (pvpTier.BracketID >= referencePlayer.m_activePlayerData.PvpInfo.GetSize())
+                    PVPInfo pvpInfo = referencePlayer.GetPvpInfoForBracket((byte)pvpTier.BracketID);
+                    if (pvpInfo == null)
                         return false;
 
-                    var pvpInfo = referencePlayer.m_activePlayerData.PvpInfo[pvpTier.BracketID];
-                    if (pvpTier.Id != pvpInfo.PvpTierID || pvpInfo.Disqualified)
+                    if (pvpTier.Id != pvpInfo.PvpTierID)
                         return false;
                     break;
                 }
@@ -2918,10 +2904,10 @@ namespace Game.Achievements
                 }
                 case ModifierTreeType.PlayerPvpTierInBracketEqualOrGreaterThan: // 239
                 {
-                    if (secondaryAsset >= referencePlayer.m_activePlayerData.PvpInfo.GetSize())
+                    PVPInfo pvpInfo = referencePlayer.GetPvpInfoForBracket((byte)secondaryAsset);
+                    if (pvpInfo == null)
                         return false;
 
-                    var pvpInfo = referencePlayer.m_activePlayerData.PvpInfo[secondaryAsset];
                     var pvpTier = CliDB.PvpTierStorage.LookupByKey(pvpInfo.PvpTierID);
                     if (pvpTier == null)
                         return false;
@@ -3475,21 +3461,21 @@ namespace Game.Achievements
                     if (pvpTier == null)
                         return false;
 
-                    if (pvpTier.BracketID >= referencePlayer.m_activePlayerData.PvpInfo.GetSize())
+                    PVPInfo pvpInfo = referencePlayer.GetPvpInfoForBracket((byte)pvpTier.BracketID);
+                    if (pvpInfo == null)
                         return false;
 
-                    var pvpInfo = referencePlayer.m_activePlayerData.PvpInfo[pvpTier.BracketID];
-                    if (pvpTier.Id != pvpInfo.WeeklyBestWinPvpTierID || pvpInfo.Disqualified)
+                    if (pvpTier.Id != pvpInfo.WeeklyBestWinPvpTierID)
                         return false;
 
                     break;
                 }
                 case ModifierTreeType.PlayerBestWeeklyWinPvpTierInBracketEqualOrGreaterThan: // 325
                 {
-                    if (secondaryAsset >= referencePlayer.m_activePlayerData.PvpInfo.GetSize())
+                    PVPInfo pvpInfo = referencePlayer.GetPvpInfoForBracket((byte)secondaryAsset);
+                    if (pvpInfo == null)
                         return false;
 
-                    var pvpInfo = referencePlayer.m_activePlayerData.PvpInfo[secondaryAsset];
                     var pvpTier = CliDB.PvpTierStorage.LookupByKey(pvpInfo.WeeklyBestWinPvpTierID);
                     if (pvpTier == null)
                         return false;
@@ -3516,6 +3502,133 @@ namespace Game.Achievements
                     if (bagScanReachedEnd)
                         return false;
 
+                    break;
+                }
+                case ModifierTreeType.PlayerAuraWithLabelStackCountEqualOrGreaterThan: // 335
+                {
+                    uint count = 0;
+                    referencePlayer.HasAura(aura =>
+                    {
+                        if (aura.GetSpellInfo().HasLabel((uint)secondaryAsset))
+                            count += aura.GetStackAmount();
+                        return false;
+                    });
+                    if (count < reqValue)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerAuraWithLabelStackCountEqual: // 336
+                {
+                    uint count = 0;
+                    referencePlayer.HasAura(aura =>
+                    {
+                        if (aura.GetSpellInfo().HasLabel((uint)secondaryAsset))
+                            count += aura.GetStackAmount();
+                        return false;
+                    });
+                    if (count != reqValue)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerAuraWithLabelStackCountEqualOrLessThan: // 337
+                {
+                    uint count = 0;
+                    referencePlayer.HasAura(aura =>
+                    {
+                        if (aura.GetSpellInfo().HasLabel((uint)secondaryAsset))
+                            count += aura.GetStackAmount();
+                        return false;
+                    });
+                    if (count > reqValue)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerIsInCrossFactionGroup: // 338
+                {
+                    var group = referencePlayer.GetGroup();
+                    if (!group.GetGroupFlags().HasFlag(GroupFlags.CrossFaction))
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerHasTraitNodeEntryInActiveConfig: // 340
+                {
+                    bool hasTraitNodeEntry()
+                    {
+                        foreach (var traitConfig in referencePlayer.m_activePlayerData.TraitConfigs)
+                        {
+                            if ((TraitConfigType)(int)traitConfig.Type == TraitConfigType.Combat)
+                            {
+                                if (referencePlayer.m_activePlayerData.ActiveCombatTraitConfigID != traitConfig.ID
+                                    || !((TraitCombatConfigFlags)(int)traitConfig.CombatConfigFlags).HasFlag(TraitCombatConfigFlags.ActiveForSpec))
+                                    continue;
+                            }
+
+                            foreach (var traitEntry in traitConfig.Entries)
+                                if (traitEntry.TraitNodeEntryID == reqValue)
+                                    return true;
+                        }
+                        return false;
+                    }
+                    if (!hasTraitNodeEntry())
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerHasTraitNodeEntryInActiveConfigRankGreaterOrEqualThan: // 341
+                {
+                    var traitNodeEntryRank = new Func<short?>(() =>
+                    {
+                        foreach (var traitConfig in referencePlayer.m_activePlayerData.TraitConfigs)
+                        {
+                            if ((TraitConfigType)(int)traitConfig.Type == TraitConfigType.Combat)
+                            {
+                                if (referencePlayer.m_activePlayerData.ActiveCombatTraitConfigID != traitConfig.ID
+                                    || !((TraitCombatConfigFlags)(int)traitConfig.CombatConfigFlags).HasFlag(TraitCombatConfigFlags.ActiveForSpec))
+                                    continue;
+                            }
+
+                            foreach (var traitEntry in traitConfig.Entries)
+                                if (traitEntry.TraitNodeEntryID == secondaryAsset)
+                                    return (short)traitEntry.Rank;
+                        }
+                        return null;
+                    })();
+                    if (!traitNodeEntryRank.HasValue || traitNodeEntryRank < reqValue)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerDaysSinceLogout: // 344
+                    if (GameTime.GetGameTime() - referencePlayer.m_playerData.LogoutTime < reqValue * Time.Day)
+                        return false;
+                    break;
+                case ModifierTreeType.PlayerHasPerksProgramPendingReward: // 350
+                    if (!referencePlayer.m_activePlayerData.HasPerksProgramPendingReward)
+                        return false;
+                    break;
+                case ModifierTreeType.PlayerCanUseItem: // 351
+                {
+                    ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(reqValue);
+                    if (itemTemplate == null || referencePlayer.CanUseItem(itemTemplate) != InventoryResult.Ok)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerHasAtLeastProfPathRanks: // 355
+                {
+                    uint ranks = 0;
+                    foreach (TraitConfig traitConfig in referencePlayer.m_activePlayerData.TraitConfigs)
+                    {
+                        if ((TraitConfigType)(int)traitConfig.Type != TraitConfigType.Profession)
+                            continue;
+
+                        if (traitConfig.SkillLineID != secondaryAsset)
+                            continue;
+
+                        foreach (TraitEntry traitEntry in traitConfig.Entries)
+                            if (CliDB.TraitNodeEntryStorage.LookupByKey(traitEntry.TraitNodeEntryID)?.GetNodeEntryType() == TraitNodeEntryType.ProfPath)
+                                ranks += (uint)(traitEntry.Rank + traitEntry.GrantedRanks);
+                    }
+
+                    if (ranks < reqValue)
+                        return false;
                     break;
                 }
                 default:

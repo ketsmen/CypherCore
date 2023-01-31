@@ -1,19 +1,6 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
+
 using System;
 
 namespace Framework.Constants
@@ -133,11 +120,13 @@ namespace Framework.Constants
         NoDamage = 4,                            // used also in case when damage applied to health but not applied to spell channelInterruptFlags/etc
         Self = 5
     }
+
     public enum WeaponDamageRange
     {
         MinDamage,
         MaxDamage
     }
+
     public enum UnitMods
     {
         StatStrength, // STAT_STRENGTH..UNIT_MOD_STAT_INTELLECT must be in existed order, it's accessed by index values of Stats enum.
@@ -164,6 +153,7 @@ namespace Framework.Constants
         ArcaneCharges,
         Fury,
         Pain,
+        Essence,
         Armor, // ARMOR..RESISTANCE_ARCANE must be in existed order, it's accessed by index values of SpellSchools enum.
         ResistanceHoly,
         ResistanceFire,
@@ -183,7 +173,7 @@ namespace Framework.Constants
         ResistanceStart = Armor,
         ResistanceEnd = ResistanceArcane + 1,
         PowerStart = Mana,
-        PowerEnd = Pain + 1
+        PowerEnd = Essence + 1
     }
     public enum UnitModifierFlatType
     {
@@ -264,13 +254,15 @@ namespace Framework.Constants
         SitHighChair = 6,
         Dead = 7,
         Kneel = 8,
-        Submerged = 9
+        Submerged = 9,
+
+        Max
     }
 
     public enum UnitVisFlags
     {
-        Unk1 = 0x01,
-        Creep = 0x02,
+        Invisible = 0x01,
+        Stealthed = 0x02,
         Untrackable = 0x04,
         Unk4 = 0x08,
         Unk5 = 0x10,
@@ -283,7 +275,9 @@ namespace Framework.Constants
         Swim = 1, // falls back to ground tier animations, not handled by the client, should never appear in sniffs, will prevent tier change animations from playing correctly if used
         Hover = 2, // plays flying tier animations or falls back to ground tier animations, automatically enables hover clientside when entering visibility with this value
         Fly = 3, // plays flying tier animations
-        Submerged = 4
+        Submerged = 4,
+
+        Max
     }
 
     public enum UnitPVPStateFlags
@@ -555,6 +549,7 @@ namespace Framework.Constants
         Unarmed = 0,                            // non prepared weapon
         Melee = 1,                              // prepared melee weapon
         Ranged = 2,                             // prepared ranged weapon
+
         Max = 3
     }
     public enum MeleeHitOutcome

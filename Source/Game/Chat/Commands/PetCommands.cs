@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.IO;
@@ -76,11 +62,8 @@ namespace Game.Chat
         }
 
         [Command("learn", RBACPermissions.CommandPetLearn)]
-        static bool HandlePetLearnCommand(CommandHandler handler, StringArguments args)
+        static bool HandlePetLearnCommand(CommandHandler handler, uint spellId)
         {
-            if (args.Empty())
-                return false;
-
             Pet pet = GetSelectedPlayerPetOrOwn(handler);
             if (!pet)
             {
@@ -88,7 +71,6 @@ namespace Game.Chat
                 return false;
             }
 
-            uint spellId = handler.ExtractSpellIdFromLink(args);
             if (spellId == 0 || !Global.SpellMgr.HasSpellInfo(spellId, Difficulty.None))
                 return false;
 
@@ -114,19 +96,14 @@ namespace Game.Chat
         }
 
         [Command("unlearn", RBACPermissions.CommandPetUnlearn)]
-        static bool HandlePetUnlearnCommand(CommandHandler handler, StringArguments args)
+        static bool HandlePetUnlearnCommand(CommandHandler handler, uint spellId)
         {
-            if (args.Empty())
-                return false;
-
             Pet pet = GetSelectedPlayerPetOrOwn(handler);
             if (!pet)
             {
                 handler.SendSysMessage(CypherStrings.SelectPlayerOrPet);
                 return false;
             }
-
-            uint spellId = handler.ExtractSpellIdFromLink(args);
 
             if (pet.HasSpell(spellId))
                 pet.RemoveSpell(spellId, false);
@@ -137,7 +114,7 @@ namespace Game.Chat
         }
 
         [Command("level", RBACPermissions.CommandPetLevel)]
-        static bool HandlePetLevelCommand(CommandHandler handler, StringArguments args)
+        static bool HandlePetLevelCommand(CommandHandler handler, int level)
         {
             Pet pet = GetSelectedPlayerPetOrOwn(handler);
             Player owner = pet ? pet.GetOwner() : null;
@@ -147,7 +124,6 @@ namespace Game.Chat
                 return false;
             }
 
-            int level = args.NextInt32();
             if (level == 0)
                 level = (int)(owner.GetLevel() - pet.GetLevel());
             if (level == 0 || level < -SharedConst.StrongMaxLevel || level > SharedConst.StrongMaxLevel)

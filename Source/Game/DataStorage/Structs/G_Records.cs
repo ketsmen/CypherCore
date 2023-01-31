@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using System.Numerics;
@@ -270,7 +256,7 @@ namespace Game.DataStorage
         public ushort UiTextureKitID;
         public int GarrTalentTreeType;
         public int PlayerConditionID;
-        public sbyte FeatureTypeIndex;
+        public byte FeatureTypeIndex;
         public sbyte FeatureSubtypeIndex;
         public int CurrencyID;
     }
@@ -310,6 +296,26 @@ namespace Game.DataStorage
         public uint Id;
         public ushort ChrSpecializationID;
         public uint GlyphPropertiesID;
+    }
+
+    public sealed class GossipNPCOptionRecord
+    {
+        public uint Id;
+        public int GossipNpcOption;
+        public int LFGDungeonsID;
+        public int TrainerID;
+        public int GarrFollowerTypeID;
+        public int CharShipmentID;
+        public int GarrTalentTreeID;
+        public int UiMapID;
+        public int UiItemInteractionID;
+        public int Unknown_1000_8;
+        public int Unknown_1000_9;
+        public int CovenantID;
+        public int GossipOptionID;
+        public int TraitTreeID;
+        public int ProfessionID;
+        public int Unknown_1002_14;
     }
 
     public sealed class GuildColorBackgroundRecord

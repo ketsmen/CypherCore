@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -604,7 +590,7 @@ namespace Game.Spells
                 case AuraType.MechanicImmunity:
                 case AuraType.ModMechanicResistance:
                     // compare mechanic
-                    if (spellInfo == null || !Convert.ToBoolean(spellInfo.GetAllEffectsMechanicMask() & (1 << GetMiscValue())))
+                    if (spellInfo == null || (spellInfo.GetAllEffectsMechanicMask() & (1ul << GetMiscValue())) == 0)
                         return false;
                     break;
                 case AuraType.ModCastingSpeedNotStack:
@@ -968,6 +954,8 @@ namespace Game.Spells
 
                 target.m_invisibility.AddFlag(type);
                 target.m_invisibility.AddValue(type, GetAmount());
+
+                target.SetVisFlag(UnitVisFlags.Invisible);
             }
             else
             {
@@ -1000,6 +988,8 @@ namespace Game.Spells
                             playerTarget.RemoveAuraVision(PlayerFieldByte2Flags.InvisibilityGlow);
 
                         target.m_invisibility.DelFlag(type);
+
+                        target.RemoveVisFlag(UnitVisFlags.Invisible);
                     }
                 }
 
@@ -1057,7 +1047,7 @@ namespace Game.Spells
             {
                 target.m_stealth.AddFlag(type);
                 target.m_stealth.AddValue(type, GetAmount());
-                target.SetVisFlag(UnitVisFlags.Creep);
+                target.SetVisFlag(UnitVisFlags.Stealthed);
                 Player playerTarget = target.ToPlayer();
                 if (playerTarget != null)
                     playerTarget.AddAuraVision(PlayerFieldByte2Flags.Stealth);
@@ -1070,7 +1060,7 @@ namespace Game.Spells
                 {
                     target.m_stealth.DelFlag(type);
 
-                    target.RemoveVisFlag(UnitVisFlags.Creep);
+                    target.RemoveVisFlag(UnitVisFlags.Stealthed);
                     Player playerTarget = target.ToPlayer();
                     if (playerTarget != null)
                         playerTarget.RemoveAuraVision(PlayerFieldByte2Flags.Stealth);
@@ -2463,6 +2453,53 @@ namespace Game.Spells
             target.SetControlled(false, UnitState.Fleeing);
         }
 
+        [AuraEffectHandler(AuraType.ModRootDisableGravity)]
+        void HandleAuraModRootAndDisableGravity(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.Real))
+                return;
+
+            Unit target = aurApp.GetTarget();
+
+            target.SetControlled(apply, UnitState.Root);
+
+            // Do not remove DisableGravity if there are more than this auraEffect of that kind on the unit or if it's a creature with DisableGravity on its movement template.
+            if (!apply
+                && (target.HasAuraType(GetAuraType())
+                    || target.HasAuraType(AuraType.ModStunDisableGravity)
+                    || (target.IsCreature() && target.ToCreature().GetMovementTemplate().Flight == CreatureFlightMovementType.DisableGravity)))
+                return;
+
+            if (target.SetDisableGravity(apply))
+                if (!apply && !target.IsFlying())
+                    target.GetMotionMaster().MoveFall();
+        }
+        
+        [AuraEffectHandler(AuraType.ModStunDisableGravity)]
+        void HandleAuraModStunAndDisableGravity(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.Real))
+                return;
+
+            Unit target = aurApp.GetTarget();
+
+            target.SetControlled(apply, UnitState.Stunned);
+
+            if (apply)
+                target.GetThreatManager().EvaluateSuppressed();
+
+            // Do not remove DisableGravity if there are more than this auraEffect of that kind on the unit or if it's a creature with DisableGravity on its movement template.
+            if (!apply
+                && (target.HasAuraType(GetAuraType())
+                    || target.HasAuraType(AuraType.ModStunDisableGravity)
+                    || (target.IsCreature() && target.ToCreature().GetMovementTemplate().Flight == CreatureFlightMovementType.DisableGravity)))
+                return;
+
+            if (target.SetDisableGravity(apply))
+                if (!apply && !target.IsFlying())
+                    target.GetMotionMaster().MoveFall();
+        }
+
         /***************************/
         /***        CHARM        ***/
         /***************************/
@@ -3241,7 +3278,7 @@ namespace Game.Spells
 
             aurApp.GetTarget().UpdateArmor();
         }
-        
+
         [AuraEffectHandler(AuraType.ModStatBonusPct)]
         void HandleModStatBonusPercent(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {
@@ -4642,7 +4679,7 @@ namespace Game.Spells
                 target.RemoveUnitFlag3(UnitFlags3.AlternativeDefaultLanguage);
             }
         }
-        
+
         [AuraEffectHandler(AuraType.Linked)]
         void HandleAuraLinked(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {
@@ -5758,7 +5795,7 @@ namespace Game.Spells
                 }
             }
         }
-        
+
         [AuraEffectHandler(AuraType.SetFFAPvp)]
         void HandleSetFFAPvP(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {

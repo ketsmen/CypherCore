@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -542,7 +528,7 @@ namespace Game.Entities
                         Creature creature1 = ToCreature();
                         if (creature1)
                         {
-                            uint immuneMask = creature1.GetCreatureTemplate().MechanicImmuneMask;
+                            ulong immuneMask = creature1.GetCreatureTemplate().MechanicImmuneMask;
                             if (Convert.ToBoolean(immuneMask & (1 << ((int)Mechanics.Snare - 1))) || Convert.ToBoolean(immuneMask & (1 << ((int)Mechanics.Daze - 1))))
                                 break;
                         }
@@ -642,8 +628,6 @@ namespace Game.Entities
             else if (turn)
                 UpdateOrientation(orientation);
 
-            UpdatePositionData();
-
             _positionUpdateInfo.Relocated = relocated;
             _positionUpdateInfo.Turned = turn;
 
@@ -679,7 +663,7 @@ namespace Game.Entities
         
         public bool IsWithinBoundaryRadius(Unit obj)
         {
-            if (!obj || !IsInMap(obj) || !IsInPhase(obj))
+            if (!obj || !IsInMap(obj) || !InSamePhase(obj))
                 return false;
 
             float objBoundaryRadius = Math.Max(obj.GetBoundingRadius(), SharedConst.MinMeleeReach);
@@ -1110,7 +1094,7 @@ namespace Game.Entities
 
         public bool IsWithinCombatRange(Unit obj, float dist2compare)
         {
-            if (!obj || !IsInMap(obj) || !IsInPhase(obj))
+            if (!obj || !IsInMap(obj) || !InSamePhase(obj))
                 return false;
 
             float dx = GetPositionX() - obj.GetPositionX();
@@ -1216,14 +1200,14 @@ namespace Game.Entities
                 switch (state)
                 {
                     case UnitState.Stunned:
-                        if (HasAuraType(AuraType.ModStun))
+                        if (HasAuraType(AuraType.ModStun) || HasAuraType(AuraType.ModStunDisableGravity))
                             return;
 
                         ClearUnitState(state);
                         SetStunned(false);
                         break;
                     case UnitState.Root:
-                        if (HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2) || GetVehicle() != null || (IsCreature() && ToCreature().GetMovementTemplate().IsRooted()))
+                        if (HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2) || HasAuraType(AuraType.ModRootDisableGravity) || GetVehicle() != null || (IsCreature() && ToCreature().GetMovementTemplate().IsRooted()))
                             return;
 
                         ClearUnitState(state);
@@ -1255,10 +1239,10 @@ namespace Game.Entities
         void ApplyControlStatesIfNeeded()
         {
             // Unit States might have been already cleared but auras still present. I need to check with HasAuraType
-            if (HasUnitState(UnitState.Stunned) || HasAuraType(AuraType.ModStun))
+            if (HasUnitState(UnitState.Stunned) || HasAuraType(AuraType.ModStun) || HasAuraType(AuraType.ModStunDisableGravity))
                 SetStunned(true);
 
-            if (HasUnitState(UnitState.Root) || HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2))
+            if (HasUnitState(UnitState.Root) || HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2) || HasAuraType(AuraType.ModRootDisableGravity))
                 SetRooted(true);
 
             if (HasUnitState(UnitState.Confused) || HasAuraType(AuraType.ModConfuse))

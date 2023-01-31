@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using Framework.Dynamic;
@@ -305,23 +291,13 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteInt32(SpellID.Count);
-            _worldPacket.WriteInt32(Superceded.Count);
-            _worldPacket.WriteInt32(FavoriteSpellID.Count);
+            _worldPacket.WriteInt32(ClientLearnedSpellData.Count);
 
-            foreach (var spellId in SpellID)
-                _worldPacket.WriteUInt32(spellId);
-
-            foreach (var spellId in Superceded)
-                _worldPacket.WriteUInt32(spellId);
-
-            foreach (var spellId in FavoriteSpellID)
-                _worldPacket.WriteInt32(spellId);
+            foreach (LearnedSpellInfo spell in ClientLearnedSpellData)
+                spell.Write(_worldPacket);
         }
 
-        public List<uint> SpellID = new();
-        public List<uint> Superceded = new();
-        public List<int> FavoriteSpellID = new();
+        public List<LearnedSpellInfo> ClientLearnedSpellData = new();
     }
 
     public class LearnedSpells : ServerPacket
@@ -330,22 +306,16 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteInt32(SpellID.Count);
-            _worldPacket.WriteInt32(FavoriteSpellID.Count);
+            _worldPacket.WriteInt32(ClientLearnedSpellData.Count);
             _worldPacket.WriteUInt32(SpecializationID);
-
-            foreach (uint spell in SpellID)
-                _worldPacket.WriteUInt32(spell);
-
-            foreach (int spell in FavoriteSpellID)
-                _worldPacket.WriteInt32(spell);
-
             _worldPacket.WriteBit(SuppressMessaging);
             _worldPacket.FlushBits();
+
+            foreach (LearnedSpellInfo spell in ClientLearnedSpellData)
+                spell.Write(_worldPacket);
         }
 
-        public List<uint> SpellID = new();
-        public List<int> FavoriteSpellID = new();
+        public List<LearnedSpellInfo> ClientLearnedSpellData = new();
         public uint SpecializationID;
         public bool SuppressMessaging;
     }
@@ -929,11 +899,9 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             UnitGUID = _worldPacket.ReadPackedGuid();
-            DisplayID = _worldPacket.ReadUInt32();
         }
 
         public ObjectGuid UnitGUID;
-        public uint DisplayID;
     }
 
     class MirrorImageComponentedData : ServerPacket
@@ -998,10 +966,12 @@ namespace Game.Networking.Packets
         {
             SpellClickUnitGuid = _worldPacket.ReadPackedGuid();
             TryAutoDismount = _worldPacket.HasBit();
+            IsSoftInteract = _worldPacket.HasBit();
         }
 
         public ObjectGuid SpellClickUnitGuid;
         public bool TryAutoDismount;
+        public bool IsSoftInteract;
     }
 
     class ResyncRunes : ServerPacket
@@ -1173,6 +1143,20 @@ namespace Game.Networking.Packets
         public ObjectGuid OwnerGUID;
         public bool Reverse;
         public uint SpellID;
+    }
+
+    class TradeSkillSetFavorite : ClientPacket
+    {
+        public uint RecipeID;
+        public bool IsFavorite;
+
+        public TradeSkillSetFavorite(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            RecipeID = _worldPacket.ReadUInt32();
+            IsFavorite = _worldPacket.HasBit();
+        }
     }
     
     //Structs
@@ -1520,7 +1504,8 @@ namespace Game.Networking.Packets
     {
         public void Read(WorldPacket data)
         {
-            Flags = (SpellCastTargetFlags)data.ReadBits<uint>(26);
+            data.ResetBitPos();
+            Flags = (SpellCastTargetFlags)data.ReadBits<uint>(28);
             if (data.HasBit())
                 SrcLocation = new();
 
@@ -1552,7 +1537,7 @@ namespace Game.Networking.Packets
 
         public void Write(WorldPacket data)
         {
-            data.WriteBits((uint)Flags, 26);
+            data.WriteBits((uint)Flags, 28);
             data.WriteBit(SrcLocation != null);
             data.WriteBit(DstLocation != null);
             data.WriteBit(Orientation.HasValue);
@@ -1607,15 +1592,20 @@ namespace Game.Networking.Packets
         public uint Quantity;
     }
 
-    public struct SpellOptionalReagent
+    public struct SpellCraftingReagent
     {
         public int ItemID;
-        public int Slot;
+        public int DataSlotIndex;
+        public int Quantity;
+        public byte? Unknown_1000;
 
         public void Read(WorldPacket data)
         {
             ItemID = data.ReadInt32();
-            Slot = data.ReadInt32();
+            DataSlotIndex = data.ReadInt32();
+            Quantity = data.ReadInt32();
+            if (data.HasBit())
+                Unknown_1000 = data.ReadUInt8();
         }
     }
 
@@ -1641,8 +1631,9 @@ namespace Game.Networking.Packets
         public MissileTrajectoryRequest MissileTrajectory;
         public MovementInfo MoveUpdate;
         public List<SpellWeight> Weight = new();
-        public Array<SpellOptionalReagent> OptionalReagents = new(3);
+        public Array<SpellCraftingReagent> OptionalReagents = new(3);
         public Array<SpellExtraCurrencyCost> OptionalCurrencies = new(5 /*MAX_ITEM_EXT_COST_CURRENCIES*/);
+        public ulong? CraftingOrderID;
         public ObjectGuid CraftingNPC;
         public uint[] Misc = new uint[2];
 
@@ -1658,20 +1649,24 @@ namespace Game.Networking.Packets
             MissileTrajectory.Read(data);
             CraftingNPC = data.ReadPackedGuid();
 
-            var optionalReagents = data.ReadUInt32();
             var optionalCurrencies = data.ReadUInt32();
-
-            for (var i = 0; i < optionalReagents; ++i)
-                OptionalReagents[i].Read(data);
+            var optionalReagents = data.ReadUInt32();
 
             for (var i = 0; i < optionalCurrencies; ++i)
                 OptionalCurrencies[i].Read(data);
 
             SendCastFlags = data.ReadBits<uint>(5);
             bool hasMoveUpdate = data.HasBit();
-
+            bool hasCraftingOrderID = data.HasBit();
             var weightCount = data.ReadBits<uint>(2);
+
             Target.Read(data);
+
+            if (hasCraftingOrderID)
+                CraftingOrderID = data.ReadUInt64();
+
+            for (var i = 0; i < optionalReagents; ++i)
+                OptionalReagents[i].Read(data);
 
             if (hasMoveUpdate)
                 MoveUpdate = MovementExtensions.ReadMovementInfo(data);
@@ -1882,6 +1877,34 @@ namespace Game.Networking.Packets
         public List<TargetLocation> TargetPoints = new();
         public CreatureImmunities Immunities;
         public SpellHealPrediction Predict;
+    }
+
+    public struct LearnedSpellInfo
+    {
+        public uint SpellID;
+        public bool IsFavorite;
+        public int? field_8;
+        public int? Superceded;
+        public int? TraitDefinitionID;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteUInt32(SpellID);
+            data.WriteBit(IsFavorite);
+            data.WriteBit(field_8.HasValue);
+            data.WriteBit(Superceded.HasValue);
+            data.WriteBit(TraitDefinitionID.HasValue);
+            data.FlushBits();
+
+            if (field_8.HasValue)
+                data.WriteInt32(field_8.Value);
+
+            if (Superceded.HasValue)
+                data.WriteInt32(Superceded.Value);
+
+            if (TraitDefinitionID.HasValue)
+                data.WriteInt32(TraitDefinitionID.Value);
+        }
     }
 
     public struct SpellModifierData

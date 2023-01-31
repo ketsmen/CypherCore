@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
 using System.Collections.Generic;
@@ -22,7 +8,7 @@ namespace Game.Networking.Packets
 {
     public class InitializeFactions : ServerPacket
     {
-        const ushort FactionCount = 400;
+        const ushort FactionCount = 443;
 
         public InitializeFactions() : base(ServerOpcodes.InitializeFactions, ConnectionType.Instance) { }
 
@@ -30,7 +16,7 @@ namespace Game.Networking.Packets
         {
             for (ushort i = 0; i < FactionCount; ++i)
             {
-                _worldPacket.WriteUInt8((byte)((ushort)FactionFlags[i] & 0xFF));
+                _worldPacket.WriteUInt16((ushort)((ushort)FactionFlags[i] & 0xFF));
                 _worldPacket.WriteInt32(FactionStandings[i]);
             }
 
@@ -72,7 +58,6 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteFloat(ReferAFriendBonus);
             _worldPacket.WriteFloat(BonusFromAchievementSystem);
 
             _worldPacket.WriteInt32(Faction.Count);
@@ -83,7 +68,6 @@ namespace Game.Networking.Packets
             _worldPacket.FlushBits();
         }
 
-        public float ReferAFriendBonus;
         public float BonusFromAchievementSystem;
         public List<FactionStandingData> Faction = new();
         public bool ShowVisual;

@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 namespace Framework.Constants
 {
@@ -77,60 +63,64 @@ namespace Framework.Constants
         CharCreateNewPlayer = 50,
         CharCreateNameReservationFull = 51,
 
-        CharCreateClassTrialNewcomer = 52,
-        CharCreateClassTrialThrottleHour = 53,
-        CharCreateClassTrialThrottleDay = 54,
-        CharCreateClassTrialThrottleWeek = 55,
-        CharCreateClassTrialThrottleAccount = 56,
+        CharCreateDracthyrDuplicate = 52,
+        CharCreateDracthyrLevelRequirement = 53,
+        CharCreateDeathknightDuplicate = 54,
+        CharCreateDeathknightLevelRequirement = 55,
+        CharCreateClassTrialNewcomer = 56,
+        CharCreateClassTrialThrottleHour = 57,
+        CharCreateClassTrialThrottleDay = 58,
+        CharCreateClassTrialThrottleWeek = 59,
+        CharCreateClassTrialThrottleAccount = 60,
 
-        CharDeleteInProgress = 57,
-        CharDeleteSuccess = 58,
-        CharDeleteFailed = 59,
-        CharDeleteFailedLockedForTransfer = 60,
-        CharDeleteFailedGuildLeader = 61,
-        CharDeleteFailedArenaCaptain = 62,
-        CharDeleteFailedHasHeirloomOrMail = 63,
-        CharDeleteFailedUpgradeInProgress = 64,
-        CharDeleteFailedHasWowToken = 65,
-        CharDeleteFailedVasTransactionInProgress = 66,
-        CharDeleteFailedCommunityOwner = 67,
+        CharDeleteInProgress = 61,
+        CharDeleteSuccess = 62,
+        CharDeleteFailed = 63,
+        CharDeleteFailedLockedForTransfer = 64,
+        CharDeleteFailedGuildLeader = 65,
+        CharDeleteFailedArenaCaptain = 66,
+        CharDeleteFailedHasHeirloomOrMail = 67,
+        CharDeleteFailedUpgradeInProgress = 68,
+        CharDeleteFailedHasWowToken = 69,
+        CharDeleteFailedVasTransactionInProgress = 70,
+        CharDeleteFailedCommunityOwner = 71,
 
-        CharLoginInProgress = 68,
-        CharLoginSuccess = 69,
-        CharLoginNoWorld = 70,
-        CharLoginDuplicateCharacter = 71,
-        CharLoginNoInstances = 72,
-        CharLoginFailed = 73,
-        CharLoginDisabled = 74,
-        CharLoginNoCharacter = 75,
-        CharLoginLockedForTransfer = 76,
-        CharLoginLockedByBilling = 77,
-        CharLoginLockedByMobileAh = 78,
-        CharLoginTemporaryGmLock = 79,
-        CharLoginLockedByCharacterUpgrade = 80,
-        CharLoginLockedByRevokedCharacterUpgrade = 81,
-        CharLoginLockedByRevokedVasTransaction = 82,
-        CharLoginLockedByRestriction = 83,
-        CharLoginLockedForRealmPlaytype = 84,
+        CharLoginInProgress = 72,
+        CharLoginSuccess = 73,
+        CharLoginNoWorld = 74,
+        CharLoginDuplicateCharacter = 75,
+        CharLoginNoInstances = 76,
+        CharLoginFailed = 77,
+        CharLoginDisabled = 78,
+        CharLoginNoCharacter = 79,
+        CharLoginLockedForTransfer = 80,
+        CharLoginLockedByBilling = 81,
+        CharLoginLockedByMobileAh = 82,
+        CharLoginTemporaryGmLock = 83,
+        CharLoginLockedByCharacterUpgrade = 84,
+        CharLoginLockedByRevokedCharacterUpgrade = 85,
+        CharLoginLockedByRevokedVasTransaction = 86,
+        CharLoginLockedByRestriction = 87,
+        CharLoginLockedForRealmPlaytype = 88,
 
-        CharNameSuccess = 85,
-        CharNameFailure = 86,
-        CharNameNoName = 87,
-        CharNameTooShort = 88,
-        CharNameTooLong = 89,
-        CharNameInvalidCharacter = 90,
-        CharNameMixedLanguages = 91,
-        CharNameProfane = 92,
-        CharNameReserved = 93,
-        CharNameInvalidApostrophe = 94,
-        CharNameMultipleApostrophes = 95,
-        CharNameThreeConsecutive = 96,
-        CharNameInvalidSpace = 97,
-        CharNameConsecutiveSpaces = 98,
-        CharNameRussianConsecutiveSilentCharacters = 99,
-        CharNameRussianSilentCharacterAtBeginningOrEnd = 100,
-        CharNameDeclensionDoesntMatchBaseName = 101,
-        CharNameSpacesDisallowed = 102,
+        CharNameSuccess = 89,
+        CharNameFailure = 90,
+        CharNameNoName = 91,
+        CharNameTooShort = 92,
+        CharNameTooLong = 93,
+        CharNameInvalidCharacter = 94,
+        CharNameMixedLanguages = 95,
+        CharNameProfane = 96,
+        CharNameReserved = 97,
+        CharNameInvalidApostrophe = 98,
+        CharNameMultipleApostrophes = 99,
+        CharNameThreeConsecutive = 100,
+        CharNameInvalidSpace = 101,
+        CharNameConsecutiveSpaces = 102,
+        CharNameRussianConsecutiveSilentCharacters = 103,
+        CharNameRussianSilentCharacterAtBeginningOrEnd = 104,
+        CharNameDeclensionDoesntMatchBaseName = 105,
+        CharNameSpacesDisallowed = 106
     }
 
     public enum CharacterUndeleteResult

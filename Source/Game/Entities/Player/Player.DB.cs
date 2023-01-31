@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Collections;
 using Framework.Constants;
@@ -450,7 +436,7 @@ namespace Game.Entities
             if (HasSkill(SkillType.FistWeapons))
                 SetSkill(SkillType.FistWeapons, 0, GetSkillValue(SkillType.Unarmed), GetMaxSkillValueForLevel());
         }
-        void _LoadSpells(SQLResult result)
+        void _LoadSpells(SQLResult result, SQLResult favoritesResult)
         {
             if (!result.IsEmpty())
             {
@@ -459,6 +445,16 @@ namespace Game.Entities
                     AddSpell(result.Read<uint>(0), result.Read<bool>(1), false, false, result.Read<bool>(2), true);
                 }
                 while (result.NextRow());
+            }
+
+            if (!favoritesResult.IsEmpty())
+            {
+                do
+                {
+                    var spell = m_spells.LookupByKey(favoritesResult.Read<uint>(0));
+                    if (spell !=null)
+                        spell.Favorite = true;
+                } while (favoritesResult.NextRow());
             }
         }
 
@@ -1010,6 +1006,146 @@ namespace Game.Entities
                 while (result.NextRow());
             }
         }
+
+        void _LoadTraits(SQLResult configsResult, SQLResult entriesResult)
+        {
+            MultiMap<int, TraitEntryPacket> traitEntriesByConfig = new();
+            if (!entriesResult.IsEmpty())
+            {
+                //                    0            1,                2     3             4
+                // SELECT traitConfigId, traitNodeId, traitNodeEntryId, rank, grantedRanks FROM character_trait_entry WHERE guid = ?
+                do
+                {
+                    TraitEntryPacket traitEntry = new();
+                    traitEntry.TraitNodeID = entriesResult.Read<int>(1);
+                    traitEntry.TraitNodeEntryID = entriesResult.Read<int>(2);
+                    traitEntry.Rank = entriesResult.Read<int>(3);
+                    traitEntry.GrantedRanks = entriesResult.Read<int>(4);
+
+                    if (!TraitMgr.IsValidEntry(traitEntry))
+                        continue;
+
+                    traitEntriesByConfig.Add(entriesResult.Read<int>(0), traitEntry);
+
+                } while (entriesResult.NextRow());
+            }
+
+            if (!configsResult.IsEmpty())
+            {
+                //                    0     1                    2                  3                4            5              6      7
+                // SELECT traitConfigId, type, chrSpecializationId, combatConfigFlags, localIdentifier, skillLineId, traitSystemId, `name` FROM character_trait_config WHERE guid = ?
+                do
+                {
+                    TraitConfigPacket traitConfig = new();
+                    traitConfig.ID = configsResult.Read<int>(0);
+                    traitConfig.Type = (TraitConfigType)configsResult.Read<int>(1);
+                    switch (traitConfig.Type)
+                    {
+                        case TraitConfigType.Combat:
+                            traitConfig.ChrSpecializationID = configsResult.Read<int>(2);
+                            traitConfig.CombatConfigFlags = (TraitCombatConfigFlags)configsResult.Read<int>(3);
+                            traitConfig.LocalIdentifier = configsResult.Read<int>(4);
+                            break;
+                        case TraitConfigType.Profession:
+                            traitConfig.SkillLineID = configsResult.Read<uint>(5);
+                            break;
+                        case TraitConfigType.Generic:
+                            traitConfig.TraitSystemID = configsResult.Read<int>(6);
+                            break;
+                        default:
+                            break;
+                    }
+
+                    traitConfig.Name = configsResult.Read<string>(7);
+
+                    foreach (var traitEntry in traitEntriesByConfig.LookupByKey(traitConfig.ID))
+                        traitConfig.Entries.Add(traitEntry);
+
+                    if (TraitMgr.ValidateConfig(traitConfig, this) != TalentLearnResult.LearnOk)
+                    {
+                        traitConfig.Entries.Clear();
+                        foreach (TraitEntry grantedEntry in TraitMgr.GetGrantedTraitEntriesForConfig(traitConfig, this))
+                            traitConfig.Entries.Add(new TraitEntryPacket(grantedEntry));
+                    }
+
+                    AddTraitConfig(traitConfig);
+
+                } while (configsResult.NextRow());
+            }
+
+            bool hasConfigForSpec(int specId)
+            {
+                return m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
+                {
+                    return traitConfig.Type == (int)TraitConfigType.Combat
+                        && traitConfig.ChrSpecializationID == specId
+                        && (traitConfig.CombatConfigFlags & (int)TraitCombatConfigFlags.ActiveForSpec) != 0;
+                }) >= 0;
+            }
+
+            int findFreeLocalIdentifier(int specId)
+            {
+                int index = 1;
+                while (m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
+                {
+                    return traitConfig.Type == (int)TraitConfigType.Combat
+                        && traitConfig.ChrSpecializationID == specId
+                        && traitConfig.LocalIdentifier == index;
+                }) >= 0)
+                    ++index;
+
+                return index;
+            }
+
+            for (uint i = 0; i < PlayerConst.MaxSpecializations - 1 /*initial spec doesnt get a config*/; ++i)
+            {
+                var spec = Global.DB2Mgr.GetChrSpecializationByIndex(GetClass(), i);
+                if (spec != null)
+                {
+                    if (hasConfigForSpec((int)spec.Id))
+                        continue;
+
+                    TraitConfigPacket traitConfig = new();
+                    traitConfig.Type = TraitConfigType.Combat;
+                    traitConfig.ChrSpecializationID = (int)spec.Id;
+                    traitConfig.CombatConfigFlags = TraitCombatConfigFlags.ActiveForSpec;
+                    traitConfig.LocalIdentifier = findFreeLocalIdentifier((int)spec.Id);
+                    traitConfig.Name = spec.Name[GetSession().GetSessionDbcLocale()];
+
+                    CreateTraitConfig(traitConfig);
+                }
+            }
+
+            int activeConfig = m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
+            {
+                return traitConfig.Type == (int)TraitConfigType.Combat
+                    && traitConfig.ChrSpecializationID == GetPrimarySpecialization()
+                    && (traitConfig.CombatConfigFlags & (int)TraitCombatConfigFlags.ActiveForSpec) != 0;
+            });
+
+            if (activeConfig >= 0)
+                SetActiveCombatTraitConfigID(m_activePlayerData.TraitConfigs[activeConfig].ID);
+
+            foreach (TraitConfig traitConfig in m_activePlayerData.TraitConfigs)
+            {
+                switch ((TraitConfigType)(int)traitConfig.Type)
+                {
+                    case TraitConfigType.Combat:
+                        if (traitConfig.ID != m_activePlayerData.ActiveCombatTraitConfigID)
+                            continue;
+                        break;
+                    case TraitConfigType.Profession:
+                        if (!HasSkill((uint)(int)traitConfig.SkillLineID))
+                            continue;
+                        break;
+                    default:
+                        break;
+                }
+
+                ApplyTraitConfig(traitConfig.ID, true);
+            }
+        }
+
         void _LoadGlyphs(SQLResult result)
         {
             // SELECT talentGroup, glyphId from character_glyphs WHERE guid = ?
@@ -1110,7 +1246,7 @@ namespace Game.Entities
         {
             m_mail.Clear();
 
-            Dictionary<uint, Mail> mailById = new();
+            Dictionary<ulong, Mail> mailById = new();
 
             if (!mailsResult.IsEmpty())
             {
@@ -1118,7 +1254,7 @@ namespace Game.Entities
                 {
                     Mail m = new();
 
-                    m.messageID = mailsResult.Read<uint>(0);
+                    m.messageID = mailsResult.Read<ulong>(0);
                     m.messageType = (MailMessageType)mailsResult.Read<byte>(1);
                     m.sender = mailsResult.Read<uint>(2);
                     m.receiver = mailsResult.Read<uint>(3);
@@ -1153,7 +1289,7 @@ namespace Game.Entities
 
                 do
                 {
-                    uint mailId = mailItemsResult.Read<uint>(52);
+                    ulong mailId = mailItemsResult.Read<ulong>(52);
                     _LoadMailedItem(GetGUID(), this, mailId, mailById[mailId], mailItemsResult.GetFields(), additionalData.LookupByKey(mailItemsResult.Read<ulong>(0)));
                 }
                 while (mailItemsResult.NextRow());
@@ -1162,7 +1298,7 @@ namespace Game.Entities
             UpdateNextMailTimeAndUnreads();
         }
 
-        static Item _LoadMailedItem(ObjectGuid playerGuid, Player player, uint mailId, Mail mail, SQLFields fields, ItemAdditionalLoadInfo addionalData)
+        static Item _LoadMailedItem(ObjectGuid playerGuid, Player player, ulong mailId, Mail mail, SQLFields fields, ItemAdditionalLoadInfo addionalData)
         {
             ulong itemGuid = fields.Read<ulong>(0);
             uint itemEntry = fields.Read<uint>(1);
@@ -1363,7 +1499,7 @@ namespace Game.Entities
                 eqSet.Data.AssignedSpecIndex = result.Read<int>(5);
                 eqSet.state = EquipmentSetUpdateState.Unchanged;
 
-                for (int i = 0; i < EquipmentSlot.End; ++i)
+                for (int i = EquipmentSlot.Start; i < EquipmentSlot.End; ++i)
                 {
                     ulong guid = result.Read<uint>(6 + i);
                     if (guid != 0)
@@ -1400,7 +1536,7 @@ namespace Game.Entities
                 eqSet.Data.IgnoreMask = result.Read<uint>(4);
                 eqSet.state = EquipmentSetUpdateState.Unchanged;
 
-                for (int i = 0; i < EquipmentSlot.End; ++i)
+                for (int i = EquipmentSlot.Start; i < EquipmentSlot.End; ++i)
                     eqSet.Data.Appearances[i] = result.Read<int>(5 + i);
 
                 for (int i = 0; i < eqSet.Data.Enchants.Length; ++i)
@@ -1683,35 +1819,51 @@ namespace Game.Entities
         {
             PreparedStatement stmt;
 
-            foreach (var spell in m_spells.ToList())
+            foreach (var (id, spell) in m_spells.ToList())
             {
-                if (spell.Value.State == PlayerSpellState.Removed || spell.Value.State == PlayerSpellState.Changed)
+                if (spell.State == PlayerSpellState.Removed || spell.State == PlayerSpellState.Changed)
                 {
                     stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_SPELL_BY_SPELL);
-                    stmt.AddValue(0, spell.Key);
+                    stmt.AddValue(0, id);
                     stmt.AddValue(1, GetGUID().GetCounter());
                     trans.Append(stmt);
                 }
 
-                // add only changed/new not dependent spells
-                if (!spell.Value.Dependent && (spell.Value.State == PlayerSpellState.New || spell.Value.State == PlayerSpellState.Changed))
+                if (spell.State == PlayerSpellState.New || spell.State == PlayerSpellState.Changed)
                 {
-                    stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHAR_SPELL);
-                    stmt.AddValue(0, GetGUID().GetCounter());
-                    stmt.AddValue(1, spell.Key);
-                    stmt.AddValue(2, spell.Value.Active);
-                    stmt.AddValue(3, spell.Value.Disabled);
+                    // add only changed/new not dependent spells
+                    if (!spell.Dependent)
+                    {
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHAR_SPELL);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, id);
+                        stmt.AddValue(2, spell.Active);
+                        stmt.AddValue(3, spell.Disabled);
+                        trans.Append(stmt);
+                    }
+
+                    stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_SPELL_FAVORITE);
+                    stmt.AddValue(0, id);
+                    stmt.AddValue(1, GetGUID().GetCounter());
                     trans.Append(stmt);
+
+                    if (spell.Favorite)
+                    {
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHAR_SPELL_FAVORITE);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, id);
+                        trans.Append(stmt);
+                    }
                 }
 
-                if (spell.Value.State == PlayerSpellState.Removed)
+                if (spell.State == PlayerSpellState.Removed)
                 {
-                    m_spells.Remove(spell.Key);
+                    m_spells.Remove(id);
                     continue;
                 }
 
-                if (spell.Value.State != PlayerSpellState.Temporary)
-                    spell.Value.State = PlayerSpellState.Unchanged;
+                if (spell.State != PlayerSpellState.Temporary)
+                    spell.State = PlayerSpellState.Unchanged;
             }
         }
         void _SaveAuras(SQLTransaction trans)
@@ -1863,6 +2015,23 @@ namespace Game.Entities
 
         void _SaveActions(SQLTransaction trans)
         {
+            int traitConfigId = 0;
+            
+            TraitConfig traitConfig = GetTraitConfig((int)(uint)m_activePlayerData.ActiveCombatTraitConfigID);
+            if (traitConfig != null)
+            {
+                int usedSavedTraitConfigIndex = m_activePlayerData.TraitConfigs.FindIndexIf(savedConfig =>
+                {
+                    return (TraitConfigType)(int)savedConfig.Type == TraitConfigType.Combat
+                        && ((TraitCombatConfigFlags)(int)savedConfig.CombatConfigFlags & TraitCombatConfigFlags.ActiveForSpec) == TraitCombatConfigFlags.None
+                        && ((TraitCombatConfigFlags)(int)savedConfig.CombatConfigFlags & TraitCombatConfigFlags.SharedActionBars) == TraitCombatConfigFlags.None
+                        && savedConfig.LocalIdentifier == traitConfig.LocalIdentifier;
+                });
+
+                if (usedSavedTraitConfigIndex >= 0)
+                    traitConfigId = m_activePlayerData.TraitConfigs[usedSavedTraitConfigIndex].ID;
+            }
+
             PreparedStatement stmt;
 
             foreach (var pair in m_actionButtons.ToList())
@@ -1873,9 +2042,10 @@ namespace Game.Entities
                         stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHAR_ACTION);
                         stmt.AddValue(0, GetGUID().GetCounter());
                         stmt.AddValue(1, GetActiveTalentGroup());
-                        stmt.AddValue(2, pair.Key);
-                        stmt.AddValue(3, pair.Value.GetAction());
-                        stmt.AddValue(4, (byte)pair.Value.GetButtonType());
+                        stmt.AddValue(2, traitConfigId);
+                        stmt.AddValue(3, pair.Key);
+                        stmt.AddValue(4, pair.Value.GetAction());
+                        stmt.AddValue(5, (byte)pair.Value.GetButtonType());
                         trans.Append(stmt);
 
                         pair.Value.uState = ActionButtonUpdateState.UnChanged;
@@ -1887,6 +2057,7 @@ namespace Game.Entities
                         stmt.AddValue(2, GetGUID().GetCounter());
                         stmt.AddValue(3, pair.Key);
                         stmt.AddValue(4, GetActiveTalentGroup());
+                        stmt.AddValue(5, traitConfigId);
                         trans.Append(stmt);
 
                         pair.Value.uState = ActionButtonUpdateState.UnChanged;
@@ -1896,6 +2067,7 @@ namespace Game.Entities
                         stmt.AddValue(0, GetGUID().GetCounter());
                         stmt.AddValue(1, pair.Key);
                         stmt.AddValue(2, GetActiveTalentGroup());
+                        stmt.AddValue(3, traitConfigId);
                         trans.Append(stmt);
 
                         m_actionButtons.Remove(pair.Key);
@@ -2135,6 +2307,99 @@ namespace Game.Entities
                 trans.Append(stmt);
             }
         }
+
+        void _SaveTraits(SQLTransaction trans)
+        {
+            PreparedStatement stmt = null;
+            foreach (var (traitConfigId, state) in m_traitConfigStates)
+            {
+                switch (state)
+                {
+                    case PlayerSpellState.Changed:
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_TRAIT_ENTRIES);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, traitConfigId);
+                        trans.Append(stmt);
+
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_TRAIT_CONFIGS);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, traitConfigId);
+                        trans.Append(stmt);
+
+                        TraitConfig traitConfig = GetTraitConfig(traitConfigId);
+                        if (traitConfig != null)
+                        {
+                            stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHAR_TRAIT_CONFIGS);
+                            stmt.AddValue(0, GetGUID().GetCounter());
+                            stmt.AddValue(1, traitConfig.ID);
+                            stmt.AddValue(2, traitConfig.Type);
+                            switch ((TraitConfigType)(int)traitConfig.Type)
+                            {
+                                case TraitConfigType.Combat:
+                                    stmt.AddValue(3, traitConfig.ChrSpecializationID);
+                                    stmt.AddValue(4, traitConfig.CombatConfigFlags);
+                                    stmt.AddValue(5, traitConfig.LocalIdentifier);
+                                    stmt.AddNull(6);
+                                    stmt.AddNull(7);
+                                    break;
+                                case TraitConfigType.Profession:
+                                    stmt.AddNull(3);
+                                    stmt.AddNull(4);
+                                    stmt.AddNull(5);
+                                    stmt.AddValue(6, traitConfig.SkillLineID);
+                                    stmt.AddNull(7);
+                                    break;
+                                case TraitConfigType.Generic:
+                                    stmt.AddNull(3);
+                                    stmt.AddNull(4);
+                                    stmt.AddNull(5);
+                                    stmt.AddNull(6);
+                                    stmt.AddValue(7, traitConfig.TraitSystemID);
+                                    break;
+                                default:
+                                    break;
+                            }
+
+                            stmt.AddValue(8, traitConfig.Name);
+                            trans.Append(stmt);
+
+                            foreach (var traitEntry in traitConfig.Entries)
+                            {
+                                stmt = DB.Characters.GetPreparedStatement(CharStatements.INS_CHAR_TRAIT_ENTRIES);
+                                stmt.AddValue(0, GetGUID().GetCounter());
+                                stmt.AddValue(1, traitConfig.ID);
+                                stmt.AddValue(2, traitEntry.TraitNodeID);
+                                stmt.AddValue(3, traitEntry.TraitNodeEntryID);
+                                stmt.AddValue(4, traitEntry.Rank);
+                                stmt.AddValue(5, traitEntry.GrantedRanks);
+                                trans.Append(stmt);
+                            }
+                        }
+                        break;
+                    case PlayerSpellState.Removed:
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_TRAIT_ENTRIES);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, traitConfigId);
+                        trans.Append(stmt);
+
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_TRAIT_CONFIGS);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, traitConfigId);
+                        trans.Append(stmt);
+
+                        stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_ACTION_BY_TRAIT_CONFIG);
+                        stmt.AddValue(0, GetGUID().GetCounter());
+                        stmt.AddValue(1, traitConfigId);
+                        trans.Append(stmt);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            m_traitConfigStates.Clear();
+        }
+        
         public void _SaveMail(SQLTransaction trans)
         {
             PreparedStatement stmt;
@@ -2298,7 +2563,7 @@ namespace Game.Entities
                             stmt.AddValue(j++, eqSet.Data.IgnoreMask);
                             stmt.AddValue(j++, eqSet.Data.AssignedSpecIndex);
 
-                            for (byte i = 0; i < EquipmentSlot.End; ++i)
+                            for (byte i = EquipmentSlot.Start; i < EquipmentSlot.End; ++i)
                                 stmt.AddValue(j++, eqSet.Data.Pieces[i].GetCounter());
 
                             stmt.AddValue(j++, GetGUID().GetCounter());
@@ -2312,7 +2577,7 @@ namespace Game.Entities
                             stmt.AddValue(j++, eqSet.Data.SetIcon);
                             stmt.AddValue(j++, eqSet.Data.IgnoreMask);
 
-                            for (byte i = 0; i < EquipmentSlot.End; ++i)
+                            for (byte i = EquipmentSlot.Start; i < EquipmentSlot.End; ++i)
                                 stmt.AddValue(j++, eqSet.Data.Appearances[i]);
 
                             for (int i = 0; i < eqSet.Data.Enchants.Length; ++i)
@@ -2338,7 +2603,7 @@ namespace Game.Entities
                             stmt.AddValue(j++, eqSet.Data.IgnoreMask);
                             stmt.AddValue(j++, eqSet.Data.AssignedSpecIndex);
 
-                            for (byte i = 0; i < EquipmentSlot.End; ++i)
+                            for (byte i = EquipmentSlot.Start; i < EquipmentSlot.End; ++i)
                                 stmt.AddValue(j++, eqSet.Data.Pieces[i].GetCounter());
                         }
                         else
@@ -2351,7 +2616,7 @@ namespace Game.Entities
                             stmt.AddValue(j++, eqSet.Data.SetIcon);
                             stmt.AddValue(j++, eqSet.Data.IgnoreMask);
 
-                            for (byte i = 0; i < EquipmentSlot.End; ++i)
+                            for (byte i = EquipmentSlot.Start; i < EquipmentSlot.End; ++i)
                                 stmt.AddValue(j++, eqSet.Data.Appearances[i]);
 
                             for (int i = 0; i < eqSet.Data.Enchants.Length; ++i)
@@ -2680,15 +2945,6 @@ namespace Game.Entities
 
             InitDisplayIds();
 
-            // cleanup inventory related item value fields (its will be filled correctly in _LoadInventory)
-            for (byte slot = EquipmentSlot.Start; slot < EquipmentSlot.End; ++slot)
-            {
-                SetInvSlot(slot, ObjectGuid.Empty);
-                SetVisibleItemSlot(slot, null);
-
-                m_items[slot] = null;
-            }
-
             //Need to call it to initialize m_team (m_team can be calculated from race)
             //Other way is to saves m_team into characters table.
             SetFactionForRace(GetRace());
@@ -2982,6 +3238,8 @@ namespace Game.Entities
             long now = GameTime.GetGameTime();
             long logoutTime = logout_time;
 
+            SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.LogoutTime), logoutTime);
+
             // since last logout (in seconds)
             uint time_diff = (uint)(now - logoutTime);
 
@@ -3048,7 +3306,7 @@ namespace Game.Entities
             UpdateDisplayPower();
             _LoadTalents(holder.GetResult(PlayerLoginQueryLoad.Talents));
             _LoadPvpTalents(holder.GetResult(PlayerLoginQueryLoad.PvpTalents));
-            _LoadSpells(holder.GetResult(PlayerLoginQueryLoad.Spells));
+            _LoadSpells(holder.GetResult(PlayerLoginQueryLoad.Spells), holder.GetResult(PlayerLoginQueryLoad.SpellFavorites));
             GetSession().GetCollectionMgr().LoadToys();
             GetSession().GetCollectionMgr().LoadHeirlooms();
             GetSession().GetCollectionMgr().LoadMounts();
@@ -3081,6 +3339,8 @@ namespace Game.Entities
             LearnDefaultSkills();
             LearnCustomSpells();
 
+            _LoadTraits(holder.GetResult(PlayerLoginQueryLoad.TraitConfigs), holder.GetResult(PlayerLoginQueryLoad.TraitEntries)); // must be after loading spells
+
             // must be before inventory (some items required reputation check)
             reputationMgr.LoadFromDB(holder.GetResult(PlayerLoginQueryLoad.Reputation));
 
@@ -3093,7 +3353,7 @@ namespace Game.Entities
             // update items with duration and realtime
             UpdateItemDuration(time_diff, true);
 
-            _LoadActions(holder.GetResult(PlayerLoginQueryLoad.Actions));
+            StartLoadingActionButtons();
 
             // unread mails and next delivery time, actual mails not loaded
             _LoadMail(holder.GetResult(PlayerLoginQueryLoad.Mails),
@@ -3431,7 +3691,7 @@ namespace Game.Entities
 
                 ss.Clear();
                 // cache equipment...
-                for (byte i = 0; i < InventorySlots.BagEnd; ++i)
+                for (byte i = 0; i < InventorySlots.ReagentBagEnd; ++i)
                 {
                     Item item = GetItemByPos(InventorySlots.Bag0, i);
                     if (item != null)
@@ -3577,7 +3837,7 @@ namespace Game.Entities
 
                 ss.Clear();
                 // cache equipment...
-                for (byte i = 0; i < InventorySlots.BagEnd; ++i)
+                for (byte i = 0; i < InventorySlots.ReagentBagEnd; ++i)
                 {
                     Item item = GetItemByPos(InventorySlots.Bag0, i);
                     if (item != null)
@@ -3640,6 +3900,7 @@ namespace Game.Entities
             _SaveMonthlyQuestStatus(characterTransaction);
             _SaveGlyphs(characterTransaction);
             _SaveTalents(characterTransaction);
+            _SaveTraits(characterTransaction);
             _SaveSpells(characterTransaction);
             GetSpellHistory().SaveToDB<Player>(characterTransaction);
             _SaveActions(characterTransaction);
@@ -3820,7 +4081,7 @@ namespace Game.Entities
                     SQLResult resultMail = DB.Characters.Query(stmt);
                     if (!resultMail.IsEmpty())
                     {
-                        MultiMap<uint, Item> itemsByMail = new();
+                        MultiMap<ulong, Item> itemsByMail = new();
 
                         stmt = DB.Characters.GetPreparedStatement(CharStatements.SEL_MAILITEMS);
                         stmt.AddValue(0, guid);
@@ -3853,7 +4114,7 @@ namespace Game.Entities
 
                             do
                             {
-                                uint mailId = resultItems.Read<uint>(44);
+                                ulong mailId = resultItems.Read<ulong>(44);
                                 Item mailItem = _LoadMailedItem(playerGuid, null, mailId, null, resultItems.GetFields(), additionalData.LookupByKey(resultItems.Read<ulong>(0)));
                                 if (mailItem != null)
                                     itemsByMail.Add(mailId, mailItem);
@@ -3863,7 +4124,7 @@ namespace Game.Entities
 
                         do
                         {
-                            uint mail_id = resultMail.Read<uint>(0);
+                            ulong mail_id = resultMail.Read<ulong>(0);
                             MailMessageType mailType = (MailMessageType)resultMail.Read<byte>(1);
                             ushort mailTemplateId = resultMail.Read<ushort>(2);
                             uint sender = resultMail.Read<uint>(3);
@@ -4189,6 +4450,14 @@ namespace Game.Entities
                     Corpse.DeleteFromDB(playerGuid, trans);
 
                     Garrison.DeleteFromDB(guid, trans);
+
+                    stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_TRAIT_ENTRIES_BY_CHAR);
+                    stmt.AddValue(0, guid);
+                    trans.Append(stmt);
+
+                    stmt = DB.Characters.GetPreparedStatement(CharStatements.DEL_CHAR_TRAIT_CONFIGS_BY_CHAR);
+                    stmt.AddValue(0, guid);
+                    trans.Append(stmt);
 
                     Global.CharacterCacheStorage.DeleteCharacterCacheEntry(playerGuid, name);
                     break;

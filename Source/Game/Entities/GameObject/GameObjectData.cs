@@ -1,19 +1,5 @@
-﻿/*
- * Copyright (C) 2012-2020 CypherCore <http://github.com/CypherCore>
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
+// Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Collections;
 using Framework.Constants;
@@ -230,6 +216,9 @@ namespace Game.Entities
 
         [FieldOffset(68)]
         public clientmodel ClientModel;
+
+        [FieldOffset(68)]
+        public craftingTable CraftingTable;
 
         [FieldOffset(68)]
         public raw Raw;
@@ -688,6 +677,15 @@ namespace Game.Entities
             }
         }
 
+        public uint GetServerOnly() => type switch
+        {
+            GameObjectTypes.Generic => Generic.serverOnly,
+            GameObjectTypes.Trap => Trap.serverOnly,
+            GameObjectTypes.SpellFocus => SpellFocus.serverOnly,
+            GameObjectTypes.AuraGenerator => AuraGenerator.serverOnly,
+            _ => 0,
+        };
+        
         public uint GetSpellFocusType()
         {
             switch (type)
@@ -768,6 +766,7 @@ namespace Game.Entities
             public uint InfiniteAOI;                             // 10 Infinite AOI, enum { false, true, }; Default: false
             public uint NotLOSBlocking;                          // 11 Not LOS Blocking, enum { false, true, }; Default: false
             public uint InteractRadiusOverride;                  // 12 Interact Radius Override (in hundredths), int, Min value: 0, Max value: 2147483647, Default value: 0
+            public uint Collisionupdatedelayafteropen;           // 13 Collision update delay(ms) after open, int, Min value: 0, Max value: 2147483647, Default value: 0
         }
 
         public struct button
@@ -909,6 +908,13 @@ namespace Game.Entities
             public uint floatOnWater;                            // 7 floatOnWater, enum { false, true, }; Default: false
             public uint conditionID1;                            // 8 conditionID1, References: PlayerCondition, NoValue = 0
             public uint InteractRadiusOverride;                  // 9 Interact Radius Override (in hundredths), int, Min value: 0, Max value: 2147483647, Default value: 0
+            public uint gossipID;                                // 10 gossipID, References: Gossip, NoValue = 0
+            public uint spellFocusType2;                         // 11 spellFocusType 2, References: SpellFocusObject, NoValue = 0
+            public uint spellFocusType3;                         // 12 spellFocusType 3, References: SpellFocusObject, NoValue = 0
+            public uint spellFocusType4;                         // 13 spellFocusType 4, References: SpellFocusObject, NoValue = 0
+            public uint Profession;                              // 14 Profession, enum { First Aid, Blacksmithing, Leatherworking, Alchemy, Herbalism, Cooking, Mining, Tailoring, Engineering, Enchanting, Fishing, Skinning, Jewelcrafting, Inscription, Archaeology, }; Default: Blacksmithing
+            public uint Profession2;                             // 15 Profession 2, enum { First Aid, Blacksmithing, Leatherworking, Alchemy, Herbalism, Cooking, Mining, Tailoring, Engineering, Enchanting, Fishing, Skinning, Jewelcrafting, Inscription, Archaeology, }; Default: Blacksmithing
+            public uint Profession3;                             // 16 Profession 3, enum { First Aid, Blacksmithing, Leatherworking, Alchemy, Herbalism, Cooking, Mining, Tailoring, Engineering, Enchanting, Fishing, Skinning, Jewelcrafting, Inscription, Archaeology, }; Default: Blacksmithing
         }
 
         public struct text
@@ -1179,7 +1185,7 @@ namespace Game.Entities
 
         public struct dungeonDifficulty
         {
-            public uint InstanceType;                            // 0 Instance Type, enum { Not Instanced, Party Dungeon, Raid Dungeon, PVP Battlefield, Arena Battlefield, Scenario, }; Default: Party Dungeon
+            public uint InstanceType;                            // 0 Instance Type, enum { Not Instanced, Party Dungeon, Raid Dungeon, PVP Battlefield, Arena Battlefield, Scenario, WoWLabs }; Default: Party Dungeon
             public uint DifficultyNormal;                        // 1 Difficulty Normal, References: animationdata, NoValue = 0
             public uint DifficultyHeroic;                        // 2 Difficulty Heroic, References: animationdata, NoValue = 0
             public uint DifficultyEpic;                          // 3 Difficulty Epic, References: animationdata, NoValue = 0
@@ -1199,6 +1205,8 @@ namespace Game.Entities
             public int HeightOffset;                             // 1 Height Offset (inches), int, Min value: -100, Max value: 100, Default value: 0
             public uint SitAnimKit;                              // 2 Sit Anim Kit, References: AnimKit, NoValue = 0
             public uint InteractRadiusOverride;                  // 3 Interact Radius Override (in hundredths), int, Min value: 0, Max value: 2147483647, Default value: 0
+            public uint CustomizationScope;                      // 4 Customization Scope, int, Min value: 0, Max value: 2147483647, Default value: 0
+            public uint Preventteleportingtheplayeroutofthebarbershopchair;// 5 Prevent teleporting the player out of the barbershop chair, enum { false, true, }; Default: false
         }
 
         public struct destructiblebuilding
@@ -1490,6 +1498,7 @@ namespace Game.Entities
             public uint WhenAvailable;                           // 0 When Available, References: GameObjectDisplayInfo, NoValue = 0
             public uint open;                                    // 1 open, References: Lock_, NoValue = 0
             public uint InteractRadiusOverride;                  // 2 Interact Radius Override (in hundredths), int, Min value: 0, Max value: 2147483647, Default value: 0
+            public uint ExpansionLevel;                          // 3 Expansion Level, int, Min value: 0, Max value: 2147483647, Default value: 0
         }
 
         public struct clientmodel
@@ -1498,6 +1507,17 @@ namespace Game.Entities
             public uint GiganticAOI;                             // 1 Gigantic AOI, enum { false, true, }; Default: false
             public uint InfiniteAOI;                             // 2 Infinite AOI, enum { false, true, }; Default: false
             public uint TrueInfiniteAOI;                         // 3 True Infinite AOI (programmer only!), enum { false, true, }; Default: false
+        }
+
+        public struct craftingTable
+        {
+            public uint Profession;                              // 0 Profession, enum { First Aid, Blacksmithing, Leatherworking, Alchemy, Herbalism, Cooking, Mining, Tailoring, Engineering, Enchanting, Fishing, Skinning, Jewelcrafting, Inscription, Archaeology, }; Default: Blacksmithing
+        }
+
+        public struct perksProgramChest
+        {
+            public uint Script;                                  // 0 Script, References: SpellScript, NoValue = 0
+            public uint autoClose;                               // 1 autoClose (ms), int, Min value: 0, Max value: 2147483647, Default value: 3000
         }
         #endregion
     }
