@@ -4729,7 +4729,7 @@ namespace Game.Spells
             if (!CliDB.CurrencyTypesStorage.ContainsKey(effectInfo.MiscValue))
                 return;
 
-            unitTarget.ToPlayer().ModifyCurrency((uint)effectInfo.MiscValue, damage);
+            unitTarget.ToPlayer().ModifyCurrency((uint)effectInfo.MiscValue, damage, CurrencyGainSource.Spell, CurrencyDestroyReason.Spell);
         }
 
         [SpellEffectHandler(SpellEffectName.CastButton)]
@@ -4845,6 +4845,18 @@ namespace Game.Spells
                 if (dest != null)
                     player.TeleportTo(dest, unitTarget == m_caster ? TeleportToOptions.Spell | TeleportToOptions.NotLeaveCombat : 0);
             }
+        }
+
+        [SpellEffectHandler(SpellEffectName.IncreseCurrencyCap)]
+        void EffectIncreaseCurrencyCap()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            if (damage <= 0)
+                return;
+
+            unitTarget.ToPlayer()?.IncreaseCurrencyCap((uint)effectInfo.MiscValue, (uint)damage);
         }
 
         [SpellEffectHandler(SpellEffectName.SummonRafFriend)]
@@ -5018,6 +5030,18 @@ namespace Game.Spells
             Garrison garrison = unitTarget.ToPlayer().GetGarrison();
             if (garrison != null)
                 garrison.LearnBlueprint((uint)effectInfo.MiscValue);
+        }
+
+        [SpellEffectHandler(SpellEffectName.RemoveAuraBySApellLabel)]
+        void EffectRemoveAuraBySpellLabel()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            if (!unitTarget)
+                return;
+
+            unitTarget.RemoveAppliedAuras(aurApp => aurApp.GetBase().GetSpellInfo().HasLabel((uint)effectInfo.MiscValue));
         }
 
         [SpellEffectHandler(SpellEffectName.CreateGarrison)]
