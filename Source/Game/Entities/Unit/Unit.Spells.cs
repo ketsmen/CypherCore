@@ -863,7 +863,7 @@ namespace Game.Entities
             return SpellMissInfo.None;
         }
 
-        public void FinishSpell(CurrentSpellTypes spellType, bool ok = true)
+        public void FinishSpell(CurrentSpellTypes spellType, SpellCastResult result = SpellCastResult.SpellCastOk)
         {
             Spell spell = GetCurrentSpell(spellType);
             if (spell == null)
@@ -872,7 +872,7 @@ namespace Game.Entities
             if (spellType == CurrentSpellTypes.Channeled)
                 spell.SendChannelUpdate(0);
 
-            spell.Finish(ok);
+            spell.Finish(result);
         }
 
         public virtual SpellInfo GetCastSpellInfo(SpellInfo spellInfo)
@@ -923,6 +923,12 @@ namespace Game.Entities
             return base.GetCastSpellXSpellVisualId(spellInfo);
         }
 
+        public bool IsSilenced(SpellSchoolMask schoolMask) { return (m_unitData.SilencedSchoolMask & (uint)schoolMask) != 0; }
+
+        public void SetSilencedSchoolMask(SpellSchoolMask schoolMask) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.SilencedSchoolMask), (uint)schoolMask); }
+
+        public void ReplaceAllSilencedSchoolMask(SpellSchoolMask schoolMask) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.SilencedSchoolMask), (uint)schoolMask); }
+        
         public SpellHistory GetSpellHistory() { return _spellHistory; }
 
         public static ProcFlagsHit CreateProcHitMask(SpellNonMeleeDamage damageInfo, SpellMissInfo missCondition)

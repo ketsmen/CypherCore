@@ -258,8 +258,14 @@ namespace Game.Entities
 
             Creature creature = ToCreature();
             // creatures cannot attack while evading
-            if (creature != null && creature.IsInEvadeMode())
-                return false;
+            if (creature != null)
+            {
+                if (creature.IsInEvadeMode())
+                    return false;
+
+                if (!creature.CanMelee())
+                    meleeAttack = false;
+            }
 
             // nobody can attack GM in GM-mode
             if (victim.IsTypeId(TypeId.Player))
@@ -703,6 +709,9 @@ namespace Game.Entities
                     if (tapper != null)
                         tappers.Add(tapper);
                 }
+
+                if (!creature.CanHaveLoot())
+                    isRewardAllowed = false;
             }
 
             // Exploit fix
@@ -753,7 +762,7 @@ namespace Game.Entities
                     {
                         if (dungeonEncounter != null)
                         {
-                            creature.m_personalLoot = LootManager.GenerateDungeonEncounterPersonalLoot(dungeonEncounter.Id, creature.GetCreatureTemplate().LootId,
+                            creature.m_personalLoot = LootManager.GenerateDungeonEncounterPersonalLoot(dungeonEncounter.Id, creature.GetLootId(),
                                 LootStorage.Creature, LootType.Corpse, creature, creature.GetCreatureTemplate().MinGold, creature.GetCreatureTemplate().MaxGold,
                                 (ushort)creature.GetLootMode(), creature.GetMap().GetDifficultyLootItemContext(), tappers);
                         }
@@ -764,7 +773,7 @@ namespace Game.Entities
 
                             Loot loot = new(creature.GetMap(), creature.GetGUID(), LootType.Corpse, dungeonEncounter != null ? group : null);
 
-                            uint lootid = creature.GetCreatureTemplate().LootId;
+                            uint lootid = creature.GetLootId();
                             if (lootid != 0)
                                 loot.FillLoot(lootid, LootStorage.Creature, looter, dungeonEncounter != null, false, creature.GetLootMode(), creature.GetMap().GetDifficultyLootItemContext());
 
@@ -791,7 +800,7 @@ namespace Game.Entities
                             if (dungeonEncounter != null)
                                 loot.SetDungeonEncounterId(dungeonEncounter.Id);
 
-                            uint lootid = creature.GetCreatureTemplate().LootId;
+                            uint lootid = creature.GetLootId();
                             if (lootid != 0)
                                 loot.FillLoot(lootid, LootStorage.Creature, tapper, true, false, creature.GetLootMode(), creature.GetMap().GetDifficultyLootItemContext());
 
@@ -900,7 +909,7 @@ namespace Game.Entities
                     else
                         creature.AllLootRemovedFromCorpse();
 
-                    if (LootStorage.Skinning.HaveLootFor(creature.GetCreatureTemplate().SkinLootId))
+                    if (creature.CanHaveLoot() && LootStorage.Skinning.HaveLootFor(creature.GetCreatureTemplate().SkinLootId))
                     {
                         creature.SetDynamicFlag(UnitDynFlags.CanSkin);
                         creature.SetUnitFlag(UnitFlags.Skinnable);

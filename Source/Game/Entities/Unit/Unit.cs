@@ -1129,7 +1129,62 @@ namespace Game.Entities
             }
         }
 
-        void CancelSpellMissiles(uint spellId, bool reverseMissile = false)
+        public void SendPlaySpellVisual(Unit target, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
+        {
+            PlaySpellVisual playSpellVisual = new();
+            playSpellVisual.Source = GetGUID();
+            playSpellVisual.Target = target.GetGUID();
+            playSpellVisual.TargetPosition = target.GetPosition();
+            playSpellVisual.SpellVisualID = spellVisualId;
+            playSpellVisual.TravelSpeed = travelSpeed;
+            playSpellVisual.MissReason = missReason;
+            playSpellVisual.ReflectStatus = reflectStatus;
+            playSpellVisual.SpeedAsTime = speedAsTime;
+            playSpellVisual.LaunchDelay = launchDelay;
+            SendMessageToSet(playSpellVisual, true);
+        }
+
+        public void SendPlaySpellVisual(Position targetPosition, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
+        {
+            PlaySpellVisual playSpellVisual = new();
+            playSpellVisual.Source = GetGUID();
+            playSpellVisual.TargetPosition = targetPosition;
+            playSpellVisual.SpellVisualID = spellVisualId;
+            playSpellVisual.TravelSpeed = travelSpeed;
+            playSpellVisual.MissReason = missReason;
+            playSpellVisual.ReflectStatus = reflectStatus;
+            playSpellVisual.SpeedAsTime = speedAsTime;
+            playSpellVisual.LaunchDelay = launchDelay;
+            SendMessageToSet(playSpellVisual, true);
+        }
+
+        public void SendCancelSpellVisual(uint id)
+        {
+            CancelSpellVisual cancelSpellVisual = new();
+            cancelSpellVisual.Source = GetGUID();
+            cancelSpellVisual.SpellVisualID = id;
+            SendMessageToSet(cancelSpellVisual, true);
+        }
+
+        public void SendPlaySpellVisualKit(uint id, uint type, uint duration)
+        {
+            PlaySpellVisualKit playSpellVisualKit = new();
+            playSpellVisualKit.Unit = GetGUID();
+            playSpellVisualKit.KitRecID = id;
+            playSpellVisualKit.KitType = type;
+            playSpellVisualKit.Duration = duration;
+            SendMessageToSet(playSpellVisualKit, true);
+        }
+
+        public void SendCancelSpellVisualKit(uint id)
+        {
+            CancelSpellVisualKit cancelSpellVisualKit = new();
+            cancelSpellVisualKit.Source = GetGUID();
+            cancelSpellVisualKit.SpellVisualKitID = id;
+            SendMessageToSet(cancelSpellVisualKit, true);
+        }
+
+        public void CancelSpellMissiles(uint spellId, bool reverseMissile = false)
         {
             bool hasMissile = false;
             foreach (var pair in m_Events.GetEvents())
@@ -2149,8 +2204,8 @@ namespace Game.Entities
 
             if (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Player))
                 return u1.ToPlayer().IsInSameGroupWith(u2.ToPlayer());
-            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.TreatAsRaidUnit)) ||
-                (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.TreatAsRaidUnit)))
+            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)) ||
+                (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)))
                 return true;
 
             return u1.GetTypeId() == TypeId.Unit && u2.GetTypeId() == TypeId.Unit && u1.GetFaction() == u2.GetFaction();
@@ -2168,8 +2223,8 @@ namespace Game.Entities
 
             if (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Player))
                 return u1.ToPlayer().IsInSameRaidWith(u2.ToPlayer());
-            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.TreatAsRaidUnit)) ||
-                    (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.TreatAsRaidUnit)))
+            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)) ||
+                    (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)))
                 return true;
 
             // else u1.GetTypeId() == u2.GetTypeId() == TYPEID_UNIT
@@ -2535,6 +2590,10 @@ namespace Game.Entities
                     damageTaken = health - 1;
 
                 duel_hasEnded = true;
+            }
+            else if (victim.IsCreature() && damageTaken >= health && victim.ToCreature().HasFlag(CreatureStaticFlags.Unkillable))
+            {
+                damageTaken = health - 1;
             }
             else if (victim.IsVehicle() && damageTaken >= (health - 1) && victim.GetCharmer() != null && victim.GetCharmer().IsTypeId(TypeId.Player))
             {
@@ -4031,6 +4090,17 @@ namespace Game.Entities
             for (var attackType = WeaponAttackType.BaseAttack; attackType < WeaponAttackType.Max; ++attackType)
                 UpdateDamagePctDoneMods(attackType);
         }
+
+        public void AddWorldEffect(int worldEffectId) { AddDynamicUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.WorldEffects), worldEffectId); }
+
+        public void RemoveWorldEffect(int worldEffectId)
+        {
+            int index = m_unitData.WorldEffects.FindIndex(worldEffectId);
+            if (index >= 0)
+                RemoveDynamicUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.WorldEffects), index);
+        }
+
+        public void ClearWorldEffects() { ClearDynamicUpdateFieldValues(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.WorldEffects)); }
 
         public CombatManager GetCombatManager() { return m_combatManager; }
 

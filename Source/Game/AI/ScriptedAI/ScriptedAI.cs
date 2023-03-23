@@ -197,7 +197,10 @@ namespace Game.AI
             if (reset)
             {
                 who.LoadCreaturesAddon();
-                who.SetTappedBy(null);
+
+                if (!me.IsTapListNotClearedOnEvade())
+                    who.SetTappedBy(null);
+
                 who.ResetPlayerDamageReq();
                 who.SetLastDamagedTime(0);
                 who.SetCannotReachTarget(false);
@@ -258,7 +261,7 @@ namespace Game.AI
                 return null;
 
             //Silenced so we can't cast
-            if (me.HasUnitFlag(UnitFlags.Silenced))
+            if (me.IsSilenced(school != 0 ? school : SpellSchoolMask.Magic))
                 return null;
 
             //Using the extended script system we first create a list of viable spells
@@ -771,7 +774,7 @@ namespace Game.AI
                 Creature summon = ObjectAccessor.GetCreature(_me, id);
                 if (summon && summon.IsAIEnabled() && (entry == 0 || summon.GetEntry() == entry))
                 {
-                    summon.GetAI().DoZoneInCombat(null);
+                    summon.GetAI().DoZoneInCombat();
                 }
             }
         }

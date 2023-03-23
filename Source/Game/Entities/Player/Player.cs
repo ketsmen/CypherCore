@@ -2425,35 +2425,13 @@ namespace Game.Entities
                         case GossipOptionNpc.CemeterySelect:
                             canTalk = false;                               // Deprecated
                             break;
-                        case GossipOptionNpc.GuildBanker:
-                        case GossipOptionNpc.Spellclick:
-                        case GossipOptionNpc.WorldPvPQueue:
-                        case GossipOptionNpc.LFGDungeon:
-                        case GossipOptionNpc.ArtifactRespec:
-                        case GossipOptionNpc.QueueScenario:
-                        case GossipOptionNpc.GarrisonArchitect:
-                        case GossipOptionNpc.GarrisonMissionNpc:
-                        case GossipOptionNpc.ShipmentCrafter:
-                        case GossipOptionNpc.GarrisonTradeskillNpc:
-                        case GossipOptionNpc.GarrisonRecruitment:
-                        case GossipOptionNpc.AdventureMap:
-                        case GossipOptionNpc.GarrisonTalent:
-                        case GossipOptionNpc.ContributionCollector:
-                        case GossipOptionNpc.IslandsMissionNpc:
-                        case GossipOptionNpc.UIItemInteraction:
-                        case GossipOptionNpc.WorldMap:
-                        case GossipOptionNpc.Soulbind:
-                        case GossipOptionNpc.ChromieTimeNpc:
-                        case GossipOptionNpc.CovenantPreviewNpc:
-                        case GossipOptionNpc.RuneforgeLegendaryCrafting:
-                        case GossipOptionNpc.NewPlayerGuide:
-                        case GossipOptionNpc.RuneforgeLegendaryUpgrade:
-                        case GossipOptionNpc.CovenantRenownNpc:
-                            break;                                         // NYI
                         default:
-                            Log.outError(LogFilter.Sql, $"Creature entry {creature.GetEntry()} has an unknown gossip option icon {gossipMenuItem.OptionNpc} for menu {gossipMenuItem.MenuID}.");
-                            canTalk = false;
-                            break;
+                            if (gossipMenuItem.OptionNpc >= GossipOptionNpc.Max)
+                            {
+                                Log.outError(LogFilter.Sql, $"Creature entry {creature.GetEntry()} has an unknown gossip option icon {gossipMenuItem.OptionNpc} for menu {gossipMenuItem.MenuID}.");
+                                canTalk = false;
+                            }
+                            break;                                         // NYI
                     }
                 }
                 else if (go != null)
@@ -2720,7 +2698,7 @@ namespace Game.Entities
             switch (source.GetTypeId())
             {
                 case TypeId.Unit:
-                    return source.ToCreature().GetCreatureTemplate().GossipMenuId;
+                    return source.ToCreature().GetGossipMenuId();
                 case TypeId.GameObject:
                     return source.ToGameObject().GetGoInfo().GetGossipMenuId();
                 default:
@@ -3670,9 +3648,9 @@ namespace Game.Entities
             return false;
         }
 
-        public override bool IsNeverVisibleFor(WorldObject seer)
+        public override bool IsNeverVisibleFor(WorldObject seer, bool allowServersideObjects = false)
         {
-            if (base.IsNeverVisibleFor(seer))
+            if (base.IsNeverVisibleFor(seer, allowServersideObjects))
                 return true;
 
             if (GetSession().PlayerLogout() || GetSession().PlayerLoading())
@@ -5569,7 +5547,7 @@ namespace Game.Entities
             // cleanup unit flags (will be re-applied if need at aura load).
             RemoveUnitFlag(UnitFlags.NonAttackable | UnitFlags.RemoveClientControl | UnitFlags.NotAttackable1 |
             UnitFlags.ImmuneToPc | UnitFlags.ImmuneToNpc | UnitFlags.Looting |
-            UnitFlags.PetInCombat | UnitFlags.Silenced | UnitFlags.Pacified |
+            UnitFlags.PetInCombat | UnitFlags.Pacified |
             UnitFlags.Stunned | UnitFlags.InCombat | UnitFlags.Disarmed |
             UnitFlags.Confused | UnitFlags.Fleeing | UnitFlags.Uninteractible |
             UnitFlags.Skinnable | UnitFlags.Mount | UnitFlags.OnTaxi);

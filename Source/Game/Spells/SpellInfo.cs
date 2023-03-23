@@ -993,7 +993,7 @@ namespace Game.Spells
             if (HasAttribute(SpellAttr1.ExcludeCaster) && caster == target)
                 return SpellCastResult.BadTargets;
 
-            // check visibility - ignore stealth for implicit (area) targets
+            // check visibility - ignore invisibility/stealth for implicit (area) targets
             if (!HasAttribute(SpellAttr6.IgnorePhaseShift) && !caster.CanSeeOrDetect(target, Implicit))
                 return SpellCastResult.BadTargets;
 
@@ -1034,7 +1034,7 @@ namespace Game.Spells
                             if (targetCreature == null)
                                 return SpellCastResult.BadTargets;
 
-                            if (!Loots.LootStorage.Pickpocketing.HaveLootFor(targetCreature.GetCreatureTemplate().PickPocketId))
+                            if (!targetCreature.CanHaveLoot() || !Loots.LootStorage.Pickpocketing.HaveLootFor(targetCreature.GetCreatureTemplate().PickPocketId))
                                 return SpellCastResult.TargetNoPockets;
                         }
 
@@ -4824,6 +4824,8 @@ namespace Game.Spells
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.None), // 302 SPELL_EFFECT_GATHERING
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 303 SPELL_EFFECT_CREATE_TRAIT_TREE_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 304 SPELL_EFFECT_CHANGE_ACTIVE_COMBAT_TRAIT_CONFIG
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 305 SPELL_EFFECT_305
+            new StaticData(SpellEffectImplicitTargetTypes.None, SpellTargetObjectTypes.None), // 306 SPELL_EFFECT_306
         };
 
         #region Fields

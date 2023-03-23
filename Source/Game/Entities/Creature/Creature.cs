@@ -306,6 +306,9 @@ namespace Game.Entities
             for (byte i = 0; i < SharedConst.MaxCreatureSpells; ++i)
                 m_spells[i] = GetCreatureTemplate().Spells[i];
 
+            _staticFlags.ApplyFlag(CreatureStaticFlags.NoXp, cInfo.CreatureType == CreatureType.Critter || IsPet() || IsTotem() || cInfo.FlagsExtra.HasFlag(CreatureFlagsExtra.NoXP));
+            _staticFlags.ApplyFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells, cInfo.TypeFlags.HasFlag(CreatureTypeFlags.TreatAsRaidUnit));
+
             return true;
         }
 
@@ -408,7 +411,6 @@ namespace Game.Entities
 
             SetIsCombatDisallowed(cInfo.FlagsExtra.HasFlag(CreatureFlagsExtra.CannotEnterCombat));
 
-            LoadTemplateRoot();
             InitializeMovementFlags();
 
             LoadCreaturesAddon();
@@ -1029,11 +1031,10 @@ namespace Game.Entities
 
         public bool CanGiveExperience()
         {
-            return !IsCritter()
-                && !IsPet()
-                && !IsTotem()
-                && !GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.NoXP);
+            return !_staticFlags.HasFlag(CreatureStaticFlags.NoXp);
         }
+
+        public void SetCanGiveExperience(bool xpEnabled) { _staticFlags.ApplyFlag(CreatureStaticFlags.NoXp, !xpEnabled); }
 
         public override bool IsEngaged()
         {
@@ -1128,7 +1129,42 @@ namespace Game.Entities
             // exited position so it won't run away (home) and evade if it's hostile
             SetHomePosition(GetPosition());
         }
+
+        public bool HasFlag(CreatureStaticFlags flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags2 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags3 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags4 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags5 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags6 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags7 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags8 flag)  { return _staticFlags.HasFlag(flag); }
+
+        public uint GetGossipMenuId()
+        {
+            if (_gossipMenuId.HasValue)
+                return _gossipMenuId.Value;
+
+            return GetCreatureTemplate().GossipMenuId;
+        }
+
+        public void SetGossipMenuId(uint? gossipMenuId)
+        {
+            _gossipMenuId = gossipMenuId;
+        }
         
+        public uint GetTrainerId()
+        {
+            if (_trainerId.HasValue)
+                return _trainerId.Value;
+
+            return Global.ObjectMgr.GetCreatureDefaultTrainer(GetEntry());
+        }
+
+        public void SetTrainerId(uint? trainerId)
+        {
+            _trainerId = trainerId;
+        }
+
         public override bool IsMovementPreventedByCasting()
         {
             // first check if currently a movement allowed channel is active and we're not casting
@@ -1137,7 +1173,7 @@ namespace Game.Entities
             {
                 if (spell.GetState() != SpellState.Finished && spell.IsChannelActive())
                     if (spell.CheckMovement() != SpellCastResult.SpellCastOk)
-                            return true;
+                        return true;
             }
 
             if (HasSpellFocus())
@@ -1153,9 +1189,33 @@ namespace Game.Entities
         {
             _pickpocketLootRestore = GameTime.GetGameTime() + WorldConfig.GetIntValue(WorldCfg.CreaturePickpocketRefill);
         }
+
         public void ResetPickPocketRefillTimer() { _pickpocketLootRestore = 0; }
+
         public bool CanGeneratePickPocketLoot() { return _pickpocketLootRestore <= GameTime.GetGameTime(); }
 
+        public uint GetLootId()
+        {
+            if (_lootId.HasValue)
+                return _lootId.Value;
+
+            return GetCreatureTemplate().LootId;
+        }
+
+        public void SetLootId(uint? lootId)
+        {
+            _lootId = lootId;
+        }
+
+        public void SetDontClearTapListOnEvade(bool dontClear)
+        {
+            // only temporary summons are allowed to not clear their tap list
+            if (m_spawnId == 0)
+                m_dontClearTapListOnEvade = dontClear;
+        }
+
+        public bool IsTapListNotClearedOnEvade() { return m_dontClearTapListOnEvade; }
+        
         public void SetTappedBy(Unit unit, bool withGroup = true)
         {
             // set the player whose group should receive the right
@@ -1195,7 +1255,7 @@ namespace Game.Entities
 
         public bool IsTappedBy(Player player)
         {
-            return m_tapList.Contains(player.GetGUID()); 
+            return m_tapList.Contains(player.GetGUID());
         }
 
         public override Loot GetLootForPlayer(Player player)
@@ -1234,6 +1294,10 @@ namespace Game.Entities
         public HashSet<ObjectGuid> GetTapList() { return m_tapList; }
         public void SetTapList(HashSet<ObjectGuid> tapList) { m_tapList = tapList; }
         public bool HasLootRecipient() { return !m_tapList.Empty(); }
+
+        public bool CanHaveLoot() { return !_staticFlags.HasFlag(CreatureStaticFlags.NoLoot); }
+
+        public void SetCanHaveLoot(bool canHaveLoot) { _staticFlags.ApplyFlag(CreatureStaticFlags.NoLoot, !canHaveLoot); }
         
         public void SaveToDB()
         {
@@ -1602,7 +1666,7 @@ namespace Game.Entities
 
         public void SetSpawnHealth()
         {
-            if (_regenerateHealthLock)
+            if (_staticFlags.HasFlag(CreatureStaticFlags5.NoHealthRegen))
                 return;
 
             ulong curhealth;
@@ -1629,8 +1693,15 @@ namespace Game.Entities
 
         void LoadTemplateRoot()
         {
-            if (GetMovementTemplate().IsRooted())
-                SetControlled(true, UnitState.Root);
+            SetTemplateRooted(GetMovementTemplate().IsRooted());
+        }
+
+        public bool IsTemplateRooted() { return _staticFlags.HasFlag(CreatureStaticFlags.Sessile); }
+        
+        public void SetTemplateRooted(bool rooted)
+        {
+            _staticFlags.ApplyFlag(CreatureStaticFlags.Sessile, rooted);
+            SetControlled(rooted, UnitState.Root);
         }
 
         public override bool HasQuest(uint questId)
@@ -1839,7 +1910,7 @@ namespace Game.Entities
                     else
                         m_respawnTime = GameTime.GetGameTime() + respawnDelay;
                 }
-                
+
                 SaveRespawnTime();
 
                 ReleaseSpellFocus(null, false);               // remove spellcast focus
@@ -1851,7 +1922,7 @@ namespace Game.Entities
 
                 SetMountDisplayId(0); // if creature is mounted on a virtual mount, remove it at death
 
-                SetActive(false);                
+                SetActive(false);
                 SetNoSearchAssistance(false);
 
                 //Dismiss group if is leader
@@ -2466,6 +2537,8 @@ namespace Game.Entities
 
         void InitializeMovementFlags()
         {
+            LoadTemplateRoot();
+
             // It does the same, for now
             UpdateMovementFlags();
         }
@@ -2752,7 +2825,7 @@ namespace Game.Entities
         }
 
         public string[] GetStringIds() { return m_stringIds; }
-        
+
         public VendorItemData GetVendorItems()
         {
             return Global.ObjectMgr.GetNpcVendorItemList(GetEntry());
@@ -2954,7 +3027,7 @@ namespace Game.Entities
         {
             return GetCreatureTemplate().Scale;
         }
-        
+
         public override void SetObjectScale(float scale)
         {
             base.SetObjectScale(scale);
@@ -3140,9 +3213,9 @@ namespace Game.Entities
         {
             return GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Guard);
         }
-        
+
         public bool CanWalk() { return GetMovementTemplate().IsGroundAllowed(); }
-        public override bool CanFly()  { return GetMovementTemplate().IsFlightAllowed() || IsFlying(); }
+        public override bool CanFly() { return GetMovementTemplate().IsFlightAllowed() || IsFlying(); }
         bool CanHover() { return GetMovementTemplate().Ground == CreatureGroundMovementType.Hover || IsHovering(); }
 
         public bool IsDungeonBoss() { return (GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.DungeonBoss)); }
@@ -3165,6 +3238,8 @@ namespace Game.Entities
         public override void SetImmuneToPC(bool apply) { SetImmuneToPC(apply, HasReactState(ReactStates.Passive)); }
         public override void SetImmuneToNPC(bool apply) { SetImmuneToNPC(apply, HasReactState(ReactStates.Passive)); }
 
+        void SetUnkillable(bool unkillable) { _staticFlags.ApplyFlag(CreatureStaticFlags.Unkillable, unkillable); }
+
         public bool IsInEvadeMode() { return HasUnitState(UnitState.Evade); }
         public bool IsEvadingAttacks() { return IsInEvadeMode() || CanNotReachTarget(); }
 
@@ -3181,6 +3256,10 @@ namespace Game.Entities
         public override SpellSchoolMask GetMeleeDamageSchoolMask(WeaponAttackType attackType = WeaponAttackType.BaseAttack) { return m_meleeDamageSchoolMask; }
         public void SetMeleeDamageSchool(SpellSchools school) { m_meleeDamageSchoolMask = (SpellSchoolMask)(1 << (int)school); }
 
+        public bool CanMelee() { return !_staticFlags.HasFlag(CreatureStaticFlags.NoMelee); }
+
+        public void SetCanMelee(bool canMelee) { _staticFlags.ApplyFlag(CreatureStaticFlags.NoMelee, !canMelee); }
+        
         public sbyte GetOriginalEquipmentId() { return m_originalEquipmentId; }
         public byte GetCurrentEquipmentId() { return m_equipmentId; }
         public void SetCurrentEquipmentId(byte id) { m_equipmentId = id; }
@@ -3293,7 +3372,7 @@ namespace Game.Entities
                 return false;
             return true;
         }
-        
+
         public LootModes GetLootMode() { return m_LootMode; }
         public bool HasLootMode(LootModes lootMode) { return Convert.ToBoolean(m_LootMode & lootMode); }
         public void SetLootMode(LootModes lootMode) { m_LootMode = lootMode; }
@@ -3305,7 +3384,7 @@ namespace Game.Entities
         public void SetNoSearchAssistance(bool val) { m_AlreadySearchedAssistance = val; }
         public bool HasSearchedAssistance() { return m_AlreadySearchedAssistance; }
         public bool CanIgnoreFeignDeath() { return GetCreatureTemplate().FlagsExtra.HasFlag(CreatureFlagsExtra.IgnoreFeighDeath); }
-        
+
         public override MovementGeneratorType GetDefaultMovementType() { return DefaultMovementType; }
         public void SetDefaultMovementType(MovementGeneratorType mgt) { DefaultMovementType = mgt; }
 
@@ -3327,9 +3406,9 @@ namespace Game.Entities
                 m_combatPulseTime = delay;
         }
 
-        public bool CanRegenerateHealth() { return !_regenerateHealthLock && _regenerateHealth; }
-        public void SetRegenerateHealth(bool value) { _regenerateHealthLock = !value; }
-
+        bool CanRegenerateHealth() { return !_staticFlags.HasFlag(CreatureStaticFlags5.NoHealthRegen) && _regenerateHealth; }
+        public void SetRegenerateHealth(bool value) { _staticFlags.ApplyFlag(CreatureStaticFlags5.NoHealthRegen, !value); }
+        
         public void SetHomePosition(float x, float y, float z, float o)
         {
             m_homePosition.Relocate(x, y, z, o);

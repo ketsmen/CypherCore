@@ -542,24 +542,24 @@ namespace Game.Movement
             if (target == null)
                 Add(new HomeMovementGenerator<Creature>());
             else
-                Add(new FollowMovementGenerator(target, SharedConst.PetFollowDist, new ChaseAngle(SharedConst.PetFollowAngle)));
+                Add(new FollowMovementGenerator(target, SharedConst.PetFollowDist, new ChaseAngle(SharedConst.PetFollowAngle), null));
         }
 
-        public void MoveRandom(float wanderDistance = 0.0f)
+        public void MoveRandom(float wanderDistance = 0.0f, TimeSpan? duration = null, MovementSlot slot = MovementSlot.Default)
         {
             if (_owner.IsTypeId(TypeId.Unit))
-                Add(new RandomMovementGenerator(wanderDistance), MovementSlot.Default);
+                Add(new RandomMovementGenerator(wanderDistance, duration), slot);
         }
 
-        public void MoveFollow(Unit target, float dist, float angle = 0.0f, MovementSlot slot = MovementSlot.Active) { MoveFollow(target, dist, new ChaseAngle(angle), slot); }
+        public void MoveFollow(Unit target, float dist, float angle = 0.0f, TimeSpan? duration = null, MovementSlot slot = MovementSlot.Active) { MoveFollow(target, dist, new ChaseAngle(angle), duration, slot); }
 
-        public void MoveFollow(Unit target, float dist, ChaseAngle angle, MovementSlot slot = MovementSlot.Active)
+        public void MoveFollow(Unit target, float dist, ChaseAngle angle, TimeSpan? duration = null, MovementSlot slot = MovementSlot.Active)
         {
             // Ignore movement request if target not exist
             if (!target || target == _owner)
                 return;
 
-            Add(new FollowMovementGenerator(target, dist, angle), slot);
+            Add(new FollowMovementGenerator(target, dist, angle, duration), slot);
         }
 
         public void MoveChase(Unit target, float dist, float angle = 0.0f) { MoveChase(target, new ChaseRange(dist), new ChaseAngle(angle)); }
@@ -581,14 +581,14 @@ namespace Game.Movement
                 Add(new ConfusedMovementGenerator<Creature>());
         }
 
-        public void MoveFleeing(Unit enemy, uint time)
+        public void MoveFleeing(Unit enemy, TimeSpan time = default)
         {
             if (!enemy)
                 return;
 
             if (_owner.IsCreature())
             {
-                if (time != 0)
+                if (time != TimeSpan.Zero)
                     Add(new TimedFleeingMovementGenerator(enemy.GetGUID(), time));
                 else
                     Add(new FleeingMovementGenerator<Creature>(enemy.GetGUID()));
@@ -597,17 +597,15 @@ namespace Game.Movement
                 Add(new FleeingMovementGenerator<Player>(enemy.GetGUID()));
         }
 
-        public void MovePoint(uint id, Position pos, bool generatePath = true, float? finalOrient = null)
+        public void MovePoint(uint id, Position pos, bool generatePath = true, float? finalOrient = null, float? speed = null, MovementWalkRunSpeedSelectionMode speedSelectionMode = MovementWalkRunSpeedSelectionMode.Default, float? closeEnoughDistance = null)
         {
-            MovePoint(id, pos.posX, pos.posY, pos.posZ, generatePath, finalOrient);
+            MovePoint(id, pos.posX, pos.posY, pos.posZ, generatePath, finalOrient, speed, speedSelectionMode, closeEnoughDistance);
         }
 
-        public void MovePoint(uint id, float x, float y, float z, bool generatePath = true, float? finalOrient = null)
+        public void MovePoint(uint id, float x, float y, float z, bool generatePath = true, float? finalOrient = null, float? speed = null, MovementWalkRunSpeedSelectionMode speedSelectionMode = MovementWalkRunSpeedSelectionMode.Default, float? closeEnoughDistance = null)
         {
-            if (_owner.IsTypeId(TypeId.Player))
-                Add(new PointMovementGenerator<Player>(id, x, y, z, generatePath, 0.0f, finalOrient));
-            else
-                Add(new PointMovementGenerator<Creature>(id, x, y, z, generatePath, 0.0f, finalOrient));
+            Log.outDebug(LogFilter.Movement, $"MotionMaster::MovePoint: '{_owner.GetGUID()}', targeted point Id: {id} (X: {x}, Y: {y}, Z: {z})");
+            Add(new PointMovementGenerator(id, x, y, z, generatePath, speed, finalOrient, null, null, speedSelectionMode, closeEnoughDistance));
         }
 
         public void MoveCloserAndStop(uint id, Unit target, float distance)
@@ -667,20 +665,11 @@ namespace Game.Movement
                 return;
             */
 
-            if (_owner.IsTypeId(TypeId.Player))
-            {
-                PointMovementGenerator<Player> movement = new(id, x, y, z, generatePath, speed, null, target, spellEffectExtraData);
-                movement.Priority = MovementGeneratorPriority.Highest;
-                movement.BaseUnitState = UnitState.Charging;
-                Add(movement);
-            }
-            else
-            {
-                PointMovementGenerator<Creature> movement = new(id, x, y, z, generatePath, speed, null, target, spellEffectExtraData);
-                movement.Priority = MovementGeneratorPriority.Highest;
-                movement.BaseUnitState = UnitState.Charging;
-                Add(movement);
-            }
+            Log.outDebug(LogFilter.Movement, $"MotionMaster::MoveCharge: '{_owner.GetGUID()}', charging point Id: {id} (X: {x}, Y: {y}, Z: {z})");
+            PointMovementGenerator movement = new PointMovementGenerator(id, x, y, z, generatePath, speed, null, target, spellEffectExtraData);
+            movement.Priority = MovementGeneratorPriority.Highest;
+            movement.BaseUnitState = UnitState.Charging;
+            Add(movement);
         }
 
         public void MoveCharge(PathGenerator path, float speed = SPEED_CHARGE, Unit target = null, SpellEffectExtraData spellEffectExtraData = null)
@@ -1007,17 +996,21 @@ namespace Game.Movement
             Add(new DistractMovementGenerator(timer, orientation));
         }
 
-        public void MovePath(uint pathId, bool repeatable)
+        public void MovePath(uint pathId, bool repeatable, TimeSpan? duration = null, float? speed = null, MovementWalkRunSpeedSelectionMode speedSelectionMode = MovementWalkRunSpeedSelectionMode.Default,
+            (TimeSpan min, TimeSpan max)? waitTimeRangeAtPathEnd = null, float? wanderDistanceAtPathEnds = null, bool followPathBackwardsFromEndToStart = false, bool generatePath = true)
         {
             if (pathId == 0)
                 return;
 
-            Add(new WaypointMovementGenerator(pathId, repeatable), MovementSlot.Default);
+            Log.outDebug(LogFilter.Movement, $"MotionMaster::MovePath: '{_owner.GetGUID()}', starts moving over path Id: {pathId} (repeatable: {repeatable})");
+            Add(new WaypointMovementGenerator(pathId, repeatable, duration, speed, speedSelectionMode, waitTimeRangeAtPathEnd, wanderDistanceAtPathEnds, followPathBackwardsFromEndToStart, generatePath), MovementSlot.Default);
         }
 
-        public void MovePath(WaypointPath path, bool repeatable)
+        public void MovePath(WaypointPath path, bool repeatable, TimeSpan? duration = null, float? speed = null, MovementWalkRunSpeedSelectionMode speedSelectionMode = MovementWalkRunSpeedSelectionMode.Default,
+            (TimeSpan min, TimeSpan max)? waitTimeRangeAtPathEnd = null, float? wanderDistanceAtPathEnds = null, bool followPathBackwardsFromEndToStart = false, bool generatePath = true)
         {
-            Add(new WaypointMovementGenerator(path, repeatable), MovementSlot.Default);
+            Log.outDebug(LogFilter.Movement, $"MotionMaster::MovePath: '{_owner.GetGUID()}', starts moving over path Id: {path.id} (repeatable: {repeatable})");
+            Add(new WaypointMovementGenerator(path, repeatable, duration, speed, speedSelectionMode, waitTimeRangeAtPathEnd, wanderDistanceAtPathEnds, followPathBackwardsFromEndToStart, generatePath), MovementSlot.Default);
         }
 
         public void MoveRotate(uint id, uint time, RotateDirection direction)
@@ -1047,6 +1040,28 @@ namespace Game.Movement
             Add(movement);
         }
 
+        public void CalculateJumpSpeeds(float dist, UnitMoveType moveType, float speedMultiplier, float minHeight, float maxHeight, out float speedXY, out float speedZ)
+        {
+            float baseSpeed = _owner.IsControlledByPlayer() ? SharedConst.playerBaseMoveSpeed[(int)moveType] : SharedConst.baseMoveSpeed[(int)moveType];
+            Creature creature = _owner.ToCreature();
+            if (creature != null)
+                baseSpeed *= creature.GetCreatureTemplate().SpeedRun;
+
+            speedXY = Math.Min(baseSpeed * 3.0f * speedMultiplier, Math.Max(28.0f, _owner.GetSpeed(moveType) * 4.0f));
+
+            float duration = dist / speedXY;
+            float durationSqr = duration * duration;
+            float height;
+            if (durationSqr < minHeight * 8 / gravity)
+                height = minHeight;
+            else if (durationSqr > maxHeight * 8 / gravity)
+                height = maxHeight;
+            else
+                height = (float)(gravity * durationSqr / 8);
+
+            speedZ = (float)Math.Sqrt(2 * gravity * height);
+        }
+        
         void ResolveDelayedActions()
         {
             while (_delayedActions.Count != 0)

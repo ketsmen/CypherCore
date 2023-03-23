@@ -314,6 +314,7 @@ namespace Framework.Constants
 
             return SpellSchools.Normal;
         }
+
         public static SkillType SkillByQuestSort(int sort)
         {
             switch ((QuestSort)sort)
@@ -343,57 +344,54 @@ namespace Framework.Constants
             }
             return SkillType.None;
         }
-        public static SkillType SkillByLockType(LockType locktype)
+
+        public static SkillType SkillByLockType(LockType locktype) => locktype switch
         {
-            switch (locktype)
-            {
-                case LockType.Herbalism:
-                    return SkillType.Herbalism;
-                case LockType.Mining:
-                    return SkillType.Mining;
-                case LockType.Fishing:
-                    return SkillType.Fishing;
-                case LockType.Inscription:
-                    return SkillType.Inscription;
-                case LockType.Archaeology:
-                    return SkillType.Archaeology;
-                case LockType.LumberMill:
-                    return SkillType.Logging;
-                case LockType.ClassicHerbalism:
-                    return SkillType.ClassicHerbalism;
-                case LockType.OutlandHerbalism:
-                    return SkillType.OutlandHerbalism;
-                case LockType.NorthrendHerbalism:
-                    return SkillType.NorthrendHerbalism;
-                case LockType.CataclysmHerbalism:
-                    return SkillType.CataclysmHerbalism;
-                case LockType.PandariaHerbalism:
-                    return SkillType.PandariaHerbalism;
-                case LockType.DraenorHerbalism:
-                    return SkillType.DraenorHerbalism;
-                case LockType.LegionHerbalism:
-                    return SkillType.LegionHerbalism;
-                case LockType.KulTiranHerbalism:
-                    return SkillType.KulTiranHerbalism;
-                case LockType.ClassicMining:
-                    return SkillType.ClassicMining;
-                case LockType.OutlandMining:
-                    return SkillType.OutlandMining;
-                case LockType.NorthrendMining:
-                    return SkillType.NorthrendMining;
-                case LockType.CataclysmMining:
-                    return SkillType.CataclysmMining;
-                case LockType.PandariaMining:
-                    return SkillType.PandariaMining;
-                case LockType.DraenorMining:
-                    return SkillType.DraenorMining;
-                case LockType.LegionMining:
-                    return SkillType.LegionMining;
-                case LockType.KulTiranMining:
-                    return SkillType.KulTiranMining;
-            }
-            return SkillType.None;
-        }
+            LockType.Herbalism or LockType.ElusiveHerbalism => SkillType.Herbalism,
+            LockType.Mining or LockType.Mining2 or LockType.ElusiveMining => SkillType.Mining,
+            LockType.Fishing => SkillType.Fishing,
+            LockType.Inscription => SkillType.Inscription,
+            LockType.Archaeology => SkillType.Archaeology,
+            LockType.LumberMill => SkillType.Logging,
+            LockType.Skinning => SkillType.Skinning,
+            LockType.ClassicHerbalism => SkillType.ClassicHerbalism,
+            LockType.OutlandHerbalism => SkillType.OutlandHerbalism,
+            LockType.NorthrendHerbalism => SkillType.NorthrendHerbalism,
+            LockType.CataclysmHerbalism => SkillType.CataclysmHerbalism,
+            LockType.PandariaHerbalism => SkillType.PandariaHerbalism,
+            LockType.DraenorHerbalism => SkillType.DraenorHerbalism,
+            LockType.LegionHerbalism => SkillType.LegionHerbalism,
+            LockType.KulTiranHerbalism => SkillType.KulTiranHerbalism,
+            LockType.ClassicMining => SkillType.ClassicMining,
+            LockType.OutlandMining => SkillType.OutlandMining,
+            LockType.NorthrendMining => SkillType.NorthrendMining,
+            LockType.CataclysmMining => SkillType.CataclysmMining,
+            LockType.PandariaMining => SkillType.PandariaMining,
+            LockType.DraenorMining => SkillType.DraenorMining,
+            LockType.LegionMining => SkillType.LegionMining,
+            LockType.KulTiranMining => SkillType.KulTiranMining,
+            LockType.LegionSkinning => SkillType.LegionSkinning,
+            LockType.ShadowlandsHerbalism => SkillType.ShadowlandsHerbalism,
+            LockType.ShadowlandsMining => SkillType.ShadowlandsMining,
+            LockType.CovenantNightFae => SkillType.CovenantNightFae,
+            LockType.CovenantVenthyr => SkillType.CovenantVenthyr,
+            LockType.CovenantKyrian => SkillType.CovenantKyrian,
+            LockType.CovenantNecrolord => SkillType.CovenantNecrolord,
+            LockType.Engineering => SkillType.Engineering,
+            LockType.DragonIslesHerbalism or LockType.DragonIslesHerbalism25 => SkillType.DragonIslesHerbalism,
+            LockType.Enchanting => SkillType.Enchanting,
+            LockType.DragonIslesAlchemy25 => SkillType.DragonIslesAlchemy,
+            LockType.DragonIslesBlacksmithing25 => SkillType.DragonIslesBlacksmithing,
+            LockType.DragonIslesEnchanting25 => SkillType.DragonIslesEnchanting,
+            LockType.DragonIslesEngineering25 => SkillType.DragonIslesEngineering,
+            LockType.DragonIslesInscription25 => SkillType.DragonIslesInscription,
+            LockType.DragonIslesJewelcrafting25 => SkillType.DragonIslesJewelcrafting,
+            LockType.DragonIslesLeatherworking25 => SkillType.DragonIslesLeatherworking,
+            LockType.DragonIslesSkinning25 => SkillType.DragonIslesSkinning,
+            LockType.DragonIslesTailoring25 => SkillType.DragonIslesTailoring,
+            LockType.DragonIslesMining or LockType.DragonIslesMining25 => SkillType.DragonIslesMining,
+            _ => SkillType.None
+        };
 
         public static bool IsValidLocale(Locale locale)
         {
@@ -3008,41 +3006,43 @@ namespace Framework.Constants
         SocketingCypherGemOnlyInCypherslot = 1077,
         SocketingRequiresTinkerGem = 1078,
         SocketingTinkerGemOnlyInTinkerslot = 1079,
-        LevelLinkingResultLinked = 1080,
-        LevelLinkingResultUnlinked = 1081,
-        ClubFinderErrorPostClub = 1082,
-        ClubFinderErrorApplyClub = 1083,
-        ClubFinderErrorRespondApplicant = 1084,
-        ClubFinderErrorCancelApplication = 1085,
-        ClubFinderErrorTypeAcceptApplication = 1086,
-        ClubFinderErrorTypeNoInvitePermissions = 1087,
-        ClubFinderErrorTypeNoPostingPermissions = 1088,
-        ClubFinderErrorTypeApplicantList = 1089,
-        ClubFinderErrorTypeApplicantListNoPerm = 1090,
-        ClubFinderErrorTypeFinderNotAvailable = 1091,
-        ClubFinderErrorTypeGetPostingIds = 1092,
-        ClubFinderErrorTypeJoinApplication = 1093,
-        ClubFinderErrorTypeRealmNotEligible = 1094,
-        ClubFinderErrorTypeFlaggedRename = 1095,
-        ClubFinderErrorTypeFlaggedDescriptionChange = 1096,
-        ItemInteractionNotEnoughGold = 1097,
-        ItemInteractionNotEnoughCurrency = 1098,
-        PlayerChoiceErrorPendingChoice = 1099,
-        SoulbindInvalidConduit = 1100,
-        SoulbindInvalidConduitItem = 1101,
-        SoulbindInvalidTalent = 1102,
-        SoulbindDuplicateConduit = 1103,
-        ActivateSoulbindS = 1104,
-        ActivateSoulbindFailedRestArea = 1105,
-        CantUseProfanity = 1106,
-        NotInPetBattle = 1107,
-        NotInNpe = 1108,
-        NoSpec = 1109,
-        NoDominationshardOverwrite = 1110,
-        UseWeeklyRewardsDisabled = 1111,
-        CrossFactionGroupJoined = 1112,
-        CantTargetUnfriendlyInOverworld = 1113,
-        EquipablespellsSlotsFull = 1114
+        SocketingRequiresPrimordialGem = 1080,
+        SocketingPrimordialGemOnlyInPrimordialslot = 1081,
+        LevelLinkingResultLinked = 1082,
+        LevelLinkingResultUnlinked = 1083,
+        ClubFinderErrorPostClub = 1084,
+        ClubFinderErrorApplyClub = 1085,
+        ClubFinderErrorRespondApplicant = 1086,
+        ClubFinderErrorCancelApplication = 1087,
+        ClubFinderErrorTypeAcceptApplication = 1088,
+        ClubFinderErrorTypeNoInvitePermissions = 1089,
+        ClubFinderErrorTypeNoPostingPermissions = 1090,
+        ClubFinderErrorTypeApplicantList = 1091,
+        ClubFinderErrorTypeApplicantListNoPerm = 1092,
+        ClubFinderErrorTypeFinderNotAvailable = 1093,
+        ClubFinderErrorTypeGetPostingIds = 1094,
+        ClubFinderErrorTypeJoinApplication = 1095,
+        ClubFinderErrorTypeRealmNotEligible = 1096,
+        ClubFinderErrorTypeFlaggedRename = 1097,
+        ClubFinderErrorTypeFlaggedDescriptionChange = 1098,
+        ItemInteractionNotEnoughGold = 1099,
+        ItemInteractionNotEnoughCurrency = 1100,
+        PlayerChoiceErrorPendingChoice = 1101,
+        SoulbindInvalidConduit = 1102,
+        SoulbindInvalidConduitItem = 1103,
+        SoulbindInvalidTalent = 1104,
+        SoulbindDuplicateConduit = 1105,
+        ActivateSoulbindS = 1106,
+        ActivateSoulbindFailedRestArea = 1107,
+        CantUseProfanity = 1108,
+        NotInPetBattle = 1109,
+        NotInNpe = 1110,
+        NoSpec = 1111,
+        NoDominationshardOverwrite = 1112,
+        UseWeeklyRewardsDisabled = 1113,
+        CrossFactionGroupJoined = 1114,
+        CantTargetUnfriendlyInOverworld = 1115,
+        EquipablespellsSlotsFull = 1116
     }
 
     public enum SceneFlags

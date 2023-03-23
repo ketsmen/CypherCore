@@ -1687,7 +1687,7 @@ namespace Game.Spells
 
                 // prevent interrupt message
                 if (GetCasterGUID() == target.GetGUID() && target.GetCurrentSpell(CurrentSpellTypes.Generic) != null)
-                    target.FinishSpell(CurrentSpellTypes.Generic, false);
+                    target.FinishSpell(CurrentSpellTypes.Generic, SpellCastResult.Interrupted);
                 target.InterruptNonMeleeSpells(true);
 
                 // stop handling the effect if it was removed by linked event
@@ -1832,7 +1832,7 @@ namespace Game.Spells
 
             if (apply)
             {
-                target.SetUnitFlag(UnitFlags.Silenced);
+                target.SetSilencedSchoolMask((SpellSchoolMask)GetMiscValue());
 
                 // call functions which may have additional effects after changing state of unit
                 // Stop cast only spells vs PreventionType & SPELL_PREVENTION_TYPE_SILENCE
@@ -1847,11 +1847,14 @@ namespace Game.Spells
             }
             else
             {
-                // do not remove unit flag if there are more than this auraEffect of that kind on unit on unit
-                if (target.HasAuraType(AuraType.ModSilence) || target.HasAuraType(AuraType.ModPacifySilence))
-                    return;
+                int silencedSchoolMask = 0;
+                foreach (AuraEffect auraEffect in target.GetAuraEffectsByType(AuraType.ModSilence))
+                    silencedSchoolMask |= auraEffect.GetMiscValue();
 
-                target.RemoveUnitFlag(UnitFlags.Silenced);
+                foreach (AuraEffect auraEffect in target.GetAuraEffectsByType(AuraType.ModPacifySilence))
+                    silencedSchoolMask |= auraEffect.GetMiscValue();
+
+                target.ReplaceAllSilencedSchoolMask((SpellSchoolMask)silencedSchoolMask);
             }
         }
 
@@ -4784,7 +4787,17 @@ namespace Game.Spells
             if (!mode.HasFlag(AuraEffectHandleModes.Real) || apply || aurApp.GetRemoveMode() != AuraRemoveMode.Expire)
                 return;
 
-            aurApp.GetTarget().CastSpell(aurApp.GetTarget(), GetSpellEffectInfo().TriggerSpell, new CastSpellExtraArgs(this));
+            Unit caster = aurApp.GetTarget();
+
+            // MiscValue (Caster):
+            // 0 - Aura target
+            // 1 - Aura caster
+            // 2 - ? Aura target is always TARGET_UNIT_CASTER so we consider the same behavior as MiscValue 1
+            uint casterType = (uint)GetMiscValue();
+            if (casterType > 0)
+                caster = GetCaster();
+            
+            caster?.CastSpell(aurApp.GetTarget(), GetSpellEffectInfo().TriggerSpell, new CastSpellExtraArgs(this));
         }
 
         [AuraEffectHandler(AuraType.OpenStable)]

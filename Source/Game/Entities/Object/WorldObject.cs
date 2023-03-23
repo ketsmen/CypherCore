@@ -1159,12 +1159,12 @@ namespace Game.Entities
 
         public SmoothPhasing GetSmoothPhasing() { return _smoothPhasing; }
 
-        public bool CanSeeOrDetect(WorldObject obj, bool ignoreStealth = false, bool distanceCheck = false, bool checkAlert = false)
+        public bool CanSeeOrDetect(WorldObject obj, bool implicitDetect = false, bool distanceCheck = false, bool checkAlert = false)
         {
             if (this == obj)
                 return true;
 
-            if (obj.IsNeverVisibleFor(this) || CanNeverSee(obj))
+            if (obj.IsNeverVisibleFor(this, implicitDetect) || CanNeverSee(obj))
                 return false;
 
             if (obj.IsAlwaysVisibleFor(this) || CanAlwaysSee(obj))
@@ -1256,7 +1256,7 @@ namespace Game.Entities
             if (obj.IsInvisibleDueToDespawn(this))
                 return false;
 
-            if (!CanDetect(obj, ignoreStealth, checkAlert))
+            if (!CanDetect(obj, implicitDetect, checkAlert))
                 return false;
 
             return true;
@@ -1269,7 +1269,7 @@ namespace Game.Entities
 
         public virtual bool CanAlwaysSee(WorldObject obj) { return false; }
 
-        bool CanDetect(WorldObject obj, bool ignoreStealth, bool checkAlert = false)
+        bool CanDetect(WorldObject obj, bool implicitDetect, bool checkAlert = false)
         {
             WorldObject seer = this;
 
@@ -1295,10 +1295,10 @@ namespace Game.Entities
             if (obj.IsAlwaysDetectableFor(seer))
                 return true;
 
-            if (!ignoreStealth && !seer.CanDetectInvisibilityOf(obj))
+            if (!implicitDetect && !seer.CanDetectInvisibilityOf(obj))
                 return false;
 
-            if (!ignoreStealth && !seer.CanDetectStealthOf(obj, checkAlert))
+            if (!implicitDetect && !seer.CanDetectStealthOf(obj, checkAlert))
                 return false;
 
             return true;
@@ -2456,42 +2456,6 @@ namespace Game.Entities
             return spell.Prepare(targets.Targets, args.TriggeringAura);
         }
 
-        public void SendPlaySpellVisual(WorldObject target, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false)
-        {
-            PlaySpellVisual playSpellVisual = new();
-            playSpellVisual.Source = GetGUID();
-            playSpellVisual.Target = target.GetGUID();
-            playSpellVisual.TargetPosition = target.GetPosition();
-            playSpellVisual.SpellVisualID = spellVisualId;
-            playSpellVisual.TravelSpeed = travelSpeed;
-            playSpellVisual.MissReason = missReason;
-            playSpellVisual.ReflectStatus = reflectStatus;
-            playSpellVisual.SpeedAsTime = speedAsTime;
-            SendMessageToSet(playSpellVisual, true);
-        }
-
-        public void SendPlaySpellVisual(Position targetPosition, float launchDelay, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false)
-        {
-            PlaySpellVisual playSpellVisual = new();
-            playSpellVisual.Source = GetGUID();
-            playSpellVisual.TargetPosition = targetPosition;
-            playSpellVisual.LaunchDelay = launchDelay;
-            playSpellVisual.SpellVisualID = spellVisualId;
-            playSpellVisual.TravelSpeed = travelSpeed;
-            playSpellVisual.MissReason = missReason;
-            playSpellVisual.ReflectStatus = reflectStatus;
-            playSpellVisual.SpeedAsTime = speedAsTime;
-            SendMessageToSet(playSpellVisual, true);
-        }
-
-        void SendCancelSpellVisual(uint id)
-        {
-            CancelSpellVisual cancelSpellVisual = new();
-            cancelSpellVisual.Source = GetGUID();
-            cancelSpellVisual.SpellVisualID = id;
-            SendMessageToSet(cancelSpellVisual, true);
-        }
-
         void SendPlayOrphanSpellVisual(ObjectGuid target, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
         {
             PlayOrphanSpellVisual playOrphanSpellVisual = new();
@@ -2547,24 +2511,6 @@ namespace Game.Entities
             CancelOrphanSpellVisual cancelOrphanSpellVisual = new();
             cancelOrphanSpellVisual.SpellVisualID = id;
             SendMessageToSet(cancelOrphanSpellVisual, true);
-        }
-
-        public void SendPlaySpellVisualKit(uint id, uint type, uint duration)
-        {
-            PlaySpellVisualKit playSpellVisualKit = new();
-            playSpellVisualKit.Unit = GetGUID();
-            playSpellVisualKit.KitRecID = id;
-            playSpellVisualKit.KitType = type;
-            playSpellVisualKit.Duration = duration;
-            SendMessageToSet(playSpellVisualKit, true);
-        }
-
-        void SendCancelSpellVisualKit(uint id)
-        {
-            CancelSpellVisualKit cancelSpellVisualKit = new();
-            cancelSpellVisualKit.Source = GetGUID();
-            cancelSpellVisualKit.SpellVisualKitID = id;
-            SendMessageToSet(cancelSpellVisualKit, true);
         }
 
         // function based on function Unit::CanAttack from 13850 client
@@ -2696,10 +2642,6 @@ namespace Game.Entities
                 }
             }
 
-            Creature creatureAttacker = ToCreature();
-            if (creatureAttacker && creatureAttacker.GetCreatureTemplate().TypeFlags.HasFlag(CreatureTypeFlags.TreatAsRaidUnit))
-                return false;
-
             if (playerAffectingAttacker && playerAffectingTarget)
                 if (playerAffectingAttacker.duel != null && playerAffectingAttacker.duel.Opponent == playerAffectingTarget && playerAffectingAttacker.duel.State == DuelState.InProgress)
                     return true;
@@ -2792,7 +2734,7 @@ namespace Game.Entities
             }
 
             // can't assist non-friendly targets
-            if (GetReactionTo(target) < ReputationRank.Neutral && target.GetReactionTo(this) < ReputationRank.Neutral && (!ToCreature() || !ToCreature().GetCreatureTemplate().TypeFlags.HasFlag(CreatureTypeFlags.TreatAsRaidUnit)))
+            if (GetReactionTo(target) < ReputationRank.Neutral && target.GetReactionTo(this) < ReputationRank.Neutral && (!ToCreature() || !ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)))
                 return false;
 
             // PvP case
@@ -2828,7 +2770,7 @@ namespace Game.Entities
                     {
                         Creature creatureTarget = target.ToCreature();
                         if (creatureTarget != null)
-                            return (creatureTarget.GetCreatureTemplate().TypeFlags.HasFlag(CreatureTypeFlags.TreatAsRaidUnit) || creatureTarget.GetCreatureTemplate().TypeFlags.HasFlag(CreatureTypeFlags.CanAssist));
+                            return creatureTarget.HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells) || creatureTarget.GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.CanAssist);
                     }
                 }
             }
@@ -3130,7 +3072,7 @@ namespace Game.Entities
         public virtual float GetCollisionHeight() { return 0.0f; }
         public float GetMidsectionHeight() { return GetCollisionHeight() / 2.0f; }
 
-        public virtual bool IsNeverVisibleFor(WorldObject seer) { return !IsInWorld || IsDestroyedObject(); }
+        public virtual bool IsNeverVisibleFor(WorldObject seer, bool allowServersideObjects = false) { return !IsInWorld || IsDestroyedObject(); }
         public virtual bool IsAlwaysVisibleFor(WorldObject seer) { return false; }
         public virtual bool IsInvisibleDueToDespawn(WorldObject seer) { return false; }
         public virtual bool IsAlwaysDetectableFor(WorldObject seer) { return false; }

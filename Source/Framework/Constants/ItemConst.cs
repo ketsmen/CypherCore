@@ -58,7 +58,14 @@ namespace Framework.Constants
             SocketColor.RelicWater,
             SocketColor.RelicLife,
             SocketColor.RelicWind,
-            SocketColor.RelicHoly
+            SocketColor.RelicHoly,
+            SocketColor.PunchcardRed,
+            SocketColor.PunchcardYellow,
+            SocketColor.PunchcardBlue,
+            SocketColor.Domination,
+            SocketColor.Cypher,
+            SocketColor.Tinker,
+            SocketColor.Primordial
         };
 
         public static ItemModifier[] AppearanceModifierSlotBySpec =
@@ -194,6 +201,13 @@ namespace Framework.Constants
         RelicLife = 0x04000,
         RelicWind = 0x08000,
         RelicHoly = 0x10000,
+        PunchcardRed = 0x20000,
+        PunchcardYellow = 0x40000,
+        PunchcardBlue = 0x80000,
+        Domination = 0x100000,
+        Cypher = 0x200000,
+        Tinker = 0x400000,
+        Primordial = 0x800000,
 
         Standard = (Red | Yellow | Blue)
     }
@@ -358,6 +372,21 @@ namespace Framework.Constants
         TransmogSecondaryAppearanceSpec4 = 35,
         TransmogSecondaryAppearanceSpec5 = 36,
         SoulbindConduitRank = 37,
+        CraftingQualityId = 38,
+        CraftingSkillLineAbilityId = 39,
+        CraftingDataId = 40,
+        CraftingSkillReagents = 41,
+        CraftingSkillWatermark = 42,
+        CraftingReagentSlot0 = 43,
+        CraftingReagentSlot1 = 44,
+        CraftingReagentSlot2 = 45,
+        CraftingReagentSlot3 = 46,
+        CraftingReagentSlot4 = 47,
+        CraftingReagentSlot5 = 48,
+        CraftingReagentSlot6 = 49,
+        CraftingReagentSlot7 = 50,
+        CraftingReagentSlot8 = 51,
+        CraftingReagentSlot9 = 52,
 
         Max
     }

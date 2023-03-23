@@ -98,9 +98,6 @@ namespace Game.Spells
 
             for (var i = 0; i < SpellConst.MaxEffects; ++i)
                 m_destTargets[i] = new SpellDestination(m_caster);
-
-            m_targets = new SpellCastTargets();
-            m_appliedMods = new List<Aura>();
         }
 
         public virtual void Dispose()
@@ -270,7 +267,7 @@ namespace Game.Spells
                         if (noTargetFound)
                         {
                             SendCastResult(SpellCastResult.BadImplicitTargets);
-                            Finish(false);
+                            Finish(SpellCastResult.BadImplicitTargets);
                             return;
                         }
                     }
@@ -281,7 +278,7 @@ namespace Game.Spells
                         if (!anyNonImmuneTargetFound)
                         {
                             SendCastResult(SpellCastResult.Immune);
-                            Finish(false);
+                            Finish(SpellCastResult.Immune);
                             return;
                         }
                     }
@@ -293,7 +290,7 @@ namespace Game.Spells
                     if (focusObject == null && m_UniqueTargetInfo.Empty() && m_UniqueGOTargetInfo.Empty() && m_UniqueItemInfo.Empty() && !m_targets.HasDst())
                     {
                         SendCastResult(SpellCastResult.BadImplicitTargets);
-                        Finish(false);
+                        Finish(SpellCastResult.BadImplicitTargets);
                         return;
                     }
 
@@ -582,7 +579,7 @@ namespace Game.Spells
                             else
                             {
                                 SendCastResult(SpellCastResult.BadImplicitTargets);
-                                Finish(false);
+                                Finish(SpellCastResult.BadImplicitTargets);
                             }
                             return;
                         }
@@ -602,7 +599,7 @@ namespace Game.Spells
                             else
                             {
                                 SendCastResult(SpellCastResult.BadImplicitTargets);
-                                Finish(false);
+                                Finish(SpellCastResult.BadImplicitTargets);
                             }
                             return;
                         }
@@ -617,7 +614,7 @@ namespace Game.Spells
             {
                 Log.outDebug(LogFilter.Spells, "Spell.SelectImplicitNearbyTargets: cannot find nearby target for spell ID {0}, effect {1}", m_spellInfo.Id, spellEffectInfo.EffectIndex);
                 SendCastResult(SpellCastResult.BadImplicitTargets);
-                Finish(false);
+                Finish(SpellCastResult.BadImplicitTargets);
                 return;
             }
 
@@ -626,7 +623,7 @@ namespace Game.Spells
             {
                 Log.outDebug(LogFilter.Spells, $"Spell.SelectImplicitNearbyTargets: OnObjectTargetSelect script hook for spell Id {m_spellInfo.Id} set NULL target, effect {spellEffectInfo.EffectIndex}");
                 SendCastResult(SpellCastResult.BadImplicitTargets);
-                Finish(false);
+                Finish(SpellCastResult.BadImplicitTargets);
                 return;
             }
 
@@ -640,7 +637,7 @@ namespace Game.Spells
                     {
                         Log.outDebug(LogFilter.Spells, $"Spell.SelectImplicitNearbyTargets: OnObjectTargetSelect script hook for spell Id {m_spellInfo.Id} set object of wrong type, expected unit, got {target.GetGUID().GetHigh()}, effect {effMask}");
                         SendCastResult(SpellCastResult.BadImplicitTargets);
-                        Finish(false);
+                        Finish(SpellCastResult.BadImplicitTargets);
                         return;
                     }
                     break;
@@ -652,7 +649,7 @@ namespace Game.Spells
                     {
                         Log.outDebug(LogFilter.Spells, $"Spell.SelectImplicitNearbyTargets: OnObjectTargetSelect script hook for spell Id {m_spellInfo.Id} set object of wrong type, expected gameobject, got {target.GetGUID().GetHigh()}, effect {effMask}");
                         SendCastResult(SpellCastResult.BadImplicitTargets);
-                        Finish(false);
+                        Finish(SpellCastResult.BadImplicitTargets);
                         return;
                     }
                     break;
@@ -664,7 +661,7 @@ namespace Game.Spells
                     {
                         Log.outDebug(LogFilter.Spells, $"Spell::SelectImplicitNearbyTargets: OnObjectTargetSelect script hook for spell Id {m_spellInfo.Id} set object of wrong type, expected corpse, got {target.GetGUID().GetTypeId()}, effect {effMask}");
                         SendCastResult(SpellCastResult.BadImplicitTargets);
-                        Finish(false);
+                        Finish(SpellCastResult.BadImplicitTargets);
                         return;
                     }
                     break;
@@ -929,7 +926,7 @@ namespace Game.Spells
                     {
                         SendCastResult(SpellCastResult.NotHere);
                         SendChannelUpdate(0);
-                        Finish(false);
+                        Finish(SpellCastResult.NotHere);
                         return;
                     }
 
@@ -937,7 +934,7 @@ namespace Game.Spells
                     {
                         SendCastResult(SpellCastResult.TooShallow);
                         SendChannelUpdate(0);
-                        Finish(false);
+                        Finish(SpellCastResult.TooShallow);
                         return;
                     }
 
@@ -2408,7 +2405,7 @@ namespace Game.Spells
                 else
                 {
                     SendCastResult(SpellCastResult.EquippedItem);
-                    Finish(false);
+                    Finish(SpellCastResult.EquippedItem);
                     return SpellCastResult.EquippedItem;
                 }
             }
@@ -2431,7 +2428,7 @@ namespace Game.Spells
             if (Global.DisableMgr.IsDisabledFor(DisableType.Spell, m_spellInfo.Id, m_caster))
             {
                 SendCastResult(SpellCastResult.SpellUnavailable);
-                Finish(false);
+                Finish(SpellCastResult.SpellUnavailable);
                 return SpellCastResult.SpellUnavailable;
             }
 
@@ -2439,7 +2436,7 @@ namespace Game.Spells
             if (!_triggeredCastFlags.HasFlag(TriggerCastFlags.IgnoreCastInProgress) && m_caster.ToUnit() != null && m_caster.ToUnit().IsNonMeleeSpellCast(false, true, true, m_spellInfo.Id == 75) && !m_castId.IsEmpty())
             {
                 SendCastResult(SpellCastResult.SpellInProgress);
-                Finish(false);
+                Finish(SpellCastResult.SpellInProgress);
                 return SpellCastResult.SpellInProgress;
             }
 
@@ -2480,7 +2477,7 @@ namespace Game.Spells
                 if (GetCurrentContainer() == CurrentSpellTypes.AutoRepeat && m_caster.IsUnit())
                     m_caster.ToUnit().SetCurrentCastSpell(this);
 
-                Finish(false);
+                Finish(result);
                 return result;
             }
 
@@ -2495,7 +2492,7 @@ namespace Game.Spells
                 if (result != SpellCastResult.SpellCastOk)
                 {
                     SendCastResult(result);
-                    Finish(false);
+                    Finish(result);
                     return result;
                 }
             }
@@ -2622,7 +2619,7 @@ namespace Game.Spells
             //set state back so finish will be processed
             m_spellState = oldState;
 
-            Finish(false);
+            Finish(SpellCastResult.Interrupted);
         }
 
         public void Cast(bool skipCheck = false)
@@ -2711,7 +2708,7 @@ namespace Game.Spells
                     if (modOwner)
                         modOwner.SetSpellModTakingSpell(this, false);
 
-                    Finish(false);
+                    Finish(result);
                     SetExecutedCurrently(false);
                 }
 
@@ -2796,7 +2793,7 @@ namespace Game.Spells
                 if (m_caster.IsTypeId(TypeId.Player))
                     m_caster.ToPlayer().SetSpellModTakingSpell(this, false);
 
-                Finish(false);
+                Finish(SpellCastResult.Interrupted);
                 SetExecutedCurrently(false);
                 return;
             }
@@ -3045,7 +3042,7 @@ namespace Game.Spells
             TakeCastItem();
 
             if (m_spellState != SpellState.Casting)
-                Finish(true);                                       // successfully finish spell cast (not last in case autorepeat or channel spell)
+                Finish();                                       // successfully finish spell cast (not last in case autorepeat or channel spell)
         }
 
         public ulong HandleDelayed(ulong offset)
@@ -3053,7 +3050,7 @@ namespace Game.Spells
             if (!UpdatePointers())
             {
                 // finish the spell if UpdatePointers() returned false, something wrong happened there
-                Finish(false);
+                Finish(SpellCastResult.NoValidTargets);
                 return 0;
             }
 
@@ -3145,7 +3142,7 @@ namespace Game.Spells
                 // spell is finished, perform some last features of the spell here
                 _handle_finish_phase();
 
-                Finish(true);                                       // successfully finish spell cast
+                Finish();                                       // successfully finish spell cast
 
                 // return zero, spell is finished now
                 return 0;
@@ -3332,7 +3329,7 @@ namespace Game.Spells
             }
         }
 
-        public void Finish(bool ok = true)
+        public void Finish(SpellCastResult result = SpellCastResult.SpellCastOk)
         {
             if (m_spellState == SpellState.Finished)
                 return;
@@ -3373,7 +3370,7 @@ namespace Game.Spells
             if (!m_spellInfo.HasAttribute(SpellAttr3.SuppressCasterProcs))
                 Unit.ProcSkillsAndAuras(unitCaster, null, new ProcFlagsInit(ProcFlags.CastEnded), new ProcFlagsInit(), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, this, null, null);
 
-            if (!ok)
+            if (result != SpellCastResult.SpellCastOk)
             {
                 // on failure (or manual cancel) send TraitConfigCommitFailed to revert talent UI saved config selection
                 if (m_caster.IsPlayer() && m_spellInfo.HasEffect(SpellEffectName.ChangeActiveCombatTraitConfig))
@@ -5909,7 +5906,7 @@ namespace Game.Spells
                 else if ((m_spellInfo.Mechanic & Mechanics.ImmuneShield) != 0 && m_caster.IsUnit() && m_caster.ToUnit().HasAuraWithMechanic(1 << (int)Mechanics.Banish))
                     result = SpellCastResult.Stunned;
             }
-            else if (unitflag.HasAnyFlag(UnitFlags.Silenced) && m_spellInfo.PreventionType.HasAnyFlag(SpellPreventionType.Silence) && !CheckSpellCancelsSilence(ref param1))
+            else if (unitCaster.IsSilenced(m_spellSchoolMask) && (m_spellInfo.PreventionType & SpellPreventionType.Silence) != 0 && !CheckSpellCancelsSilence(ref param1))
                 result = SpellCastResult.Silenced;
             else if (unitflag.HasAnyFlag(UnitFlags.Pacified) && m_spellInfo.PreventionType.HasAnyFlag(SpellPreventionType.Pacify) && !CheckSpellCancelsPacify(ref param1))
                 result = SpellCastResult.Pacified;
@@ -7964,11 +7961,11 @@ namespace Game.Spells
         public SpellMisc m_misc;
         public object m_customArg;
         public SpellCastVisual m_SpellVisual;
-        public SpellCastTargets m_targets;
+        public SpellCastTargets m_targets = new();
         public sbyte m_comboPointGain;
         public SpellCustomErrors m_customError;
 
-        public List<Aura> m_appliedMods;
+        public List<Aura> m_appliedMods = new();
 
         WorldObject m_caster;
         public SpellValue m_spellValue;

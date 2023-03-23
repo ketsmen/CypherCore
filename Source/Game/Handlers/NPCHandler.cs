@@ -52,7 +52,7 @@ namespace Game
                 return;
             }
 
-            uint trainerId = Global.ObjectMgr.GetCreatureDefaultTrainer(npc.GetEntry());
+            uint trainerId = npc.GetTrainerId();
             if (trainerId != 0)
                 SendTrainerList(npc, trainerId);
             else
@@ -153,7 +153,7 @@ namespace Game
             _player.PlayerTalkClass.ClearMenus();
             if (!unit.GetAI().OnGossipHello(_player))
             {
-                GetPlayer().PrepareGossipMenu(unit, unit.GetCreatureTemplate().GossipMenuId, true);
+                GetPlayer().PrepareGossipMenu(unit, unit.GetGossipMenuId(), true);
                 GetPlayer().SendPreparedGossip(unit);
             }
         }
