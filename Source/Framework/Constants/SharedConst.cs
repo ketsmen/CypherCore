@@ -31,6 +31,7 @@ namespace Framework.Constants
         public const int MaxAzeriteEssenceSlot = 4;
         public const int MaxAzeriteEssenceRank = 4;
         public const int AchivementCategoryPetBattles = 15117;
+        public const int MaxUnitClasses = 4;
 
         /// <summary>
         /// BattlePets Const
@@ -223,6 +224,7 @@ namespace Framework.Constants
         public const float DefaultPlayerBoundingRadius = 0.388999998569489f;      // player size, also currently used (correctly?) for any non Unit world objects
         public const float AttackDistance = 5.0f;
         public const float DefaultPlayerCombatReach = 1.5f;
+        public const float DefaultPlayerDisplayScale = 1.0f;
         public const float MinMeleeReach = 2.0f;
         public const float NominalMeleeRange = 5.0f;
         public const float MeleeRange = NominalMeleeRange - MinMeleeReach * 2; //center to center for players

@@ -5180,14 +5180,6 @@ namespace Game.Spells
                         if (loot != null && (!loot.IsLooted() || loot.loot_type == LootType.Skinning))
                             return SpellCastResult.TargetNotLooted;
 
-                        SkillType skill = creature.GetCreatureTemplate().GetRequiredLootSkill();
-
-                        ushort skillValue = m_caster.ToPlayer().GetSkillValue(skill);
-                        uint TargetLevel = m_targets.GetUnitTarget().GetLevelForTarget(m_caster);
-                        int ReqValue = (int)(skillValue < 100 ? (TargetLevel - 10) * 10 : TargetLevel * 5);
-                        if (ReqValue > skillValue)
-                            return SpellCastResult.LowCastlevel;
-
                         break;
                     }
                     case SpellEffectName.OpenLock:
@@ -7807,6 +7799,12 @@ namespace Game.Spells
         public SpellCastResult CheckMovement()
         {
             if (IsTriggered())
+                return SpellCastResult.SpellCastOk;
+
+            // Creatures (not controlled) give priority to spell casting over movement.
+            // We assume that the casting is always valid and the current movement
+            // is stopped by Unit:IsmovementPreventedByCasting to prevent casting interruption.
+            if (m_caster.IsCreature() && !m_caster.ToCreature().IsControlledByPlayer())
                 return SpellCastResult.SpellCastOk;
 
             Unit unitCaster = m_caster.ToUnit();

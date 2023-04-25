@@ -563,7 +563,7 @@ namespace Game.Entities
                 vehicleRoot = vehicleRoot.GetVehicleBase();
             }
         }
-        
+
         public Creature GetVehicleCreatureBase()
         {
             Unit veh = GetVehicleBase();
@@ -891,7 +891,7 @@ namespace Game.Entities
 
             return str;
         }
-        
+
         public Guardian GetGuardianPet()
         {
             ObjectGuid pet_guid = GetPetGUID();
@@ -1315,12 +1315,12 @@ namespace Game.Entities
             else
                 return true;
         }
-        
+
         public bool IsPossessedByPlayer()
         {
             return HasUnitState(UnitState.Possessed) && GetCharmerGUID().IsPlayer();
         }
-        
+
         public bool IsPossessing()
         {
             Unit u = GetCharmed();
@@ -1857,7 +1857,7 @@ namespace Game.Entities
         public Gender GetGender() { return (Gender)(byte)m_unitData.Sex; }
         public void SetGender(Gender sex) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.Sex), (byte)sex); }
 
-        public virtual Gender GetNativeGender() { return GetGender();    }
+        public virtual Gender GetNativeGender() { return GetGender(); }
         public virtual void SetNativeGender(Gender gender) { SetGender(gender); }
 
         public void RecalculateObjectScale()
@@ -1869,17 +1869,35 @@ namespace Game.Entities
         }
 
         public virtual float GetNativeObjectScale() { return 1.0f; }
+
+        public float GetDisplayScale() { return m_unitData.DisplayScale; }
         
         public uint GetDisplayId() { return m_unitData.DisplayID; }
 
-        public virtual void SetDisplayId(uint modelId, float displayScale = 1f)
+        public virtual void SetDisplayId(uint displayId, bool setNative = false)
         {
-            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayID), modelId);
+            float displayScale = SharedConst.DefaultPlayerDisplayScale;
+
+            if (IsCreature() && !IsPet())
+            {
+                CreatureModel model = ToCreature().GetCreatureTemplate().GetModelWithDisplayId(displayId);
+                if (model != null)
+                    displayScale = model.DisplayScale;
+            }
+
+            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayID), displayId);
             SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayScale), displayScale);
+
+            if (setNative)
+            {
+                SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NativeDisplayID), displayId);
+                SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NativeXDisplayScale), displayScale);
+            }
+
             // Set Gender by modelId
-            CreatureModelInfo minfo = Global.ObjectMgr.GetCreatureModelInfo(modelId);
-            if (minfo != null)
-                SetGender((Gender)minfo.gender);
+            CreatureModelInfo modelInfo = Global.ObjectMgr.GetCreatureModelInfo(displayId);
+            if (modelInfo != null)
+                SetGender((Gender)modelInfo.gender);
         }
 
         public void RestoreDisplayId(bool ignorePositiveAurasPreventingMounting = false)
@@ -1944,11 +1962,6 @@ namespace Game.Entities
             SetDisplayId(GetNativeDisplayId());
         }
         public uint GetNativeDisplayId() { return m_unitData.NativeDisplayID; }
-        public void SetNativeDisplayId(uint displayId, float displayScale = 1f)
-        {
-            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NativeDisplayID), displayId);
-            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NativeXDisplayScale), displayScale);
-        }
         public float GetNativeDisplayScale() { return m_unitData.NativeXDisplayScale; }
 
         public bool IsMounted()
@@ -1995,7 +2008,7 @@ namespace Game.Entities
         public void SetBattlePetCompanionGUID(ObjectGuid guid) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.BattlePetCompanionGUID), guid); }
         public ObjectGuid GetDemonCreatorGUID() { return m_unitData.DemonCreator; }
         public void SetDemonCreatorGUID(ObjectGuid guid) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DemonCreator), guid); }
-        
+
         public ObjectGuid GetCharmerGUID() { return m_unitData.CharmedBy; }
 
         public Unit GetCharmer() { return m_charmer; }
@@ -2097,7 +2110,7 @@ namespace Game.Entities
                 else
                 {
                     var raceEntry = CliDB.ChrRacesStorage.LookupByKey(GetRace());
-                    return  (CreatureType)raceEntry.CreatureType;
+                    return (CreatureType)raceEntry.CreatureType;
                 }
             }
             else
@@ -2121,6 +2134,8 @@ namespace Game.Entities
         public bool IsHunterPet() { return UnitTypeMask.HasAnyFlag(UnitTypeMask.HunterPet); }
         public bool IsTotem() { return UnitTypeMask.HasAnyFlag(UnitTypeMask.Totem); }
         public bool IsVehicle() { return UnitTypeMask.HasAnyFlag(UnitTypeMask.Vehicle); }
+
+        public uint GetContentTuning() { return m_unitData.ContentTuningID; }
 
         public void AddUnitState(UnitState f)
         {
@@ -2266,7 +2281,7 @@ namespace Game.Entities
         }
 
         public AnimTier GetAnimTier() { return (AnimTier)(byte)m_unitData.AnimTier; }
-        
+
         public void SetAnimTier(AnimTier animTier, bool notifyClient = true)
         {
             SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.AnimTier), (byte)animTier);
@@ -2507,7 +2522,7 @@ namespace Game.Entities
                     }
                 }
             }
-            
+
             Player player = victim.ToPlayer();
             if (player != null && player.GetCommandStatus(PlayerCommandStates.God))
                 return 0;

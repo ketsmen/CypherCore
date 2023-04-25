@@ -1047,7 +1047,8 @@ namespace Game.Entities
 
             Spell spell = GetCurrentSpell(CurrentSpellTypes.Generic);
             if (spell != null)
-                if (CanCastSpellWhileMoving(spell.GetSpellInfo()))
+                if (CanCastSpellWhileMoving(spell.GetSpellInfo()) || spell.GetState() == SpellState.Finished ||
+                    !spell.m_spellInfo.InterruptFlags.HasFlag(SpellInterruptFlags.Movement))
                     return false;
 
             // channeled spells during channel stage (after the initial cast timer) allow movement with a specific spell attribute
@@ -1543,7 +1544,7 @@ namespace Game.Entities
                         if (procEntry != null)
                         {
                             aurApp.GetBase().PrepareProcChargeDrop(procEntry, eventInfo);
-                            aurApp.GetBase().ConsumeProcCharges(procEntry);
+                            aurasTriggeringProc.Add(Tuple.Create(0u, aurApp));
                         }
                     }
 
