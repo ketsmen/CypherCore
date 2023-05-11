@@ -623,17 +623,18 @@ namespace Game
         bool AddToGossipMenus(Condition cond)
         {
             var pMenuBounds = Global.ObjectMgr.GetGossipMenusMapBounds(cond.SourceGroup);
-
-            foreach (var menu in pMenuBounds)
+            if (!pMenuBounds.Empty())
             {
-                if (menu.MenuId == cond.SourceGroup && menu.TextId == cond.SourceEntry)
+                foreach (var menu in pMenuBounds)
                 {
-                    menu.Conditions.Add(cond);
-                    return true;
+                    if (menu.MenuId == cond.SourceGroup && (menu.TextId == cond.SourceEntry || cond.SourceEntry == 0))
+                        menu.Conditions.Add(cond);
                 }
+
+                return true;
             }
 
-            Log.outError(LogFilter.Sql, "{0} GossipMenu {1} not found.", cond.ToString(), cond.SourceGroup);
+            Log.outError(LogFilter.Sql, $"{cond} GossipMenu {cond.SourceGroup} not found.");
             return false;
         }
 
@@ -802,7 +803,7 @@ namespace Game
                 }
             }
 
-            Log.outError(LogFilter.Sql, "{0} Area {1} does not have phase {2}.", cond.ToString(), cond.SourceGroup, cond.SourceEntry);
+            Log.outError(LogFilter.Sql, $"{cond} Area {cond.SourceEntry} does not have phase {cond.SourceGroup}.");
             return false;
         }
 

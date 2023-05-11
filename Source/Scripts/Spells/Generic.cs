@@ -324,6 +324,13 @@ namespace Scripts.Spells.Generic
         public const uint ZealOfTheBurningBlade = 274740;
         public const uint FerocityOfTheFrostwolf = 274741;
         public const uint MightOfTheBlackrock = 274742;
+
+        // BloodlustExhaustionSpell
+        public const uint ShamanSated = 57724; // Bloodlust
+        public const uint ShamanExhaustion = 57723; // Heroism, Drums
+        public const uint MageTemporalDisplacement = 80354;
+        public const uint HunterFatigued = 264689;
+        public const uint EvokerExhaustion = 390435;
     }
 
     struct CreatureIds
@@ -1859,6 +1866,7 @@ namespace Scripts.Spells.Generic
      * and UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT. Some auras can apply only 2 flags
      * 
      * spell_gen_feign_death_all_flags applies all 3 flags
+     * spell_gen_feign_death_all_flags_uninteractible applies all 3 flags and additionally sets UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_UNINTERACTIBLE
      * spell_gen_feign_death_no_dyn_flag applies no UNIT_DYNFLAG_DEAD (does not make the creature appear dead)
      * spell_gen_feign_death_no_prevent_emotes applies no UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT
      * 
@@ -1900,6 +1908,36 @@ namespace Scripts.Spells.Generic
         }
     }
 
+    [Script]
+    class spell_gen_feign_death_all_flags_uninteractible : AuraScript
+    {
+        void HandleEffectApply(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit target = GetTarget();
+            target.SetUnitFlag3(UnitFlags3.FakeDead);
+            target.SetUnitFlag2(UnitFlags2.FeignDeath);
+            target.SetUnitFlag(UnitFlags.PreventEmotesFromChatText | UnitFlags.ImmuneToPc | UnitFlags.ImmuneToNpc | UnitFlags.Uninteractible);
+
+            target.ToCreature()?.SetReactState(ReactStates.Passive);
+        }
+
+        void OnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit target = GetTarget();
+            target.RemoveUnitFlag3(UnitFlags3.FakeDead);
+            target.RemoveUnitFlag2(UnitFlags2.FeignDeath);
+            target.RemoveUnitFlag(UnitFlags.PreventEmotesFromChatText | UnitFlags.ImmuneToPc | UnitFlags.ImmuneToNpc | UnitFlags.Uninteractible);
+
+            target.ToCreature()?.InitializeReactState();
+        }
+
+        public override void Register()
+        {
+            OnEffectApply.Add(new EffectApplyHandler(HandleEffectApply, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+            OnEffectRemove.Add(new EffectApplyHandler(OnRemove, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+        }
+    }
+    
     // 35357 - Spawn Feign Death
     [Script] // 51329 - Feign Death
     class spell_gen_feign_death_no_dyn_flag : AuraScript
@@ -4755,7 +4793,7 @@ namespace Scripts.Spells.Generic
             OnEffectApply.Add(new EffectApplyHandler(UpdateReviveBattlePetCooldown, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
         }
     }
-    
+
     [Script] // 45313 - Anchor Here
     class spell_gen_anchor_here : SpellScript
     {
@@ -4888,6 +4926,148 @@ namespace Scripts.Spells.Generic
         public override void Register()
         {
             OnEffectHitTarget.Add(new EffectHandler(HandleScriptEffect, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+
+    enum SkinningLearningSpell
+    {
+        Classic = 265856,
+        Outland = 265858,
+        Northrend = 265860,
+        Cataclysm = 265862,
+        Pandaria = 265864,
+        Draenor = 265866,
+        Legion = 265868,
+        KulTiran = 265870,
+        Zandalari = 265872,
+        Shadowlands = 308570,
+        DragonIsles = 366263
+    }
+
+    [Script] // 8613 - Skinning
+    class spell_gen_skinning : SpellScript
+    {
+        public override bool Validate(SpellInfo spell)
+        {
+            return ValidateSpellInfo((uint)SkinningLearningSpell.Outland, (uint)SkinningLearningSpell.Northrend, (uint)SkinningLearningSpell.Cataclysm, (uint)SkinningLearningSpell.Pandaria, (uint)SkinningLearningSpell.Draenor,
+                (uint)SkinningLearningSpell.KulTiran, (uint)SkinningLearningSpell.Zandalari, (uint)SkinningLearningSpell.Shadowlands, (uint)SkinningLearningSpell.DragonIsles);
+        }
+
+        void HandleSkinningEffect(uint effIndex)
+        {
+            Player player = GetCaster().ToPlayer();
+            if (!player)
+                return;
+
+            var contentTuning = CliDB.ContentTuningStorage.LookupByKey(GetHitUnit().GetContentTuning());
+            if (contentTuning == null)
+                return;
+
+            uint skinningSkill = player.GetProfessionSkillForExp(SkillType.Skinning, contentTuning.ExpansionID);
+            if (skinningSkill == 0)
+                return;
+
+            // Autolearning missing skinning skill (Dragonflight)
+            SkinningLearningSpell getSkinningLearningSpellBySkill()
+            {
+                switch ((SkillType)skinningSkill)
+                {
+                    case SkillType.OutlandSkinning:
+                        return SkinningLearningSpell.Outland;
+                    case SkillType.NorthrendSkinning:
+                        return SkinningLearningSpell.Northrend;
+                    case SkillType.CataclysmSkinning:
+                        return SkinningLearningSpell.Cataclysm;
+                    case SkillType.PandariaSkinning:
+                        return SkinningLearningSpell.Pandaria;
+                    case SkillType.DraenorSkinning:
+                        return SkinningLearningSpell.Draenor;
+                    case SkillType.KulTiranSkinning:
+                        return player.GetTeam() == Team.Alliance ? SkinningLearningSpell.KulTiran : SkinningLearningSpell.Zandalari;
+                    case SkillType.ShadowlandsSkinning:
+                        return SkinningLearningSpell.Shadowlands;
+                    case SkillType.DragonIslesSkinning:
+                        return SkinningLearningSpell.DragonIsles;
+                    case SkillType.ClassicSkinning:         // Trainer only
+                    case SkillType.LegionSkinning:                 // Quest only
+                    default: break;
+                }
+
+                return 0;
+            }
+
+            if (!player.HasSkill(skinningSkill))
+            {
+                uint spellId = (uint)getSkinningLearningSpellBySkill();
+                if (spellId != 0)
+                    player.CastSpell(null, spellId, true);
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleSkinningEffect, 0, SpellEffectName.Skinning));
+        }
+    }
+
+             // 2825 - Bloodlust
+             // 32182 - Heroism
+             // 80353 - Time Warp
+             // 264667 - Primal Rage
+             // 390386 - Fury of the Aspects
+             // 146555 - Drums of Rage
+             // 178207 - Drums of Fury
+             // 230935 - Drums of the Mountain
+             // 256740 - Drums of the Maelstrom
+             // 309658 - Drums of Deathly Ferocity
+             // 381301 - Feral Hide Drums
+    [Script("spell_sha_bloodlust", SpellIds.ShamanSated)]
+    [Script("spell_sha_heroism", SpellIds.ShamanExhaustion)]
+    [Script("spell_mage_time_warp", SpellIds.MageTemporalDisplacement)]
+    [Script("spell_hun_primal_rage", SpellIds.HunterFatigued)]
+    [Script("spell_evo_fury_of_the_aspects", SpellIds.EvokerExhaustion)]
+    [Script("spell_item_bloodlust_drums", SpellIds.ShamanExhaustion)]
+    class spell_gen_bloodlust : SpellScript
+    {
+        uint _exhaustionSpellId;
+
+        public spell_gen_bloodlust(uint exhaustionSpellId)
+        {
+            _exhaustionSpellId = exhaustionSpellId;
+        }
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.ShamanSated, SpellIds.ShamanExhaustion, SpellIds.MageTemporalDisplacement, SpellIds.HunterFatigued, SpellIds.EvokerExhaustion);
+        }
+
+        void FilterTargets(List<WorldObject> targets)
+        {
+            targets.RemoveAll(target =>
+            {
+                Unit unit = target.ToUnit();
+                if (unit == null)
+                    return true;
+
+                return unit.HasAura(SpellIds.ShamanSated)
+                    || unit.HasAura(SpellIds.ShamanExhaustion)
+                    || unit.HasAura(SpellIds.MageTemporalDisplacement)
+                    || unit.HasAura(SpellIds.HunterFatigued)
+                    || unit.HasAura(SpellIds.EvokerExhaustion);
+            });
+        }
+
+        void HandleHit(uint effIndex)
+        {
+            Unit target = GetHitUnit();
+            target.CastSpell(target, _exhaustionSpellId, true);
+        }
+
+        public override void Register()
+        {
+            OnObjectAreaTargetSelect.Add(new ObjectAreaTargetSelectHandler(FilterTargets, 0, Targets.UnitCasterAreaRaid));
+            OnObjectAreaTargetSelect.Add(new ObjectAreaTargetSelectHandler(FilterTargets, 1, Targets.UnitCasterAreaRaid));
+            OnEffectHitTarget.Add(new EffectHandler(HandleHit, 0, SpellEffectName.ApplyAura));
         }
     }
 

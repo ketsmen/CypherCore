@@ -21,7 +21,7 @@ namespace Game.Entities
         public string SubName;
         public string TitleAlt;
         public string IconName;
-        public uint GossipMenuId;
+        public List<uint> GossipMenuIds = new();
         public Dictionary<Difficulty, CreatureLevelScaling> scalingStorage = new();
         public int HealthScalingExpansion;
         public uint RequiredExpansion;
@@ -58,7 +58,6 @@ namespace Game.Entities
         public string AIName;
         public uint MovementType;
         public CreatureMovementData Movement = new();
-        public float HoverHeight;
         public float ModHealth;
         public float ModHealthExtra;
         public float ModMana;

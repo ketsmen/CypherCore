@@ -606,6 +606,9 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature template addons...");
             Global.ObjectMgr.LoadCreatureTemplateAddons();
 
+            Log.outInfo(LogFilter.ServerLoading, "Loading Creature template sparring...");
+            Global.ObjectMgr.LoadCreatureTemplateSparring();
+
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature template scaling...");
             Global.ObjectMgr.LoadCreatureScalingData();
 
@@ -884,6 +887,9 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Gossip menu addon...");
             Global.ObjectMgr.LoadGossipMenuAddon();
 
+            Log.outInfo(LogFilter.ServerLoading, "Loading Creature Template Gossip...");
+            Global.ObjectMgr.LoadCreatureTemplateGossip();
+
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature trainers...");
             Global.ObjectMgr.LoadCreatureTrainers();                         // must be after LoadGossipMenuItems
 
@@ -892,9 +898,6 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Waypoints...");
             Global.WaypointMgr.Load();
-
-            Log.outInfo(LogFilter.ServerLoading, "Loading SmartAI Waypoints...");
-            Global.SmartAIMgr.LoadWaypointFromDB();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Formations...");
             FormationMgr.LoadCreatureFormations();
@@ -1100,9 +1103,6 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading character templates...");
             Global.CharacterTemplateDataStorage.LoadCharacterTemplates();
-
-            Log.outInfo(LogFilter.ServerLoading, "Loading realm names...");
-            Global.ObjectMgr.LoadRealmNames();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading battle pets info...");
             BattlePetMgr.Initialize();

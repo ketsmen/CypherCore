@@ -7,6 +7,7 @@ using Game.BattleGrounds;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Loots;
+using Game.Networking.Packets;
 using Game.Scripting;
 using Game.Spells;
 using System;
@@ -412,6 +413,13 @@ namespace Scripts.Spells.Items
         // Eggnog
         public const uint EggNogReindeer = 21936;
         public const uint EggNogSnowman = 21980;
+
+        // HighfathersMachination
+        public const uint HighfathersTimekeepingHeal = 253288;
+
+        //SeepingScourgewing
+        public const uint ShadowStrikeAoeCheck = 255861;
+        public const uint IsolatedStrike = 255609;
     }
 
     struct TextIds
@@ -3991,7 +3999,7 @@ namespace Scripts.Spells.Items
         FragileEchoEnergize = 215270,
     }
 
-    [Script] // 215266
+    [Script] // 215266 - Fragile Echoes
     class spell_item_amalgams_seventh_spine : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)
@@ -4052,7 +4060,7 @@ namespace Scripts.Spells.Items
         }
     }
 
-    [Script] // 215267
+    [Script] // 215267 - Fragile Echo
     class spell_item_amalgams_seventh_spine_mana_restore : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)
@@ -4077,6 +4085,157 @@ namespace Scripts.Spells.Items
         public override void Register()
         {
             AfterEffectRemove.Add(new EffectApplyHandler(TriggerManaRestoration, 1, AuraType.Dummy, AuraEffectHandleModes.Real));
+        }
+    }
+
+    [Script] // 228445 - March of the Legion
+    class spell_item_set_march_of_the_legion : AuraScript
+    {
+        bool IsDemon(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetProcTarget() && eventInfo.GetProcTarget().GetCreatureType() == CreatureType.Demon;
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new CheckEffectProcHandler(IsDemon, 0, AuraType.ProcTriggerSpell));
+        }
+    }
+
+    [Script] // 234113 - Arrogance (used by item 142171 - Seal of Darkshire Nobility)
+    class spell_item_seal_of_darkshire_nobility : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return spellInfo.GetEffects().Count > 1
+                && ValidateSpellInfo(spellInfo.GetEffect(1).TriggerSpell);
+        }
+
+        bool CheckCooldownAura(ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetProcTarget() && !eventInfo.GetProcTarget().HasAura(GetEffectInfo(1).TriggerSpell, GetTarget().GetGUID());
+        }
+
+        public override void Register()
+        {
+            DoCheckProc.Add(new CheckProcHandler(CheckCooldownAura));
+        }
+    }
+
+    [Script] // 247625 - March of the Legion
+    class spell_item_lightblood_elixir : AuraScript
+    {
+        bool IsDemon(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetProcTarget() && eventInfo.GetProcTarget().GetCreatureType() == CreatureType.Demon;
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new CheckEffectProcHandler(IsDemon, 0, AuraType.ProcTriggerSpell));
+        }
+    }
+
+    [Script] // 253287 - Highfather's Timekeeping
+    class spell_item_highfathers_machination : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.HighfathersTimekeepingHeal);
+        }
+
+        bool CheckHealth(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetDamageInfo() != null && GetTarget().HealthBelowPctDamaged(aurEff.GetAmount(), eventInfo.GetDamageInfo().GetDamage());
+        }
+
+        void Heal(AuraEffect aurEff, ProcEventInfo procInfo)
+        {
+            PreventDefaultAction();
+            Unit caster = GetCaster();
+            if (caster != null)
+                caster.CastSpell(GetTarget(), SpellIds.HighfathersTimekeepingHeal, new CastSpellExtraArgs(aurEff));
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new CheckEffectProcHandler(CheckHealth, 0, AuraType.Dummy));
+            OnEffectProc.Add(new EffectProcHandler(Heal, 0, AuraType.Dummy));
+        }
+    }
+
+    [Script] // 253323 - Shadow Strike
+    class spell_item_seeping_scourgewing : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.ShadowStrikeAoeCheck);
+        }
+
+        void TriggerIsolatedStrikeCheck(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            GetTarget().CastSpell(eventInfo.GetProcTarget(), SpellIds.ShadowStrikeAoeCheck,
+                new CastSpellExtraArgs(aurEff).SetTriggeringSpell(eventInfo.GetProcSpell()));
+        }
+
+        public override void Register()
+        {
+            AfterEffectProc.Add(new EffectProcHandler(TriggerIsolatedStrikeCheck, 0, AuraType.ProcTriggerSpell));
+        }
+    }
+
+    [Script] // 255861 - Shadow Strike
+    class spell_item_seeping_scourgewing_aoe_check : SpellScript
+    {
+        void TriggerAdditionalDamage()
+        {
+            if (GetUnitTargetCountForEffect(0) > 1)
+                return;
+
+            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
+            args.OriginalCastId = GetSpell().m_originalCastId;
+            if (GetSpell().m_castItemLevel >= 0)
+                args.OriginalCastItemLevel = GetSpell().m_castItemLevel;
+
+            GetCaster().CastSpell(GetHitUnit(), SpellIds.IsolatedStrike, args);
+        }
+
+        public override void Register()
+        {
+            AfterHit.Add(new HitHandler(TriggerAdditionalDamage));
+        }
+    }
+
+    [Script] // 295175 - Spiteful Binding
+    class spell_item_grips_of_forsaken_sanity : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return spellInfo.GetEffects().Count > 1;
+        }
+
+        bool CheckHealth(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetActor().GetHealthPct() >= (float)GetEffectInfo(1).CalcValue();
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new CheckEffectProcHandler(CheckHealth, 0, AuraType.ProcTriggerSpell));
+        }
+    }
+
+    [Script] // 302385 - Resurrect Health
+    class spell_item_zanjir_scaleguard_greatcloak : AuraScript
+    {
+        bool CheckProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetSpellInfo() != null && eventInfo.GetSpellInfo().HasEffect(SpellEffectName.Resurrect);
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new CheckEffectProcHandler(CheckProc, 0, AuraType.ProcTriggerSpell));
         }
     }
 }

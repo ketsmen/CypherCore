@@ -293,8 +293,6 @@ namespace Game.Entities
 
             SetObjectScale(GetNativeObjectScale());
 
-            SetHoverHeight(cInfo.HoverHeight);
-
             SetCanDualWield(cInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.UseOffhandAttack));
 
             // checked at loading
@@ -413,7 +411,7 @@ namespace Game.Entities
             InitializeMovementFlags();
 
             LoadCreaturesAddon();
-
+            LoadCreaturesSparringHealth();
             LoadTemplateImmunities();
             GetThreatManager().EvaluateSuppressed();
 
@@ -855,7 +853,9 @@ namespace Game.Entities
                     m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayNormal);
                     break;
             }
+
             LoadCreaturesAddon();
+            LoadCreaturesSparringHealth();
 
             //! Need to be called after LoadCreaturesAddon - MOVEMENTFLAG_HOVER is set there
             posZ += GetHoverOffset();
@@ -1140,13 +1140,10 @@ namespace Game.Entities
 
         public uint GetGossipMenuId()
         {
-            if (_gossipMenuId.HasValue)
-                return _gossipMenuId.Value;
-
-            return GetCreatureTemplate().GossipMenuId;
+            return _gossipMenuId;
         }
 
-        public void SetGossipMenuId(uint? gossipMenuId)
+        public void SetGossipMenuId(uint gossipMenuId)
         {
             _gossipMenuId = gossipMenuId;
         }
@@ -1573,6 +1570,57 @@ namespace Game.Entities
             }
         }
 
+        float GetSparringHealthPct() { return _sparringHealthPct; }
+
+        public void OverrideSparringHealthPct(List<float> healthPct)
+        {
+            _sparringHealthPct = healthPct.SelectRandom();
+        }
+
+        public uint CalculateDamageForSparring(Unit attacker, uint damage)
+        {
+            if (GetSparringHealthPct() == 0)
+                return damage;
+
+            if (attacker == null)
+                return damage;
+
+            if (!attacker.IsCreature() || attacker.IsCharmedOwnedByPlayerOrPlayer() || IsCharmedOwnedByPlayerOrPlayer())
+                return damage;
+
+            if (GetHealthPct() <= GetSparringHealthPct())
+                return 0;
+
+            uint sparringHealth = (uint)(GetMaxHealth() * GetSparringHealthPct() / 100);
+            if (GetHealth() - damage <= sparringHealth)
+                return (uint)(GetHealth() - sparringHealth);
+
+            if (damage >= GetHealth())
+                return (uint)(GetHealth() - 1);
+
+            return damage;
+        }
+
+        public bool ShouldFakeDamageFrom(Unit attacker)
+        {
+            if (GetSparringHealthPct() == 0)
+                return false;
+
+            if (!attacker)
+                return false;
+
+            if (!attacker.IsCreature())
+                return false;
+
+            if (attacker.IsCharmedOwnedByPlayerOrPlayer() || IsCharmedOwnedByPlayerOrPlayer())
+                return false;
+
+            if (GetHealthPct() > GetSparringHealthPct())
+                return false;
+
+            return true;
+        }
+        
         bool CreateFromProto(ulong guidlow, uint entry, CreatureData data = null, uint vehId = 0)
         {
             SetZoneScript();
@@ -1963,6 +2011,7 @@ namespace Game.Entities
                 InitializeMovementAI();
                 base.SetDeathState(DeathState.Alive);
                 LoadCreaturesAddon();
+                LoadCreaturesSparringHealth();
             }
         }
 
@@ -2463,6 +2512,13 @@ namespace Game.Entities
                 }
             }
             return true;
+        }
+
+        public void LoadCreaturesSparringHealth()
+        {
+            var templateValues = Global.ObjectMgr.GetCreatureTemplateSparringValues(GetCreatureTemplate().Entry);
+            if (!templateValues.Empty())
+                _sparringHealthPct = templateValues.SelectRandom();
         }
 
         // Send a message to LocalDefense channel for players opposition team in the zone

@@ -28,8 +28,9 @@ namespace Game.Entities
 
         bool _isMissingCanSwimFlagOutOfCombat;
 
-        uint? _gossipMenuId;
+        uint _gossipMenuId;
         uint? _trainerId;
+        float _sparringHealthPct;
 
         public ulong m_PlayerDamageReq;
         public float m_SightDistance;

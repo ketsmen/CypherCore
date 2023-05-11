@@ -436,32 +436,6 @@ namespace Game
             else
                 Log.outInfo(LogFilter.ServerLoading, "Loaded 0 class expansion requirements. DB table `class_expansion_requirement` is empty.");
         }
-        public void LoadRealmNames()
-        {
-            uint oldMSTime = Time.GetMSTime();
-            _realmNameStorage.Clear();
-
-            //                                         0   1
-            SQLResult result = DB.Login.Query("SELECT id, name FROM `realmlist`");
-            if (result.IsEmpty())
-            {
-                Log.outInfo(LogFilter.ServerLoading, "Loaded 0 realm names. DB table `realmlist` is empty.");
-                return;
-            }
-
-            uint count = 0;
-            do
-            {
-                uint realm = result.Read<uint>(0);
-                string realmName = result.Read<string>(1);
-
-                _realmNameStorage[realm] = realmName;
-
-                ++count;
-            }
-            while (result.NextRow());
-            Log.outInfo(LogFilter.ServerLoading, "Loaded {0} realm names in {1} ms.", count, Time.GetMSTimeDiffToNow(oldMSTime));
-        }
 
         public string GetCypherString(uint entry, Locale locale = Locale.enUS)
         {
@@ -482,21 +456,6 @@ namespace Game
             return GetCypherString((uint)cmd, locale);
         }
 
-        public string GetRealmName(uint realm)
-        {
-            return _realmNameStorage.LookupByKey(realm);
-        }
-        public bool GetRealmName(uint realmId, ref string name, ref string normalizedName)
-        {
-            var realmName = _realmNameStorage.LookupByKey(realmId);
-            if (realmName != null)
-            {
-                name = realmName;
-                normalizedName = realmName.Normalize();
-                return true;
-            }
-            return false;
-        }
         public Dictionary<byte, RaceUnlockRequirement> GetRaceUnlockRequirements() { return _raceUnlockRequirementStorage; }
         public RaceUnlockRequirement GetRaceUnlockRequirement(Race race) { return _raceUnlockRequirementStorage.LookupByKey((byte)race); }
         public List<RaceClassAvailability> GetClassExpansionRequirements() { return _classExpansionRequirementStorage; }
@@ -1822,34 +1781,33 @@ namespace Game
             creature.SubName = fields.Read<string>(8);
             creature.TitleAlt = fields.Read<string>(9);
             creature.IconName = fields.Read<string>(10);
-            creature.GossipMenuId = fields.Read<uint>(11);
-            creature.HealthScalingExpansion = fields.Read<int>(12);
-            creature.RequiredExpansion = fields.Read<uint>(13);
-            creature.VignetteID = fields.Read<uint>(14);
-            creature.Faction = fields.Read<uint>(15);
-            creature.Npcflag = fields.Read<ulong>(16);
-            creature.SpeedWalk = fields.Read<float>(17);
-            creature.SpeedRun = fields.Read<float>(18);
-            creature.Scale = fields.Read<float>(19);
-            creature.Rank = (CreatureEliteType)fields.Read<uint>(20);
-            creature.DmgSchool = fields.Read<uint>(21);
-            creature.BaseAttackTime = fields.Read<uint>(22);
-            creature.RangeAttackTime = fields.Read<uint>(23);
-            creature.BaseVariance = fields.Read<float>(24);
-            creature.RangeVariance = fields.Read<float>(25);
-            creature.UnitClass = fields.Read<uint>(26);
-            creature.UnitFlags = (UnitFlags)fields.Read<uint>(27);
-            creature.UnitFlags2 = fields.Read<uint>(28);
-            creature.UnitFlags3 = fields.Read<uint>(29);
-            creature.DynamicFlags = fields.Read<uint>(30);
-            creature.Family = (CreatureFamily)fields.Read<uint>(31);
-            creature.TrainerClass = (Class)fields.Read<byte>(32);
-            creature.CreatureType = (CreatureType)fields.Read<byte>(33);
-            creature.TypeFlags = (CreatureTypeFlags)fields.Read<uint>(34);
-            creature.TypeFlags2 = fields.Read<uint>(35);
-            creature.LootId = fields.Read<uint>(36);
-            creature.PickPocketId = fields.Read<uint>(37);
-            creature.SkinLootId = fields.Read<uint>(38);
+            creature.HealthScalingExpansion = fields.Read<int>(11);
+            creature.RequiredExpansion = fields.Read<uint>(12);
+            creature.VignetteID = fields.Read<uint>(13);
+            creature.Faction = fields.Read<uint>(14);
+            creature.Npcflag = fields.Read<ulong>(15);
+            creature.SpeedWalk = fields.Read<float>(16);
+            creature.SpeedRun = fields.Read<float>(17);
+            creature.Scale = fields.Read<float>(18);
+            creature.Rank = (CreatureEliteType)fields.Read<uint>(19);
+            creature.DmgSchool = fields.Read<uint>(20);
+            creature.BaseAttackTime = fields.Read<uint>(21);
+            creature.RangeAttackTime = fields.Read<uint>(22);
+            creature.BaseVariance = fields.Read<float>(23);
+            creature.RangeVariance = fields.Read<float>(24);
+            creature.UnitClass = fields.Read<uint>(25);
+            creature.UnitFlags = (UnitFlags)fields.Read<uint>(26);
+            creature.UnitFlags2 = fields.Read<uint>(27);
+            creature.UnitFlags3 = fields.Read<uint>(28);
+            creature.DynamicFlags = fields.Read<uint>(29);
+            creature.Family = (CreatureFamily)fields.Read<uint>(30);
+            creature.TrainerClass = (Class)fields.Read<byte>(31);
+            creature.CreatureType = (CreatureType)fields.Read<byte>(32);
+            creature.TypeFlags = (CreatureTypeFlags)fields.Read<uint>(33);
+            creature.TypeFlags2 = fields.Read<uint>(34);
+            creature.LootId = fields.Read<uint>(35);
+            creature.PickPocketId = fields.Read<uint>(36);
+            creature.SkinLootId = fields.Read<uint>(37);
 
             for (var i = (int)SpellSchools.Holy; i < (int)SpellSchools.Max; ++i)
                 creature.Resistance[i] = 0;
@@ -1857,54 +1815,95 @@ namespace Game
             for (var i = 0; i < SharedConst.MaxCreatureSpells; ++i)
                 creature.Spells[i] = 0;
 
-            creature.VehicleId = fields.Read<uint>(39);
-            creature.MinGold = fields.Read<uint>(40);
-            creature.MaxGold = fields.Read<uint>(41);
-            creature.AIName = fields.Read<string>(42);
-            creature.MovementType = fields.Read<uint>(43);
+            creature.VehicleId = fields.Read<uint>(38);
+            creature.MinGold = fields.Read<uint>(39);
+            creature.MaxGold = fields.Read<uint>(40);
+            creature.AIName = fields.Read<string>(41);
+            creature.MovementType = fields.Read<uint>(42);
+
+            if (!fields.IsNull(43))
+                creature.Movement.Ground = (CreatureGroundMovementType)fields.Read<byte>(43);
 
             if (!fields.IsNull(44))
-                creature.Movement.Ground = (CreatureGroundMovementType)fields.Read<byte>(44);
+                creature.Movement.Swim = fields.Read<bool>(44);
 
             if (!fields.IsNull(45))
-                creature.Movement.Swim = fields.Read<bool>(45);
+                creature.Movement.Flight = (CreatureFlightMovementType)fields.Read<byte>(45);
 
             if (!fields.IsNull(46))
-                creature.Movement.Flight = (CreatureFlightMovementType)fields.Read<byte>(46);
+                creature.Movement.Rooted = fields.Read<bool>(46);
 
             if (!fields.IsNull(47))
-                creature.Movement.Rooted = fields.Read<bool>(47);
+                creature.Movement.Chase = (CreatureChaseMovementType)fields.Read<byte>(47);
 
             if (!fields.IsNull(48))
-                creature.Movement.Chase = (CreatureChaseMovementType)fields.Read<byte>(48);
+                creature.Movement.Random = (CreatureRandomMovementType)fields.Read<byte>(48);
 
             if (!fields.IsNull(49))
-                creature.Movement.Random = (CreatureRandomMovementType)fields.Read<byte>(49);
+                creature.Movement.InteractionPauseTimer = fields.Read<uint>(49);
 
-            if (!fields.IsNull(50))
-                creature.Movement.InteractionPauseTimer = fields.Read<uint>(50);
-
-            creature.HoverHeight = fields.Read<float>(51);
-            creature.ModHealth = fields.Read<float>(52);
-            creature.ModHealthExtra = fields.Read<float>(53);
-            creature.ModMana = fields.Read<float>(54);
-            creature.ModManaExtra = fields.Read<float>(55);
-            creature.ModArmor = fields.Read<float>(56);
-            creature.ModDamage = fields.Read<float>(57);
-            creature.ModExperience = fields.Read<float>(58);
-            creature.RacialLeader = fields.Read<bool>(59);
-            creature.MovementId = fields.Read<uint>(60);
-            creature.CreatureDifficultyID = fields.Read<int>(61);
-            creature.WidgetSetID = fields.Read<int>(62);
-            creature.WidgetSetUnitConditionID = fields.Read<int>(63);
-            creature.RegenHealth = fields.Read<bool>(64);
-            creature.MechanicImmuneMask = fields.Read<ulong>(65);
-            creature.SpellSchoolImmuneMask = fields.Read<uint>(66);
-            creature.FlagsExtra = (CreatureFlagsExtra)fields.Read<uint>(67);
-            creature.ScriptID = GetScriptId(fields.Read<string>(68));
-            creature.StringId = fields.Read<string>(69);
+            creature.ModHealth = fields.Read<float>(50);
+            creature.ModHealthExtra = fields.Read<float>(51);
+            creature.ModMana = fields.Read<float>(52);
+            creature.ModManaExtra = fields.Read<float>(53);
+            creature.ModArmor = fields.Read<float>(54);
+            creature.ModDamage = fields.Read<float>(55);
+            creature.ModExperience = fields.Read<float>(56);
+            creature.RacialLeader = fields.Read<bool>(57);
+            creature.MovementId = fields.Read<uint>(58);
+            creature.CreatureDifficultyID = fields.Read<int>(59);
+            creature.WidgetSetID = fields.Read<int>(60);
+            creature.WidgetSetUnitConditionID = fields.Read<int>(61);
+            creature.RegenHealth = fields.Read<bool>(62);
+            creature.MechanicImmuneMask = fields.Read<ulong>(63);
+            creature.SpellSchoolImmuneMask = fields.Read<uint>(64);
+            creature.FlagsExtra = (CreatureFlagsExtra)fields.Read<uint>(65);
+            creature.ScriptID = GetScriptId(fields.Read<string>(66));
+            creature.StringId = fields.Read<string>(67);
 
             creatureTemplateStorage[entry] = creature;
+        }
+
+        public void LoadCreatureTemplateGossip()
+        {
+            uint oldMSTime = Time.GetMSTime();
+
+            //                                               0           1
+            SQLResult result = DB.World.Query("SELECT CreatureID, MenuID FROM creature_template_gossip");
+            if (result == null)
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loaded 0 creature template gossip definitions. DB table `creature_template_gossip` is empty.");
+                return;
+            }
+
+            uint count = 0;
+
+            do
+            {
+                uint creatureID = result.Read<uint>(0);
+                uint menuID = result.Read<uint>(1);
+
+                var creatureTemplate = creatureTemplateStorage.LookupByKey(creatureID);
+                if (creatureTemplate == null)
+                {
+                    Log.outError(LogFilter.Sql, $"creature_template_gossip has gossip definitions for creature {creatureID} but this creature doesn't exist");
+                    continue;
+                }
+
+                var menuBounds = GetGossipMenusMapBounds(menuID);
+                if (menuBounds.Empty())
+                {
+                    Log.outError(LogFilter.Sql, $"creature_template_gossip has gossip definitions for menu id {menuID} but this menu doesn't exist");
+                    continue;
+                }
+
+                creatureTemplate.GossipMenuIds.Add(menuID);
+
+                ++count;
+
+            } while (result.NextRow());
+
+            Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} creature template gossip menus in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
         }
 
         void LoadCreatureTemplateResistances()
@@ -2650,6 +2649,44 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loaded {0} creature model based info in {1} ms", count, Time.GetMSTimeDiffToNow(time));
         }
+
+        public void LoadCreatureTemplateSparring()
+        {
+            uint oldMSTime = Time.GetMSTime();
+
+            //                                         0      1
+            SQLResult result = DB.World.Query("SELECT Entry, NoNPCDamageBelowHealthPct FROM creature_template_sparring");
+            if (result.IsEmpty())
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loaded 0 creature template sparring definitions. DB table `creature_template_sparring` is empty.");
+                return;
+            }
+
+            uint count = 0;
+            do
+            {
+                uint entry = result.Read<uint>(0);
+                float noNPCDamageBelowHealthPct = result.Read<float>(1);
+
+                if (GetCreatureTemplate(entry) == null)
+                {
+                    Log.outError(LogFilter.Sql, $"Creature template (Entry: {entry}) does not exist but has a record in `creature_template_sparring`");
+                    continue;
+                }
+
+                if (noNPCDamageBelowHealthPct <= 0 || noNPCDamageBelowHealthPct > 100)
+                {
+                    Log.outError(LogFilter.Sql, $"Creature (Entry: {entry}) has invalid NoNPCDamageBelowHealthPct ({noNPCDamageBelowHealthPct}) defined in `creature_template_sparring`. Skipping");
+                    continue;
+                }
+                _creatureTemplateSparringStorage.Add(entry, noNPCDamageBelowHealthPct);
+
+                ++count;
+            } while (result.NextRow());
+
+            Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} creature template sparring rows in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
+        }
+
         public void LoadCreatureScalingData()
         {
             uint oldMSTime = Time.GetMSTime();
@@ -2926,12 +2963,6 @@ namespace Game
 
             CheckCreatureMovement("creature_template_movement", cInfo.Entry, cInfo.Movement);
 
-            if (cInfo.HoverHeight < 0.0f)
-            {
-                Log.outError(LogFilter.Sql, "Creature (Entry: {0}) has wrong value ({1}) in `HoverHeight`", cInfo.Entry, cInfo.HoverHeight);
-                cInfo.HoverHeight = 1.0f;
-            }
-
             if (cInfo.VehicleId != 0)
             {
                 if (!CliDB.VehicleStorage.ContainsKey(cInfo.VehicleId))
@@ -3004,9 +3035,9 @@ namespace Game
 
             cInfo.ModDamage *= Creature._GetDamageMod(cInfo.Rank);
 
-            if (cInfo.GossipMenuId != 0 && !cInfo.Npcflag.HasAnyFlag((ulong)NPCFlags.Gossip))
-                Log.outInfo(LogFilter.Sql, $"Creature (Entry: {cInfo.Entry}) has assigned gossip menu {cInfo.GossipMenuId}, but npcflag does not include UNIT_NPC_FLAG_GOSSIP.");
-            else if (cInfo.GossipMenuId == 0 && cInfo.Npcflag.HasAnyFlag((ulong)NPCFlags.Gossip))
+            if (!cInfo.GossipMenuIds.Empty() && !cInfo.Npcflag.HasAnyFlag((uint)NPCFlags.Gossip))
+                Log.outInfo(LogFilter.Sql, $"Creature (Entry: {cInfo.Entry}) has assigned gossip menu, but npcflag does not include UNIT_NPC_FLAG_GOSSIP.");
+            else if (cInfo.GossipMenuIds.Empty() && cInfo.Npcflag.HasAnyFlag((uint)NPCFlags.Gossip))
                 Log.outInfo(LogFilter.Sql, $"Creature (Entry: {cInfo.Entry}) has npcflag UNIT_NPC_FLAG_GOSSIP, but gossip menu is unassigned.");
         }
         void CheckCreatureMovement(string table, ulong id, CreatureMovementData creatureMovement)
@@ -5304,14 +5335,22 @@ namespace Game
 
             return true;
         }
+
         public VendorItemData GetNpcVendorItemList(uint entry)
         {
             return cacheVendorItemStorage.LookupByKey(entry);
         }
+
+        public List<float> GetCreatureTemplateSparringValues(uint entry)
+        {
+            return _creatureTemplateSparringStorage.LookupByKey(entry);
+        }
+        
         public CreatureMovementData GetCreatureMovementOverride(ulong spawnId)
         {
             return creatureMovementOverrides.LookupByKey(spawnId);
         }
+
         public EquipmentInfo GetEquipmentInfo(uint entry, int id)
         {
             var equip = equipmentInfoStorage.LookupByKey(entry);
@@ -10920,7 +10959,6 @@ namespace Game
 
         Dictionary<byte, RaceUnlockRequirement> _raceUnlockRequirementStorage = new();
         List<RaceClassAvailability> _classExpansionRequirementStorage = new();
-        Dictionary<uint, string> _realmNameStorage = new();
 
         //Quest
         Dictionary<uint, Quest> _questTemplates = new();
@@ -10981,6 +11019,7 @@ namespace Game
         Dictionary<ulong, CreatureAddon> creatureAddonStorage = new();
         MultiMap<uint, uint> creatureQuestItemStorage = new();
         Dictionary<uint, CreatureAddon> creatureTemplateAddonStorage = new();
+        MultiMap<uint, float> _creatureTemplateSparringStorage = new();
         Dictionary<ulong, CreatureMovementData> creatureMovementOverrides = new();
         MultiMap<uint, Tuple<uint, EquipmentInfo>> equipmentInfoStorage = new();
         Dictionary<ObjectGuid, ObjectGuid> linkedRespawnStorage = new();
