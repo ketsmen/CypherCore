@@ -331,7 +331,7 @@ namespace Game.Entities
         {
             base.AtExitCombat();
             UpdatePotionCooldown();
-            m_combatExitTime = Time.GetMSTime();
+            m_regenInterruptTimestamp = GameTime.Now();
         }
 
         public override float GetBlockPercent(uint attackerLevel)
@@ -513,6 +513,9 @@ namespace Game.Entities
                 if (!pair.Value.IsPositive() && aura.GetCasterGUID() == opponent.GetGUID() && aura.GetApplyTime() >= duel.StartTime)
                     RemoveAura(pair);
             }
+
+            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.DuelEnd);
+            opponent.RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.DuelEnd);
 
             // cleanup combo points
             ClearComboPoints();

@@ -42,7 +42,6 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.Attack)]
         [SpellEffectHandler(SpellEffectName.ThreatAll)]
         [SpellEffectHandler(SpellEffectName.Effect112)]
-        [SpellEffectHandler(SpellEffectName.TeleportGraveyard)]
         [SpellEffectHandler(SpellEffectName.Effect122)]
         [SpellEffectHandler(SpellEffectName.Effect175)]
         [SpellEffectHandler(SpellEffectName.Effect178)]
@@ -1769,6 +1768,8 @@ namespace Game.Spells
             m_caster.SendMessageToSet(spellDispellLog, true);
 
             CallScriptSuccessfulDispel(effectInfo.EffectIndex);
+
+            m_hitMask |= ProcFlagsHit.Dispel;
         }
 
         [SpellEffectHandler(SpellEffectName.DualWield)]
@@ -1818,7 +1819,7 @@ namespace Game.Spells
                 creature.StartPickPocketRefillTimer();
 
                 creature._loot = new Loot(creature.GetMap(), creature.GetGUID(), LootType.Pickpocketing, null);
-                uint lootid = creature.GetCreatureTemplate().PickPocketId;
+                uint lootid = creature.GetCreatureDifficulty().PickPocketLootID;
                 if (lootid != 0)
                     creature._loot.FillLoot(lootid, LootStorage.Pickpocketing, player, true);
 
@@ -2828,14 +2829,14 @@ namespace Game.Spells
 
             // Players can only fight a duel in zones with this flag
             AreaTableRecord casterAreaEntry = CliDB.AreaTableStorage.LookupByKey(caster.GetAreaId());
-            if (casterAreaEntry != null && !casterAreaEntry.HasFlag(AreaFlags.AllowDuels))
+            if (casterAreaEntry != null && !casterAreaEntry.GetFlags().HasFlag(AreaFlags.AllowDueling))
             {
                 SendCastResult(SpellCastResult.NoDueling);            // Dueling isn't allowed here
                 return;
             }
 
             AreaTableRecord targetAreaEntry = CliDB.AreaTableStorage.LookupByKey(target.GetAreaId());
-            if (targetAreaEntry != null && !targetAreaEntry.HasFlag(AreaFlags.AllowDuels))
+            if (targetAreaEntry != null && !targetAreaEntry.GetFlags().HasFlag(AreaFlags.AllowDueling))
             {
                 SendCastResult(SpellCastResult.NoDueling);            // Dueling isn't allowed here
                 return;
@@ -3441,13 +3442,13 @@ namespace Game.Spells
             Creature creature = unitTarget.ToCreature();
             int targetLevel = (int)creature.GetLevelForTarget(m_caster);
 
-            SkillType skill = creature.GetCreatureTemplate().GetRequiredLootSkill();
+            SkillType skill = creature.GetCreatureDifficulty().GetRequiredLootSkill();
 
             creature.SetUnitFlag3(UnitFlags3.AlreadySkinned);
             creature.SetDynamicFlag(UnitDynFlags.Lootable);
             Loot loot = new(creature.GetMap(), creature.GetGUID(), LootType.Skinning, null);
             creature.m_personalLoot[player.GetGUID()] = loot;
-            loot.FillLoot(creature.GetCreatureTemplate().SkinLootId, LootStorage.Skinning, player, true);
+            loot.FillLoot(creature.GetCreatureDifficulty().SkinLootID, LootStorage.Skinning, player, true);
             player.SendLoot(loot);
 
             if (!Global.SpellMgr.IsPartOfSkillLine(skill, m_spellInfo.Id))
@@ -3837,11 +3838,16 @@ namespace Game.Spells
                         dispel_list.Add(new KeyValuePair<uint, ObjectGuid>(aura.GetId(), aura.GetCasterGUID()));
             }
 
+            if (dispel_list.Empty())
+                return;
+
             while (!dispel_list.Empty())
             {
                 unitTarget.RemoveAura(dispel_list[0].Key, dispel_list[0].Value, 0, AuraRemoveMode.EnemySpell);
                 dispel_list.RemoveAt(0);
             }
+
+            m_hitMask |= ProcFlagsHit.Dispel;
         }
 
         [SpellEffectHandler(SpellEffectName.ResurrectPet)]
@@ -4221,14 +4227,30 @@ namespace Game.Spells
             Log.outDebug(LogFilter.Spells, "WORLD: SkillEFFECT");
         }
 
-        /* There is currently no need for this effect. We handle it in Battleground.cpp
-           If we would handle the resurrection here, the spiritguide would instantly disappear as the
-           player revives, and so we wouldn't see the spirit heal visual effect on the npc.
-           This is why we use a half sec delay between the visual effect and the resurrection itself */
         void EffectSpiritHeal()
         {
+            Unit caster = GetCaster().ToUnit();
+            if (effectHandleMode == SpellEffectHandleMode.Hit)
+                caster.CastSpell(null, BattlegroundConst.SpellResurrectionVisual, true);
+
             if (effectHandleMode != SpellEffectHandleMode.HitTarget)
                 return;
+
+            Player playerTarget = unitTarget.ToPlayer();
+            if (playerTarget != null)
+            {
+                if (!playerTarget.IsInWorld)
+                    return;
+
+                // skip if player does not want to live
+                if (!playerTarget.CanAcceptAreaSpiritHealFrom(caster))
+                    return;
+
+                playerTarget.ResurrectPlayer(1.0f);
+                playerTarget.CastSpell(playerTarget, BattlegroundConst.SpellPetSummoned, true);
+                playerTarget.CastSpell(playerTarget, BattlegroundConst.SpellSpiritHealMana, true);
+                playerTarget.SpawnCorpseBones(false);
+            }
         }
 
         // remove insignia spell effect
@@ -4361,6 +4383,8 @@ namespace Game.Spells
                 spellDispellLog.DispellData.Add(dispellData);
             }
             m_caster.SendMessageToSet(spellDispellLog, true);
+
+            m_hitMask |= ProcFlagsHit.Dispel;
         }
 
         [SpellEffectHandler(SpellEffectName.KillCredit)]
@@ -5755,6 +5779,15 @@ namespace Game.Spells
                 return;
 
             target.UpdateTraitConfig(m_customArg as TraitConfigPacket, damage, false);
+        }
+
+        [SpellEffectHandler(SpellEffectName.TeleportGraveyard)]
+        void EffectTeleportGraveyard()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            unitTarget.ToPlayer()?.RepopAtGraveyard();
         }
     }
 

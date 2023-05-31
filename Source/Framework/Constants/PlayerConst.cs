@@ -62,6 +62,8 @@ namespace Framework.Constants
         public const uint SpellExperienceEliminated = 206662;
 
         public const uint CurrencyMaxCapAncientMana = 2000;
+
+        public const float MaxAreaSpiritHealerRange = 20.0f;
     }
 
     public struct MoneyConstants
@@ -140,7 +142,8 @@ namespace Framework.Constants
         BossSound = 0x20, // Plays "RaidBossEmoteWarning" sound on raid boss emote/whisper
         Mobile = 0x40,
         Guide = 0x1000,
-        Newcomer = 0x2000
+        Newcomer = 0x2000,
+        Censored = 0x4000
     }
 
     public enum DrunkenState
@@ -546,7 +549,7 @@ namespace Framework.Constants
         // first slot for item stored (in any way in player items data)
         Start = 0,
         // last+1 slot for item stored (in any way in player items data)
-        End = 218,
+        End = 227,
         Count = (End - Start)
     }
 

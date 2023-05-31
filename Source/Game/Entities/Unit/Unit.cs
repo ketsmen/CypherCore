@@ -466,6 +466,9 @@ namespace Game.Entities
 
             if (IsInWorld)
             {
+                if (IsAreaSpiritHealer())
+                    ToCreature()?.SummonGraveyardTeleporter();
+
                 m_duringRemoveFromWorld = true;
                 UnitAI ai = GetAI();
                 if (ai != null)
@@ -581,6 +584,25 @@ namespace Game.Entities
             if (veh != null)
                 return veh;
             return GetTransport();
+        }
+
+        public void AtStartOfEncounter()
+        {
+            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfEncounter);
+
+            if (IsAlive())
+                Unit.ProcSkillsAndAuras(this, null, new ProcFlagsInit(ProcFlags.EncounterStart), new ProcFlagsInit(), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, null, null, null);
+        }
+
+        public void AtEndOfEncounter()
+        {
+            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfEncounter);
+
+            GetSpellHistory().ResetCooldowns(pair =>
+            {
+                SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(pair.Key, Difficulty.None);
+                return spellInfo.HasAttribute(SpellAttr10.ResetCooldownOnEncounterEnd);
+            }, true);
         }
 
         public void _RegisterDynObject(DynamicObject dynObj)
@@ -821,7 +843,7 @@ namespace Game.Entities
         public bool IsBanker() { return HasNpcFlag(NPCFlags.Banker); }
         public bool IsInnkeeper() { return HasNpcFlag(NPCFlags.Innkeeper); }
         public bool IsSpiritHealer() { return HasNpcFlag(NPCFlags.SpiritHealer); }
-        public bool IsSpiritGuide() { return HasNpcFlag(NPCFlags.SpiritGuide); }
+        public bool IsAreaSpiritHealer() { return HasNpcFlag(NPCFlags.AreaSpiritHealer); }
         public bool IsTabardDesigner() { return HasNpcFlag(NPCFlags.TabardDesigner); }
         public bool IsAuctioner() { return HasNpcFlag(NPCFlags.Auctioneer); }
         public bool IsArmorer() { return HasNpcFlag(NPCFlags.Repair); }
@@ -831,9 +853,10 @@ namespace Game.Entities
             return HasNpcFlag(NPCFlags.Vendor | NPCFlags.Trainer | NPCFlags.FlightMaster |
                 NPCFlags.Petitioner | NPCFlags.BattleMaster | NPCFlags.Banker |
                 NPCFlags.Innkeeper | NPCFlags.SpiritHealer |
-                NPCFlags.SpiritGuide | NPCFlags.TabardDesigner | NPCFlags.Auctioneer);
+                NPCFlags.AreaSpiritHealer | NPCFlags.TabardDesigner | NPCFlags.Auctioneer);
         }
-        public bool IsSpiritService() { return HasNpcFlag(NPCFlags.SpiritHealer | NPCFlags.SpiritGuide); }
+        public bool IsSpiritService() { return HasNpcFlag(NPCFlags.SpiritHealer | NPCFlags.AreaSpiritHealer); }
+        public bool IsAreaSpiritHealerIndividual() { return HasNpcFlag2(NPCFlags2.AreaSpiritHealerIndividual); }
         public bool IsCritter() { return GetCreatureType() == CreatureType.Critter; }
         public bool IsInFlight() { return HasUnitState(UnitState.InFlight); }
 
@@ -1127,6 +1150,8 @@ namespace Game.Entities
                 else
                     ToTempSummon().UnSummon(2000); // Approximation
             }
+
+            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.AbandonVehicle);
         }
 
         public void SendPlaySpellVisual(Unit target, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
@@ -1643,7 +1668,7 @@ namespace Game.Entities
             }
         }
 
-        public void UpdateDisplayPower()
+        public PowerType CalculateDisplayPowerType()
         {
             PowerType displayPower = PowerType.Mana;
             switch (GetShapeshiftForm())
@@ -1667,22 +1692,18 @@ namespace Game.Entities
                         AuraEffect powerTypeAura = powerTypeAuras.First();
                         displayPower = (PowerType)powerTypeAura.GetMiscValue();
                     }
-                    else if (GetTypeId() == TypeId.Player)
+                    else
                     {
                         ChrClassesRecord cEntry = CliDB.ChrClassesStorage.LookupByKey(GetClass());
                         if (cEntry != null && cEntry.DisplayPower < PowerType.Max)
                             displayPower = cEntry.DisplayPower;
-                    }
-                    else if (GetTypeId() == TypeId.Unit)
-                    {
+
                         Vehicle vehicle = GetVehicleKit();
                         if (vehicle)
                         {
                             PowerDisplayRecord powerDisplay = CliDB.PowerDisplayStorage.LookupByKey(vehicle.GetVehicleInfo().PowerDisplayID[0]);
                             if (powerDisplay != null)
                                 displayPower = (PowerType)powerDisplay.ActualType;
-                            else if (GetClass() == Class.Rogue)
-                                displayPower = PowerType.Energy;
                         }
                         else
                         {
@@ -1700,7 +1721,12 @@ namespace Game.Entities
                 }
             }
 
-            SetPowerType(displayPower);
+            return displayPower;
+        }
+
+        public void UpdateDisplayPower()
+        {
+            SetPowerType(CalculateDisplayPowerType());
         }
 
         public void SetSheath(SheathState sheathed)

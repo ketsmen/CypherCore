@@ -842,19 +842,19 @@ namespace Game.Spells
             // continent limitation (virtual continent)
             if (HasAttribute(SpellAttr4.OnlyFlyingAreas))
             {
-                uint mountFlags = 0;
+                AreaMountFlags mountFlags = 0;
                 if (player && player.HasAuraType(AuraType.MountRestrictions))
                 {
                     foreach (AuraEffect auraEffect in player.GetAuraEffectsByType(AuraType.MountRestrictions))
-                        mountFlags |= (uint)auraEffect.GetMiscValue();
+                        mountFlags |= (AreaMountFlags)auraEffect.GetMiscValue();
                 }
                 else
                 {
                     AreaTableRecord areaTable = CliDB.AreaTableStorage.LookupByKey(area_id);
                     if (areaTable != null)
-                        mountFlags = areaTable.MountFlags;
+                        mountFlags = areaTable.GetMountFlags();
                 }
-                if (!Convert.ToBoolean(mountFlags & (uint)AreaMountFlags.FlyingAllowed))
+                if (!mountFlags.HasFlag(AreaMountFlags.AllowFlyingMounts))
                     return SpellCastResult.IncorrectArea;
 
                 if (player)
@@ -902,8 +902,6 @@ namespace Game.Spells
                 case 34976:         // Netherstorm Flag
                     return map_id == 566 && player != null && player.InBattleground() ? SpellCastResult.SpellCastOk : SpellCastResult.RequiresArea;
                 case 2584:          // Waiting to Resurrect
-                case 22011:         // Spirit Heal Channel
-                case 22012:         // Spirit Heal
                 case 42792:         // Recently Dropped Flag
                 case 43681:         // Inactive
                 case 44535:         // Spirit Heal (mana)
@@ -1034,7 +1032,7 @@ namespace Game.Spells
                             if (targetCreature == null)
                                 return SpellCastResult.BadTargets;
 
-                            if (!targetCreature.CanHaveLoot() || !Loots.LootStorage.Pickpocketing.HaveLootFor(targetCreature.GetCreatureTemplate().PickPocketId))
+                            if (!targetCreature.CanHaveLoot() || !Loots.LootStorage.Pickpocketing.HaveLootFor(targetCreature.GetCreatureDifficulty().PickPocketLootID))
                                 return SpellCastResult.TargetNoPockets;
                         }
 
@@ -1270,7 +1268,7 @@ namespace Game.Spells
 
 
             uint creatureType = target.GetCreatureTypeMask();
-            return TargetCreatureType == 0 || creatureType == 0 || Convert.ToBoolean(creatureType & TargetCreatureType);
+            return TargetCreatureType == 0 || creatureType == 0 || (creatureType & TargetCreatureType) != 0 || target.HasAuraType(AuraType.IgnoreSpellCreatureTypeRequirements);
         }
 
         public SpellSchoolMask GetSchoolMask()
@@ -4824,7 +4822,15 @@ namespace Game.Spells
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 303 SPELL_EFFECT_CREATE_TRAIT_TREE_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 304 SPELL_EFFECT_CHANGE_ACTIVE_COMBAT_TRAIT_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 305 SPELL_EFFECT_305
-            new StaticData(SpellEffectImplicitTargetTypes.None, SpellTargetObjectTypes.None), // 306 SPELL_EFFECT_306
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 306 SPELL_EFFECT_306
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 307 SPELL_EFFECT_307
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 308 SPELL_EFFECT_308
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 309 SPELL_EFFECT_309
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 310 SPELL_EFFECT_310
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 311 SPELL_EFFECT_311
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 312 SPELL_EFFECT_312
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Item), // 313 SPELL_EFFECT_313
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 314 SPELL_EFFECT_314
         };
 
         #region Fields
@@ -5186,7 +5192,7 @@ namespace Game.Spells
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 139
             new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 140 TARGET_DEST_CASTER_CLUMP_CENTROID
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 141
-            new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 142
+            new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Nearby,  SpellTargetCheckTypes.Entry,    SpellTargetDirectionTypes.FrontRight),  // 142 TARGET_DEST_NEARBY_ENTRY_OR_DB
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 143
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 144
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 145

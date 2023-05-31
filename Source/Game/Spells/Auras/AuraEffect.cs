@@ -4317,18 +4317,6 @@ namespace Game.Spells
                         case SpellFamilyNames.Generic:
                             switch (GetId())
                             {
-                                case 2584: // Waiting to Resurrect
-                                    // Waiting to resurrect spell cancel, we must remove player from resurrect queue
-                                    if (target.IsTypeId(TypeId.Player))
-                                    {
-                                        Battleground bg = target.ToPlayer().GetBattleground();
-                                        if (bg)
-                                            bg.RemovePlayerFromResurrectQueue(target.GetGUID());
-                                        BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(target.GetMap(), target.GetZoneId());
-                                        if (bf != null)
-                                            bf.RemovePlayerFromResurrectQueue(target.GetGUID());
-                                    }
-                                    break;
                                 case 36730:                                     // Flame Strike
                                     target.CastSpell(target, 36731, new CastSpellExtraArgs(this));
                                     break;
@@ -5633,9 +5621,14 @@ namespace Game.Spells
             if (!mode.HasAnyFlag(AuraEffectHandleModes.Real))
                 return;
 
-            Player player = aurApp.GetTarget().ToPlayer();
-            if (player)
-                player.SendSpellCategoryCooldowns();
+            Player target = aurApp.GetTarget().ToPlayer();
+            if (target == null)
+                return;
+
+            if (apply)
+                target.AddSpellCategoryCooldownMod(GetMiscValue(), GetAmount());
+            else
+                target.RemoveSpellCategoryCooldownMod(GetMiscValue(), GetAmount());
         }
 
         [AuraEffectHandler(AuraType.ShowConfirmationPrompt)]
@@ -5787,7 +5780,7 @@ namespace Game.Spells
                     List<Creature> nearbyEntries = target.GetCreatureListWithEntryInGrid(summonEntry);
                     foreach (var creature in nearbyEntries)
                     {
-                        if (creature.GetOwner() == target)
+                        if (creature.GetOwnerGUID() == target.GetGUID())
                         {
                             creature.DespawnOrUnsummon();
                             break;
@@ -5797,7 +5790,7 @@ namespace Game.Spells
                             TempSummon tempSummon = creature.ToTempSummon();
                             if (tempSummon)
                             {
-                                if (tempSummon.GetSummoner() == target)
+                                if (tempSummon.GetSummonerGUID() == target.GetGUID())
                                 {
                                     tempSummon.DespawnOrUnsummon();
                                     break;

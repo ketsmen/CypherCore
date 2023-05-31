@@ -7,7 +7,6 @@ using Game.BattleGrounds;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Loots;
-using Game.Networking.Packets;
 using Game.Scripting;
 using Game.Spells;
 using System;
@@ -1322,11 +1321,12 @@ namespace Scripts.Spells.Items
             {
                 Player player = GetCaster().ToPlayer();
                 Creature creature = GetTarget().ToCreature();
+                CreatureDifficulty creatureDifficulty = creature.GetCreatureDifficulty();
                 // missing lootid has been reported on startup - just return
-                if (creature.GetCreatureTemplate().SkinLootId == 0)
+                if (creatureDifficulty.SkinLootID == 0)
                     return;
 
-                player.AutoStoreLoot(creature.GetCreatureTemplate().SkinLootId, LootStorage.Skinning, ItemContext.None, true);
+                player.AutoStoreLoot(creatureDifficulty.SkinLootID, LootStorage.Skinning, ItemContext.None, true);
                 creature.DespawnOrUnsummon();
             }
         }
@@ -2944,9 +2944,8 @@ namespace Scripts.Spells.Items
         void HandleDummy(uint effIndex)
         {
             Unit caster = GetCaster();
-            AreaTableRecord areaEntry = CliDB.AreaTableStorage.LookupByKey(caster.GetAreaId());
             bool success = true;
-            if (areaEntry != null && areaEntry.IsFlyable() && !caster.GetMap().IsDungeon())
+            if (!caster.GetMap().IsDungeon())
                 success = RandomHelper.randChance(95);
             caster.CastSpell(caster, success ? SpellIds.NitroBoostsSuccess : SpellIds.NitroBoostsBackfire, new CastSpellExtraArgs(GetCastItem()));
         }
@@ -4236,6 +4235,76 @@ namespace Scripts.Spells.Items
         public override void Register()
         {
             DoCheckEffectProc.Add(new CheckEffectProcHandler(CheckProc, 0, AuraType.ProcTriggerSpell));
+        }
+    }
+
+    // 303358 Venomous Bolt
+    // 303361 Shivering Lance
+    [Script("spell_item_shiver_venom_crossbow", 303559)]
+    [Script("spell_item_shiver_venom_lance", 303562)]
+    class spell_item_shiver_venom_weapon_proc : AuraScript
+    {
+        static uint SPELL_SHIVER_VENOM = 301624;
+
+        uint _additionalProcSpellId;
+
+        public spell_item_shiver_venom_weapon_proc(uint additionalProcSpellId)
+        {
+            _additionalProcSpellId = additionalProcSpellId;
+        }
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SPELL_SHIVER_VENOM, _additionalProcSpellId);
+        }
+
+        void HandleAdditionalProc(AuraEffect aurEff, ProcEventInfo procInfo)
+        {
+            if (procInfo.GetProcTarget().HasAura(SPELL_SHIVER_VENOM))
+                procInfo.GetActor().CastSpell(procInfo.GetProcTarget(), _additionalProcSpellId, new CastSpellExtraArgs(aurEff)
+                    .AddSpellMod(SpellValueMod.BasePoint0, aurEff.GetAmount())
+                    .SetTriggeringSpell(procInfo.GetProcSpell()));
+        }
+
+        public override void Register()
+        {
+            OnEffectProc.Add(new EffectProcHandler(HandleAdditionalProc, 1, AuraType.Dummy));
+        }
+    }
+
+    [Script] // 302774 - Arcane Tempest
+    class spell_item_phial_of_the_arcane_tempest_damage : SpellScript
+    {
+        void ModifyStacks()
+        {
+            if (GetUnitTargetCountForEffect(0) != 1 || GetTriggeringSpell() == null)
+                return;
+
+            AuraEffect aurEff = GetCaster().GetAuraEffect(GetTriggeringSpell().Id, 0);
+            if (aurEff != null)
+            {
+                aurEff.GetBase().ModStackAmount(1, AuraRemoveMode.None, false);
+                aurEff.CalculatePeriodic(GetCaster(), false);
+            }
+        }
+
+        public override void Register()
+        {
+            AfterCast.Add(new CastHandler(ModifyStacks));
+        }
+    }
+
+    [Script] // 302769 - Arcane Tempest
+    class spell_item_phial_of_the_arcane_tempest_periodic : AuraScript
+    {
+        void CalculatePeriod(AuraEffect aurEff, ref bool isPeriodic, ref int period)
+        {
+            period -= (GetStackAmount() - 1) * 300;
+        }
+
+        public override void Register()
+        {
+            DoEffectCalcPeriodic.Add(new EffectCalcPeriodicHandler(CalculatePeriod, 0, AuraType.PeriodicTriggerSpell));
         }
     }
 }

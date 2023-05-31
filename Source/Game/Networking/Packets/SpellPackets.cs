@@ -61,18 +61,11 @@ namespace Game.Networking.Packets
         public override void Read() { }
     }
 
-    public class RequestCategoryCooldowns : ClientPacket
-    {
-        public RequestCategoryCooldowns(WorldPacket packet) : base(packet) { }
-
-        public override void Read() { }
-    }
-
     public class SpellCategoryCooldown : ServerPacket
     {
         public List<CategoryCooldownInfo> CategoryCooldowns = new();
 
-        public SpellCategoryCooldown() : base(ServerOpcodes.CategoryCooldown, ConnectionType.Instance) { }
+        public SpellCategoryCooldown() : base(ServerOpcodes.SpellCategoryCooldown, ConnectionType.Instance) { }
 
         public override void Write()
         {
@@ -1252,32 +1245,32 @@ namespace Game.Networking.Packets
         bool GenerateDataCreatureToPlayer(Creature attacker, Player target)
         {
             CreatureTemplate creatureTemplate = attacker.GetCreatureTemplate();
-            CreatureLevelScaling creatureScaling = creatureTemplate.GetLevelScaling(attacker.GetMap().GetDifficultyID());
+            CreatureDifficulty creatureDifficulty = creatureTemplate.GetDifficulty(attacker.GetMap().GetDifficultyID());
 
             TuningType = ContentTuningType.CreatureToPlayerDamage;
             PlayerLevelDelta = (short)target.m_activePlayerData.ScalingPlayerLevelDelta;
             PlayerItemLevel = (ushort)target.GetAverageItemLevel();
             ScalingHealthItemLevelCurveID = (ushort)target.m_unitData.ScalingHealthItemLevelCurveID;
             TargetLevel = (byte)target.GetLevel();
-            Expansion = (byte)creatureTemplate.HealthScalingExpansion;
+            Expansion = (byte)creatureDifficulty.HealthScalingExpansion;
             TargetScalingLevelDelta = (sbyte)attacker.m_unitData.ScalingLevelDelta;
-            TargetContentTuningID = creatureScaling.ContentTuningID;
+            TargetContentTuningID = creatureDifficulty.ContentTuningID;
             return true;
         }
 
         bool GenerateDataPlayerToCreature(Player attacker, Creature target)
         {
             CreatureTemplate creatureTemplate = target.GetCreatureTemplate();
-            CreatureLevelScaling creatureScaling = creatureTemplate.GetLevelScaling(target.GetMap().GetDifficultyID());
+            CreatureDifficulty creatureDifficulty = creatureTemplate.GetDifficulty(target.GetMap().GetDifficultyID());
 
             TuningType = ContentTuningType.PlayerToCreatureDamage;
             PlayerLevelDelta = (short)attacker.m_activePlayerData.ScalingPlayerLevelDelta;
             PlayerItemLevel = (ushort)attacker.GetAverageItemLevel();
             ScalingHealthItemLevelCurveID = (ushort)target.m_unitData.ScalingHealthItemLevelCurveID;
             TargetLevel = (byte)target.GetLevel();
-            Expansion = (byte)creatureTemplate.HealthScalingExpansion;
+            Expansion = (byte)creatureDifficulty.HealthScalingExpansion;
             TargetScalingLevelDelta = (sbyte)target.m_unitData.ScalingLevelDelta;
-            TargetContentTuningID = creatureScaling.ContentTuningID;
+            TargetContentTuningID = creatureDifficulty.ContentTuningID;
             return true;
         }
 
@@ -1285,15 +1278,15 @@ namespace Game.Networking.Packets
         {
             Creature accessor = target.HasScalableLevels() ? target : attacker;
             CreatureTemplate creatureTemplate = accessor.GetCreatureTemplate();
-            CreatureLevelScaling creatureScaling = creatureTemplate.GetLevelScaling(accessor.GetMap().GetDifficultyID());
+            CreatureDifficulty creatureDifficulty = creatureTemplate.GetDifficulty(accessor.GetMap().GetDifficultyID());
 
             TuningType = ContentTuningType.CreatureToCreatureDamage;
             PlayerLevelDelta = 0;
             PlayerItemLevel = 0;
             TargetLevel = (byte)target.GetLevel();
-            Expansion = (byte)creatureTemplate.HealthScalingExpansion;
+            Expansion = (byte)creatureDifficulty.HealthScalingExpansion;
             TargetScalingLevelDelta = (sbyte)accessor.m_unitData.ScalingLevelDelta;
-            TargetContentTuningID = creatureScaling.ContentTuningID;
+            TargetContentTuningID = creatureDifficulty.ContentTuningID;
             return true;
         }
 
@@ -1337,7 +1330,7 @@ namespace Game.Networking.Packets
             data.WriteFloat(PlayerItemLevel);
             data.WriteFloat(TargetItemLevel);
             data.WriteInt16(PlayerLevelDelta);
-            data.WriteUInt16(ScalingHealthItemLevelCurveID);
+            data.WriteUInt32(ScalingHealthItemLevelCurveID);
             data.WriteUInt8(TargetLevel);
             data.WriteUInt8(Expansion);
             data.WriteInt8(TargetScalingLevelDelta); 
@@ -1353,7 +1346,7 @@ namespace Game.Networking.Packets
         public short PlayerLevelDelta;
         public float PlayerItemLevel;
         public float TargetItemLevel;
-        public ushort ScalingHealthItemLevelCurveID;
+        public uint ScalingHealthItemLevelCurveID;
         public byte TargetLevel;
         public byte Expansion;
         public sbyte TargetScalingLevelDelta;
@@ -1641,7 +1634,8 @@ namespace Game.Networking.Packets
         public MissileTrajectoryRequest MissileTrajectory;
         public MovementInfo MoveUpdate;
         public List<SpellWeight> Weight = new();
-        public Array<SpellCraftingReagent> OptionalReagents = new(3);
+        public Array<SpellCraftingReagent> OptionalReagents = new(6);
+        public Array<SpellCraftingReagent> RemovedModifications = new(6);
         public Array<SpellExtraCurrencyCost> OptionalCurrencies = new(5 /*MAX_ITEM_EXT_COST_CURRENCIES*/);
         public ulong? CraftingOrderID;
         public ObjectGuid CraftingNPC;
@@ -1659,10 +1653,11 @@ namespace Game.Networking.Packets
             MissileTrajectory.Read(data);
             CraftingNPC = data.ReadPackedGuid();
 
-            var optionalCurrencies = data.ReadUInt32();
-            var optionalReagents = data.ReadUInt32();
+            var optionalCurrenciesCount = data.ReadUInt32();
+            var optionalReagentsCount = data.ReadUInt32();
+            var removedModificationsCount = data.ReadUInt32();
 
-            for (var i = 0; i < optionalCurrencies; ++i)
+            for (var i = 0; i < optionalCurrenciesCount; ++i)
                 OptionalCurrencies[i].Read(data);
 
             SendCastFlags = data.ReadBits<uint>(5);
@@ -1675,8 +1670,11 @@ namespace Game.Networking.Packets
             if (hasCraftingOrderID)
                 CraftingOrderID = data.ReadUInt64();
 
-            for (var i = 0; i < optionalReagents; ++i)
+            for (var i = 0; i < optionalReagentsCount; ++i)
                 OptionalReagents[i].Read(data);
+
+            for (var i = 0; i < removedModificationsCount; ++i)
+                RemovedModifications[i].Read(data);
 
             if (hasMoveUpdate)
                 MoveUpdate = MovementExtensions.ReadMovementInfo(data);

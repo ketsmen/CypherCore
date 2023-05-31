@@ -23,18 +23,25 @@ namespace Scripts.Spells.Warrior
         public const uint ChargeRootEffect = 105771;
         public const uint ChargeSlowEffect = 236027;
         public const uint ColossusSmash = 167105;
-        public const uint ColossusSmashEffect = 208086;
+        public const uint ColossusSmashAura = 208086;
+        public const uint CriticalThinkingEnergize = 392776;
         public const uint Execute = 20647;
+        public const uint FueledByViolenceHeal = 383104;
         public const uint GlyphOfTheBlazingTrail = 123779;
         public const uint GlyphOfHeroicLeap = 159708;
         public const uint GlyphOfHeroicLeapBuff = 133278;
         public const uint HeroicLeapJump = 178368;
+        public const uint IgnorePain = 190456;
+        public const uint InForTheKill = 248621;
+        public const uint InForTheKillHaste = 248622;
         public const uint ImpendingVictory = 202168;
         public const uint ImpendingVictoryHeal = 202166;
         public const uint ImprovedHeroicLeap = 157449;
         public const uint MortalStrike = 12294;
         public const uint MortalWounds = 213667;
         public const uint RallyingCry = 97463;
+        public const uint ShieldBlockAura = 132404;
+        public const uint ShieldChargeEffect = 385953;
         public const uint Shockwave = 46968;
         public const uint ShockwaveStun = 132168;
         public const uint Stoicism = 70845;
@@ -71,6 +78,40 @@ namespace Scripts.Spells.Warrior
         }
     }
 
+    [Script] // 384036 - Brutal Vitality
+    class spell_warr_brutal_vitality : AuraScript
+    {
+        uint _damageAmount;
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.IgnorePain);
+        }
+
+        void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            _damageAmount += MathFunctions.CalculatePct(eventInfo.GetDamageInfo().GetDamage(), aurEff.GetAmount());
+        }
+
+        void HandleDummyTick(AuraEffect aurEff)
+        {
+            if (_damageAmount == 0)
+                return;
+
+            AuraEffect ignorePainAura = GetTarget().GetAuraEffect(SpellIds.IgnorePain, 0);
+            if (ignorePainAura != null)
+                ignorePainAura.ChangeAmount((int)(ignorePainAura.GetAmount() + _damageAmount));
+
+            _damageAmount = 0;
+        }
+
+        public override void Register()
+        {
+            AfterEffectProc.Add(new EffectProcHandler(HandleProc, 0, AuraType.PeriodicDummy));
+            OnEffectPeriodic.Add(new EffectPeriodicHandler(HandleDummyTick, 0, AuraType.PeriodicDummy));
+        }
+    }
+    
     [Script] // 100 - Charge
     class spell_warr_charge : SpellScript
     {
@@ -141,27 +182,116 @@ namespace Scripts.Spells.Warrior
         }
     }
 
-    [Script] // 167105 - Colossus Smash 7.1.5
-    class spell_warr_colossus_smash_SpellScript : SpellScript
+    // 167105 - Colossus Smash
+    [Script] // 262161 - Warbreaker
+    class spell_warr_colossus_smash : SpellScript
     {
+        bool _bonusHaste;
+
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.ColossusSmashEffect);
+            return ValidateSpellInfo(SpellIds.ColossusSmashAura, SpellIds.InForTheKill, SpellIds.InForTheKillHaste)
+            && Global.SpellMgr.GetSpellInfo(SpellIds.InForTheKill, Difficulty.None).GetEffects().Count > 2;
         }
 
-        void HandleOnHit()
+        void HandleHit()
         {
             Unit target = GetHitUnit();
-            if (target)
-                GetCaster().CastSpell(target, SpellIds.ColossusSmashEffect, true);
+            Unit caster = GetCaster();
+
+            GetCaster().CastSpell(GetHitUnit(), SpellIds.ColossusSmashAura, true);
+
+            if (caster.HasAura(SpellIds.InForTheKill))
+            {
+                SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(SpellIds.InForTheKill, Difficulty.None);
+                if (spellInfo != null)
+                {
+                    if (target.HealthBelowPct(spellInfo.GetEffect(2).CalcValue(caster)))
+                        _bonusHaste = true;
+                }
+            }
+        }
+
+        void HandleAfterCast()
+        {
+            Unit caster = GetCaster();
+            SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(SpellIds.InForTheKill, Difficulty.None);
+            if (spellInfo == null)
+                return;
+
+            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
+            args.AddSpellMod(SpellValueMod.BasePoint0, spellInfo.GetEffect(0).CalcValue(caster));
+            if (_bonusHaste)
+                args.AddSpellMod(SpellValueMod.BasePoint0, spellInfo.GetEffect(1).CalcValue(caster));
+            caster.CastSpell(caster, SpellIds.InForTheKillHaste, args);
         }
 
         public override void Register()
         {
-            OnHit.Add(new HitHandler(HandleOnHit));
+            OnHit.Add(new HitHandler(HandleHit));
+            AfterCast.Add(new CastHandler(HandleAfterCast));
         }
     }
 
+    [Script] // 389306 - Critical Thinking
+    class spell_warr_critical_thinking : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.CriticalThinkingEnergize);
+        }
+
+        void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            int? rageCost = eventInfo.GetProcSpell().GetPowerTypeCostAmount(PowerType.Rage);
+            if (rageCost.HasValue)
+                GetTarget().CastSpell((WorldObject)null, SpellIds.CriticalThinkingEnergize, new CastSpellExtraArgs(TriggerCastFlags.FullMask)
+                    .AddSpellMod(SpellValueMod.BasePoint0, MathFunctions.CalculatePct(rageCost.Value, aurEff.GetAmount())));
+        }
+
+        public override void Register()
+        {
+            AfterEffectProc.Add(new EffectProcHandler(HandleProc, 1, AuraType.Dummy));
+        }
+    }
+    
+    [Script] // 383103  - Fueled by Violence
+    class spell_warr_fueled_by_violence : AuraScript
+    {
+        int _nextHealAmount;
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.FueledByViolenceHeal);
+        }
+
+        void HandleProc(ProcEventInfo eventInfo)
+        {
+            PreventDefaultAction();
+
+            _nextHealAmount += (int)MathFunctions.CalculatePct(eventInfo.GetDamageInfo().GetDamage(), GetEffectInfo(0).CalcValue(GetTarget()));
+        }
+
+        void HandlePeriodic(AuraEffect aurEff)
+        {
+            if (_nextHealAmount == 0)
+                return;
+
+            Unit target = GetTarget();
+            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
+            args.AddSpellMod(SpellValueMod.BasePoint0, _nextHealAmount);
+
+            target.CastSpell(target, SpellIds.FueledByViolenceHeal, args);
+            _nextHealAmount = 0;
+        }
+
+        public override void Register()
+        {
+            OnProc.Add(new AuraProcHandler(HandleProc));
+            OnEffectPeriodic.Add(new EffectPeriodicHandler(HandlePeriodic, 0, AuraType.PeriodicDummy));
+        }
+    }
+    
     [Script] // 6544 Heroic leap
     class spell_warr_heroic_leap : SpellScript
     {
@@ -350,6 +480,44 @@ namespace Scripts.Spells.Warrior
         }
     }
 
+    [Script] // 2565 - Shield Block
+    class spell_warr_shield_block : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.ShieldBlockAura);
+        }
+
+        void HandleHitTarget(uint effIndex)
+        {
+            GetCaster().CastSpell(null, SpellIds.ShieldBlockAura, true);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleHitTarget, 0, SpellEffectName.Dummy));
+        }
+    }
+    
+    [Script] // 385952 - Shield Charge
+    class spell_warr_shield_charge : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.ShieldChargeEffect);
+        }
+
+        void HandleDummy(uint effIndex)
+        {
+            GetCaster().CastSpell(GetHitUnit(), SpellIds.ShieldChargeEffect, true);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+    
     [Script] // 46968 - Shockwave
     class spell_warr_shockwave : SpellScript
     {

@@ -46,6 +46,8 @@ namespace Game.Entities
             if (!GetSession().HasPermission(RBACPermissions.CanFilterWhispers))
                 SetAcceptWhispers(true);
 
+            m_regenInterruptTimestamp = GameTime.Now();
+
             m_zoneUpdateId = 0xffffffff;
             m_nextSave = WorldConfig.GetUIntValue(WorldCfg.IntervalSave);
             m_customizationsChanged = false;
@@ -2736,10 +2738,10 @@ namespace Game.Entities
 
         public bool CanJoinConstantChannelInZone(ChatChannelsRecord channel, AreaTableRecord zone)
         {
-            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.ZoneDep) && zone.HasFlag(AreaFlags.ArenaInstance))
+            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.ZoneDep) && zone.GetFlags().HasFlag(AreaFlags.NoChatChannels))
                 return false;
 
-            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.CityOnly) && !zone.HasFlag(AreaFlags.Capital))
+            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.CityOnly) && !zone.GetFlags().HasFlag(AreaFlags.AllowTradeChannel))
                 return false;
 
             if (channel.Flags.HasAnyFlag(ChannelDBCFlags.GuildReq) && GetGuildId() != 0)
@@ -3342,7 +3344,7 @@ namespace Game.Entities
 
             if (!IsInCombat())
             {
-                if (powerType.RegenInterruptTimeMS != 0 && Time.GetMSTimeDiffToNow(m_combatExitTime) < powerType.RegenInterruptTimeMS)
+                if (powerType.GetFlags().HasFlag(PowerTypeFlags.UseRegenInterrupt) && m_regenInterruptTimestamp + TimeSpan.FromMicroseconds(powerType.RegenInterruptTimeMS) < GameTime.Now())
                     return;
 
                 addvalue = (powerType.RegenPeace + m_unitData.PowerRegenFlatModifier[(int)powerIndex]) * 0.001f * RegenTimer;
@@ -3371,7 +3373,13 @@ namespace Game.Entities
                 WorldCfg.RatePowerArcaneCharges,
                 WorldCfg.RatePowerFury,
                 WorldCfg.RatePowerPain,
-                0 // todo add config for Essence power
+                WorldCfg.RatePowerEssence,
+                0, // runes
+                0, // runes
+                0, // runes
+                0, // alternate
+                0, // alternate
+                0, // alternate
             };
 
             if (RatesForPower[(int)power] != 0)
@@ -3464,6 +3472,18 @@ namespace Game.Entities
                 });
             }
         }
+
+        public void InterruptPowerRegen(PowerType power)
+        {
+            uint powerIndex = GetPowerIndex(power);
+            if (powerIndex == (uint)PowerType.Max || powerIndex >= (uint)PowerType.MaxPerClass)
+                return;
+
+            m_regenInterruptTimestamp = GameTime.Now();
+            m_powerFraction[powerIndex] = 0.0f;
+            SendPacket(new InterruptPowerRegen(power));
+        }
+
         void RegenerateHealth()
         {
             uint curValue = (uint)GetHealth();
@@ -3938,6 +3958,8 @@ namespace Game.Entities
 
         public void ResurrectPlayer(float restore_percent, bool applySickness = false)
         {
+            SetAreaSpiritHealer(null);
+
             DeathReleaseLoc packet = new();
             packet.MapID = -1;
             SendPacket(packet);
@@ -4021,6 +4043,44 @@ namespace Game.Entities
             }
         }
 
+        ObjectGuid GetSpiritHealerGUID() { return _areaSpiritHealerGUID; }
+        
+        public bool CanAcceptAreaSpiritHealFrom(Unit spiritHealer) { return spiritHealer.GetGUID() == _areaSpiritHealerGUID; }
+        
+        public void SetAreaSpiritHealer(Creature creature)
+        {
+            if (!creature)
+            {
+                _areaSpiritHealerGUID = ObjectGuid.Empty;
+                RemoveAurasDueToSpell(BattlegroundConst.SpellWaitingForResurrect);
+                return;
+            }
+
+            if (!creature.IsAreaSpiritHealer())
+                return;
+
+            _areaSpiritHealerGUID = creature.GetGUID();
+            CastSpell(null, BattlegroundConst.SpellWaitingForResurrect);
+        }
+
+        public void SendAreaSpiritHealerTime(Unit spiritHealer)
+        {
+            int timeLeft = 0;
+            Spell spell = spiritHealer.GetCurrentSpell(CurrentSpellTypes.Channeled);
+            if (spell != null)
+                timeLeft = spell.GetTimer();
+
+            SendAreaSpiritHealerTime(spiritHealer.GetGUID(), timeLeft);
+        }
+
+        public void SendAreaSpiritHealerTime(ObjectGuid spiritHealerGUID, int timeLeft)
+        {
+            AreaSpiritHealerTime areaSpiritHealerTime = new();
+            areaSpiritHealerTime.HealerGuid = spiritHealerGUID;
+            areaSpiritHealerTime.TimeLeft = (uint)timeLeft;
+            SendPacket(areaSpiritHealerTime);
+        }
+        
         public void KillPlayer()
         {
             if (IsFlying() && GetTransport() == null)
@@ -4140,7 +4200,7 @@ namespace Game.Entities
 
             bool shouldResurrect = false;
             // Such zones are considered unreachable as a ghost and the player must be automatically revived
-            if ((!IsAlive() && zone != null && zone.HasFlag(AreaFlags.NeedFly)) || GetTransport() != null || GetPositionZ() < GetMap().GetMinHeight(GetPhaseShift(), GetPositionX(), GetPositionY()))
+            if ((!IsAlive() && zone != null && zone.GetFlags().HasFlag(AreaFlags.NoGhostOnRelease)) || GetMap().IsNonRaidDungeon() || GetMap().IsRaid() || GetTransport() != null || GetPositionZ() < GetMap().GetMinHeight(GetPhaseShift(), GetPositionX(), GetPositionY()))
             {
                 shouldResurrect = true;
                 SpawnCorpseBones();
@@ -4727,7 +4787,7 @@ namespace Game.Entities
 
             do
             {
-                if ((area.Flags[1] & (uint)AreaFlags2.CanEnableWarMode) != 0)
+                if (area.GetFlags2().HasFlag(AreaFlags2.AllowWarModeToggle))
                     return true;
 
                 area = CliDB.AreaTableStorage.LookupByKey(area.ParentAreaID);
@@ -4748,6 +4808,7 @@ namespace Game.Entities
                     RemovePlayerFlag(PlayerFlags.WarModeActive);
                     CastSpell(this, auraInside, true);
                     RemoveAurasDueToSpell(auraOutside);
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.WarModeLeave);
                 }
                 else
                 {
@@ -4765,6 +4826,7 @@ namespace Game.Entities
                 RemoveAurasDueToSpell(auraInside);
                 RemovePlayerFlag(PlayerFlags.WarModeActive);
                 RemovePvpFlag(UnitPVPStateFlags.PvP);
+                RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.WarModeLeave);
             }
         }
 
@@ -4998,7 +5060,9 @@ namespace Game.Entities
 
             // Only health and mana are set to maximum.
             SetFullHealth();
-            SetFullPower(PowerType.Mana);
+            foreach (PowerTypeRecord powerType in CliDB.PowerTypeStorage.Values)
+                if (powerType.GetFlags().HasFlag(PowerTypeFlags.SetToMaxOnLevelUp))
+                    SetFullPower(powerType.PowerTypeEnum);
 
             // update level to hunter/summon pet
             Pet pet = GetPet();
@@ -5105,11 +5169,11 @@ namespace Game.Entities
                 return null;
 
             // Deathstate checks
-            if (!IsAlive() && !Convert.ToBoolean(creature.GetCreatureTemplate().TypeFlags & CreatureTypeFlags.VisibleToGhosts))
+            if (!IsAlive() && !creature.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.VisibleToGhosts))
                 return null;
 
             // alive or spirit healer
-            if (!creature.IsAlive() && !Convert.ToBoolean(creature.GetCreatureTemplate().TypeFlags & CreatureTypeFlags.InteractWhileDead))
+            if (!creature.IsAlive() && !creature.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.InteractWhileDead))
                 return null;
 
             // appropriate npc type
@@ -5393,6 +5457,43 @@ namespace Game.Entities
             }
 
             GetSceneMgr().TriggerDelayedScenes();
+        }
+
+        public void AddSpellCategoryCooldownMod(int spellCategoryId, int mod)
+        {
+            int categoryIndex = m_activePlayerData.CategoryCooldownMods.FindIndexIf(mod => mod.SpellCategoryID == spellCategoryId);
+
+            if (categoryIndex < 0)
+            {
+                CategoryCooldownMod newMod = new();
+                newMod.SpellCategoryID = spellCategoryId;
+                newMod.ModCooldown = -mod;
+
+                AddDynamicUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.CategoryCooldownMods), newMod);
+            }
+            else
+            {
+                CategoryCooldownMod g = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.CategoryCooldownMods, categoryIndex);
+                SetUpdateFieldValue(ref g.ModCooldown, m_activePlayerData.CategoryCooldownMods[categoryIndex].ModCooldown - mod);
+            }
+        }
+
+        public void RemoveSpellCategoryCooldownMod(int spellCategoryId, int mod)
+        {
+            int categoryIndex = m_activePlayerData.CategoryCooldownMods.FindIndexIf(mod => mod.SpellCategoryID == spellCategoryId);
+
+            if (categoryIndex < 0)
+                return;
+
+            if (m_activePlayerData.CategoryCooldownMods[categoryIndex].ModCooldown + mod == 0)
+            {
+                RemoveDynamicUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.CategoryCooldownMods), categoryIndex);
+            }
+            else
+            {
+                CategoryCooldownMod g = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.CategoryCooldownMods, categoryIndex);
+                SetUpdateFieldValue(ref g.ModCooldown, m_activePlayerData.CategoryCooldownMods[categoryIndex].ModCooldown + mod);
+            }
         }
 
         public void RemoveSocial()

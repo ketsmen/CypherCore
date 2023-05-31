@@ -366,16 +366,14 @@ namespace Game.Maps
                             InitializeCombatResurrections(1, resInterval);
                             SendEncounterStart(1, 9, resInterval, resInterval);
 
-                            instance.DoOnPlayers(player =>
-                            {
-                                if (player.IsAlive())
-                                    Unit.ProcSkillsAndAuras(player, null, new ProcFlagsInit(ProcFlags.EncounterStart), new ProcFlagsInit(), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, null, null, null);
-                            });
+                            instance.DoOnPlayers(player => player.AtStartOfEncounter());
                             break;
                         }
                         case EncounterState.Fail:
                             ResetCombatResurrections();
                             SendEncounterEnd();
+
+                            instance.DoOnPlayers(player => player.AtEndOfEncounter());
                             break;
                         case EncounterState.Done:
                             ResetCombatResurrections();
@@ -386,6 +384,8 @@ namespace Game.Maps
                                 DoUpdateCriteria(CriteriaType.DefeatDungeonEncounter, dungeonEncounter.Id);
                                 SendBossKillCredit(dungeonEncounter.Id);
                             }
+
+                            instance.DoOnPlayers(player => player.AtEndOfEncounter());
                             break;
                         default:
                             break;

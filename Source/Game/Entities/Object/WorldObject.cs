@@ -265,6 +265,7 @@ namespace Game.Entities
                 bool HasSpline = unit.IsSplineEnabled();
                 bool HasInertia = unit.m_movementInfo.inertia.HasValue;
                 bool HasAdvFlying = unit.m_movementInfo.advFlying.HasValue;
+                bool HasStandingOnGameObjectGUID = unit.m_movementInfo.standingOnGameObjectGUID.HasValue;
 
                 data.WritePackedGuid(GetGUID());                                         // MoverGUID
 
@@ -287,6 +288,7 @@ namespace Game.Entities
                 //for (public uint i = 0; i < RemoveForcesIDs.Count; ++i)
                 //    *data << ObjectGuid(RemoveForcesIDs);
 
+                data.WriteBit(HasStandingOnGameObjectGUID);                    // HasStandingOnGameObjectGUID
                 data.WriteBit(!unit.m_movementInfo.transport.guid.IsEmpty());  // HasTransport
                 data.WriteBit(HasFall);                                        // HasFall
                 data.WriteBit(HasSpline);                                      // HasSpline - marks that the unit uses spline movement
@@ -296,6 +298,9 @@ namespace Game.Entities
 
                 if (!unit.m_movementInfo.transport.guid.IsEmpty())
                     MovementExtensions.WriteTransportInfo(data, unit.m_movementInfo.transport);
+
+                if (HasStandingOnGameObjectGUID)
+                    data.WritePackedGuid(unit.m_movementInfo.standingOnGameObjectGUID.Value);
 
                 if (HasInertia)
                 {
@@ -436,7 +441,6 @@ namespace Game.Entities
                 bool hasFaceMovementDir = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasFaceMovementDir);
                 bool hasFollowsTerrain = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasFollowsTerrain);
                 bool hasUnk1 = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.Unk1);
-                bool hasUnk2 = false;
                 bool hasTargetRollPitchYaw = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasTargetRollPitchYaw);
                 bool hasScaleCurveID = createProperties != null && createProperties.ScaleCurveId != 0;
                 bool hasMorphCurveID = createProperties != null && createProperties.MorphCurveId != 0;
@@ -458,7 +462,6 @@ namespace Game.Entities
                 data.WriteBit(hasFaceMovementDir);
                 data.WriteBit(hasFollowsTerrain);
                 data.WriteBit(hasUnk1);
-                data.WriteBit(hasUnk2);
                 data.WriteBit(hasTargetRollPitchYaw);
                 data.WriteBit(hasScaleCurveID);
                 data.WriteBit(hasMorphCurveID);
@@ -2770,7 +2773,7 @@ namespace Game.Entities
                     {
                         Creature creatureTarget = target.ToCreature();
                         if (creatureTarget != null)
-                            return creatureTarget.HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells) || creatureTarget.GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.CanAssist);
+                            return creatureTarget.HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells) || creatureTarget.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.CanAssist);
                     }
                 }
             }
@@ -3774,6 +3777,7 @@ namespace Game.Entities
         public JumpInfo jump;
         public float stepUpStartElevation { get; set; }
         public AdvFlying? advFlying;
+        public ObjectGuid? standingOnGameObjectGUID;
 
         public MovementInfo()
         {

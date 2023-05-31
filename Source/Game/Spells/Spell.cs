@@ -631,6 +631,26 @@ namespace Game.Spells
                             }
                             return;
                         }
+                        if (targetType.GetTarget() == Targets.DestNearbyEntryOrDB)
+                        {
+                            SpellTargetPosition st = Global.SpellMgr.GetSpellTargetPosition(m_spellInfo.Id, spellEffectInfo.EffectIndex);
+                            if (st != null)
+                            {
+                                SpellDestination dest = new(m_caster);
+                                if (st.target_mapId == m_caster.GetMapId() && m_caster.IsInDist(st.target_X, st.target_Y, st.target_Z, range))
+                                    dest = new SpellDestination(st.target_X, st.target_Y, st.target_Z, st.target_Orientation);
+                                else
+                                {
+                                    float randomRadius1 = spellEffectInfo.CalcRadius(m_caster);
+                                    if (randomRadius1 > 0.0f)
+                                        m_caster.MovePositionToFirstCollision(dest.Position, randomRadius1, targetType.CalcDirectionAngle());
+                                }
+
+                                CallScriptDestinationTargetSelectHandlers(ref dest, spellEffectInfo.EffectIndex, targetType);
+                                m_targets.SetDst(dest);
+                                return;
+                            }
+                        }
                         break;
                     default:
                         break;
@@ -638,6 +658,22 @@ namespace Game.Spells
             }
 
             WorldObject target = SearchNearbyTarget(range, targetType.GetObjectType(), targetType.GetCheckType(), condList);
+            float randomRadius = 0.0f;
+            switch (targetType.GetTarget())
+            {
+                case Targets.DestNearbyEntryOrDB:
+                    // if we are here then there was no db target
+                    if (target == null)
+                    {
+                        target = m_caster;
+                        // radius is only meant to be randomized when using caster fallback
+                        randomRadius = spellEffectInfo.CalcRadius(m_caster);
+                    }
+                    break;
+                default:
+                    break;
+            }
+
             if (target == null)
             {
                 Log.outDebug(LogFilter.Spells, "Spell.SelectImplicitNearbyTargets: cannot find nearby target for spell ID {0}, effect {1}", m_spellInfo.Id, spellEffectInfo.EffectIndex);
@@ -695,6 +731,9 @@ namespace Game.Spells
                     break;
                 case SpellTargetObjectTypes.Dest:
                     SpellDestination dest = new(target);
+                    if (randomRadius > 0.0f)
+                        target.MovePositionToFirstCollision(dest.Position, randomRadius, targetType.CalcDirectionAngle());
+
                     if (m_spellInfo.HasAttribute(SpellAttr4.UseFacingFromSpell))
                         dest.Position.SetOrientation(spellEffectInfo.PositionFacing);
 
@@ -1363,7 +1402,7 @@ namespace Game.Spells
                     Creature creatureTarget = unitTarget.ToCreature();
                     if (creatureTarget)
                     {
-                        if (!creatureTarget.GetCreatureTemplate().TypeFlags.HasAnyFlag(CreatureTypeFlags.CollideWithMissiles))
+                        if (!creatureTarget.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.CollideWithMissiles))
                             continue;
                     }
                 }
@@ -5366,10 +5405,11 @@ namespace Game.Spells
                                 if (info.Item1.Type == PetType.Hunter)
                                 {
                                     CreatureTemplate creatureInfo = Global.ObjectMgr.GetCreatureTemplate(info.Item1.CreatureId);
-                                    if (creatureInfo == null || !creatureInfo.IsTameable(playerCaster.CanTameExoticPets()))
+                                    CreatureDifficulty creatureDifficulty = creatureInfo.GetDifficulty(Difficulty.None);
+                                    if (creatureInfo == null || !creatureInfo.IsTameable(playerCaster.CanTameExoticPets(), creatureDifficulty))
                                     {
                                         // if problem in exotic pet
-                                        if (creatureInfo != null && creatureInfo.IsTameable(true))
+                                        if (creatureInfo != null && creatureInfo.IsTameable(true, creatureDifficulty))
                                             playerCaster.SendTameFailure(PetTameResult.CantControlExotic);
                                         else
                                             playerCaster.SendTameFailure(PetTameResult.NoPetAvailable);
@@ -5717,11 +5757,9 @@ namespace Game.Spells
                         // allow always ghost flight spells
                         if (m_originalCaster != null && m_originalCaster.IsTypeId(TypeId.Player) && m_originalCaster.IsAlive())
                         {
-                            BattleField Bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(m_originalCaster.GetMap(), m_originalCaster.GetZoneId());
-                            var area = CliDB.AreaTableStorage.LookupByKey(m_originalCaster.GetAreaId());
-                            if (area != null)
-                                if (area.HasFlag(AreaFlags.NoFlyZone) || (Bf != null && !Bf.CanFlyIn()))
-                                    return SpellCastResult.NotHere;
+                            BattleField battleField = Global.BattleFieldMgr.GetBattlefieldToZoneId(m_originalCaster.GetMap(), m_originalCaster.GetZoneId());
+                            if (battleField != null && !battleField.CanFlyIn())
+                                return SpellCastResult.NotHere;
                         }
                         break;
                     }
@@ -7960,6 +7998,8 @@ namespace Game.Spells
 
         public SpellInfo GetTriggeredByAuraSpell() { return m_triggeredByAuraSpell; }
 
+        public int GetTimer() { return m_timer; }
+        
         public static implicit operator bool(Spell spell)
         {
             return spell != null;

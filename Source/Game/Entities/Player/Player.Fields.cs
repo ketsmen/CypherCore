@@ -14,6 +14,7 @@ using Game.Maps;
 using Game.Misc;
 using Game.Networking.Packets;
 using Game.Spells;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -55,6 +56,7 @@ namespace Game.Entities
         long m_lastHonorUpdateTime;
         uint m_contestedPvPTimer;
         bool _usePvpItemLevels;
+        ObjectGuid _areaSpiritHealerGUID;
 
         //Groups/Raids
         GroupReference m_group = new();
@@ -141,7 +143,7 @@ namespace Game.Entities
         uint m_deathTimer;
         long m_deathExpireTime;
         byte m_swingErrorMsg;
-        uint m_combatExitTime;
+        DateTime m_regenInterruptTimestamp;
         uint m_regenTimerCount;
         uint m_foodEmoteTimerCount;
         uint m_weaponChangeTimer;

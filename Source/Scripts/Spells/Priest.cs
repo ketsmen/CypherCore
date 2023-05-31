@@ -28,6 +28,11 @@ namespace Scripts.Spells.Priest
         public const uint BlessedHealing = 70772;
         public const uint BodyAndSoul = 64129;
         public const uint BodyAndSoulSpeed = 65081;
+        public const uint DarkReprimand = 400169;
+        public const uint DarkReprimandChannelDamage = 373129;
+        public const uint DarkReprimandChannelHealing = 400171;
+        public const uint DarkReprimandDamage = 373130;
+        public const uint DarkReprimandHealing = 400187;
         public const uint DivineBlessing = 40440;
         public const uint DivineStarHoly = 110744;
         public const uint DivineStarShadow = 122121;
@@ -38,8 +43,12 @@ namespace Scripts.Spells.Priest
         public const uint DivineWrath = 40441;
         public const uint FlashHeal = 2061;
         public const uint GuardianSpiritHeal = 48153;
-        public const uint HaloDamage = 120696;
-        public const uint HaloHeal = 120692;
+        public const uint HaloHoly = 120517;
+        public const uint HaloShadow = 120644;
+        public const uint HaloHolyDamage = 120696;
+        public const uint HaloHolyHeal = 120692;
+        public const uint HaloShadowDamage = 390964;
+        public const uint HaloShadowHeal = 390971;
         public const uint Heal = 2060;
         public const uint HolyWordChastise = 88625;
         public const uint HolyWordSanctify = 34861;
@@ -65,12 +74,17 @@ namespace Scripts.Spells.Priest
         public const uint PrayerOfMendingHeal = 33110;
         public const uint PrayerOfMendingJump = 155793;
         public const uint PrayerOfHealing = 596;
+        public const uint PurgeTheWicked = 204197;
+        public const uint PurgeTheWickedDummy = 204215;
+        public const uint PurgeTheWickedPeriodic = 204213;
         public const uint Rapture = 47536;
         public const uint Renew = 139;
         public const uint RenewedHope = 197469;
         public const uint RenewedHopeEffect = 197470;
+        public const uint RevelInPurity = 373003;
         public const uint ShadowMendDamage = 186439;
         public const uint ShadowMendPeriodicDummy = 187464;
+        public const uint ShadowWordPain = 589;
         public const uint ShieldDisciplineEnergize = 47755;
         public const uint ShieldDisciplinePassive = 197045;
         public const uint SinsOfTheMany = 280398;
@@ -506,7 +520,25 @@ namespace Scripts.Spells.Priest
         }
     }
 
-    [Script] // 120517 - Halo
+    [Script] // 120644 - Halo (Shadow)
+    class spell_pri_halo_shadow : SpellScript
+    {
+        void HandleHitTarget(uint effIndex)
+        {
+            Unit caster = GetCaster();
+
+            if ((int)caster.GetPowerType() != GetEffectInfo().MiscValue)
+                PreventHitDefaultEffect(effIndex);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleHitTarget, 1, SpellEffectName.Energize));
+        }
+    }
+    
+    // 120517 - Halo (Holy)
+    [Script] // 120644 - Halo (Shadow)
     class areatrigger_pri_halo : AreaTriggerAI
     {
         public areatrigger_pri_halo(AreaTrigger areatrigger) : base(areatrigger) { }
@@ -517,9 +549,11 @@ namespace Scripts.Spells.Priest
             if (caster != null)
             {
                 if (caster.IsValidAttackTarget(unit))
-                    caster.CastSpell(unit, SpellIds.HaloDamage, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+                    caster.CastSpell(unit, at.GetSpellId() == SpellIds.HaloShadow ? SpellIds.HaloShadowDamage : SpellIds.HaloHolyDamage,
+                        new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
                 else if (caster.IsValidAssistTarget(unit))
-                    caster.CastSpell(unit, SpellIds.HaloHeal, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+                    caster.CastSpell(unit, at.GetSpellId() == SpellIds.HaloShadow ? SpellIds.HaloShadowHeal : SpellIds.HaloHolyHeal,
+                        new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
             }
         }
     }
@@ -667,17 +701,60 @@ namespace Scripts.Spells.Priest
         }
     }
 
-    [Script] // 47540 - Penance
-    class spell_pri_penance : SpellScript
+    [Script] // 390686 - Painful Punishment
+    class spell_pri_painful_punishment : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.PenanceChannelDamage, SpellIds.PenanceChannelHealing);
+            return ValidateSpellInfo(SpellIds.ShadowWordPain, SpellIds.PurgeTheWickedPeriodic);
+        }
+
+        void HandleEffectProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            Unit caster = eventInfo.GetActor();
+            Unit target = eventInfo.GetActionTarget();
+            if (caster == null || target == null)
+                return;
+
+            int additionalDuration = aurEff.GetAmount();
+
+            Aura shadowWordPain = target.GetOwnedAura(SpellIds.ShadowWordPain, caster.GetGUID());
+            if (shadowWordPain != null)
+                shadowWordPain.SetDuration(shadowWordPain.GetDuration() + additionalDuration);
+
+            Aura purgeTheWicked = target.GetOwnedAura(SpellIds.PurgeTheWickedPeriodic, caster.GetGUID());
+            if (purgeTheWicked != null)
+                purgeTheWicked.SetDuration(purgeTheWicked.GetDuration() + additionalDuration);
+        }
+
+        public override void Register()
+        {
+            OnEffectProc.Add(new EffectProcHandler(HandleEffectProc, 0, AuraType.Dummy));
+        }
+    }
+    
+    [Script("spell_pri_penance", SpellIds.PenanceChannelDamage, SpellIds.PenanceChannelHealing)] // 47540 - Penance
+    [Script("spell_pri_dark_reprimand", SpellIds.DarkReprimandChannelDamage, SpellIds.DarkReprimandChannelHealing)] // 400169 - Dark Reprimand
+    class spell_pri_penance : SpellScript
+    {
+        uint _damageSpellId;
+        uint _healingSpellId;
+
+        spell_pri_penance(uint damageSpellId, uint healingSpellId)
+        {
+            _damageSpellId = damageSpellId;
+            _healingSpellId = healingSpellId;
+        }
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(_damageSpellId, _healingSpellId);
         }
 
         SpellCastResult CheckCast()
         {
             Unit caster = GetCaster();
+
             Unit target = GetExplTargetUnit();
             if (target)
             {
@@ -696,13 +773,14 @@ namespace Scripts.Spells.Priest
         void HandleDummy(uint effIndex)
         {
             Unit caster = GetCaster();
+
             Unit target = GetHitUnit();
             if (target)
             {
                 if (caster.IsFriendlyTo(target))
-                    caster.CastSpell(target, SpellIds.PenanceChannelHealing, new CastSpellExtraArgs().SetTriggeringSpell(GetSpell()));
+                    caster.CastSpell(target, _healingSpellId, new CastSpellExtraArgs().SetTriggeringSpell(GetSpell()));
                 else
-                    caster.CastSpell(target, SpellIds.PenanceChannelDamage, new CastSpellExtraArgs().SetTriggeringSpell(GetSpell()));
+                    caster.CastSpell(target, _damageSpellId, new CastSpellExtraArgs().SetTriggeringSpell(GetSpell()));
             }
         }
 
@@ -713,8 +791,9 @@ namespace Scripts.Spells.Priest
         }
     }
 
-    [Script] // 47758 - Penance (Channel Damage), 47757 - Penance (Channel Healing)
-    class spell_pri_penance_channeled : AuraScript
+    // 47758 - Penance (Channel Damage), 47757 - Penance (Channel Healing)
+    [Script] // 373129 - Dark Reprimand (Channel Damage), 400171 - Dark Reprimand (Channel Healing)
+    class spell_pri_penance_or_dark_reprimand_channeled : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)
         {
@@ -763,7 +842,8 @@ namespace Scripts.Spells.Priest
         }
     }
 
-    [Script] // 47666 - Penance (Damage)
+    // 47666 - Penance (Damage)
+    [Script] // 373130 - Dark Reprimand (Damage)
     class spell_pri_power_of_the_dark_side_damage_bonus : SpellScript
     {
         public override bool Validate(SpellInfo spellInfo)
@@ -792,7 +872,8 @@ namespace Scripts.Spells.Priest
         }
     }
 
-    [Script] // 47750 - Penance (Healing)
+    // 47750 - Penance (Healing)
+    [Script] // 400187 - Dark Reprimand (Healing)
     class spell_pri_power_of_the_dark_side_healing_bonus : SpellScript
     {
         public override bool Validate(SpellInfo spellInfo)
@@ -1159,6 +1240,105 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    // 204197 - Purge the Wicked
+    [Script] // Called by Penance - 47540, Dark Reprimand - 400169
+    class spell_pri_purge_the_wicked : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.PurgeTheWickedPeriodic, SpellIds.PurgeTheWickedDummy);
+        }
+
+        void HandleDummy(uint effIndex)
+        {
+            Unit caster = GetCaster();
+            Unit target = GetHitUnit();
+
+            if (target.HasAura(SpellIds.PurgeTheWickedPeriodic, caster.GetGUID()))
+                caster.CastSpell(target, SpellIds.PurgeTheWickedDummy, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+
+    [Script] // 204215 - Purge the Wicked
+    class spell_pri_purge_the_wicked_dummy : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.PurgeTheWickedPeriodic, SpellIds.RevelInPurity)
+                && Global.SpellMgr.GetSpellInfo(SpellIds.RevelInPurity, Difficulty.None)?.GetEffects().Count > 1;
+        }
+
+        void FilterTargets(List<WorldObject> targets)
+        {
+            Unit caster = GetCaster();
+            Unit explTarget = GetExplTargetUnit();
+
+            targets.RemoveAll(obj =>
+            {
+                // Note: we must remove any non-unit target, the explicit target and any other target that may be under any crowd control aura.
+                Unit target = obj.ToUnit();
+                return !target || target == explTarget || target.HasBreakableByDamageCrowdControlAura();
+            });
+
+            if (targets.Empty())
+                return;
+
+            // Note: there's no SPELL_EFFECT_DUMMY with BasePoints 1 in any of the spells related to use as reference so we hardcode the value.
+            uint spreadCount = 1;
+
+            //     Less than zero –x is less than y.
+            //     Zero –x equals y.
+            //     Greater than zero –x is greater than y.
+
+            // Note: we must sort our list of targets whose priority is 1) aura, 2) distance, and 3) duration.
+            targets.Sort((lhs, rhs) =>
+            {
+                Unit targetA = lhs.ToUnit();
+                Unit targetB = rhs.ToUnit();
+
+                Aura auraA = targetA.GetAura(SpellIds.PurgeTheWickedPeriodic, caster.GetGUID());
+                Aura auraB = targetB.GetAura(SpellIds.PurgeTheWickedPeriodic, caster.GetGUID());
+
+                if (auraA == null)
+                {
+                    if (auraB != null)
+                        return 1;
+                    return explTarget.GetExactDist(targetA).CompareTo(explTarget.GetExactDist(targetB));
+                }
+                if (auraB == null)
+                    return -1;
+
+                return auraA.GetDuration().CompareTo(auraB.GetDuration());
+            });
+
+            // Note: Revel in Purity talent.
+            if (caster.HasAura(SpellIds.RevelInPurity))
+                spreadCount += (uint)Global.SpellMgr.GetSpellInfo(SpellIds.RevelInPurity, Difficulty.None)?.GetEffect(1).CalcValue(GetCaster());
+
+            if (targets.Count > spreadCount)
+                targets.Resize(spreadCount);
+        }
+
+        void HandleDummy(uint effIndex)
+        {
+            Unit caster = GetCaster();
+            Unit target = GetHitUnit();
+
+            caster.CastSpell(target, SpellIds.PurgeTheWickedPeriodic, new CastSpellExtraArgs(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress));
+        }
+
+        public override void Register()
+        {
+            OnObjectAreaTargetSelect.Add(new ObjectAreaTargetSelectHandler(FilterTargets, 1, Targets.UnitDestAreaEnemy));
+            OnEffectHitTarget.Add(new EffectHandler(HandleDummy, 1, SpellEffectName.Dummy));
+        }
+    }
+    
     [Script] // 47536 - Rapture
     class spell_pri_rapture : SpellScript
     {
