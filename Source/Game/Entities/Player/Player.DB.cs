@@ -632,7 +632,7 @@ namespace Game.Entities
 
             if (!ok)
             {
-                WorldSafeLocsEntry loc = Global.ObjectMgr.GetDefaultGraveYard(GetTeam());
+                WorldSafeLocsEntry loc = Global.ObjectMgr.GetDefaultGraveyard(GetTeam());
                 if (loc == null && GetRace() == Race.PandarenNeutral)
                     loc = Global.ObjectMgr.GetWorldSafeLoc(3295); // The Wandering Isle, Starting Area GY
 
@@ -762,6 +762,9 @@ namespace Game.Entities
                                 SetQuestSlotState(slot, QuestSlotStateMask.Complete);
                             else if (questStatusData.Status == QuestStatus.Failed)
                                 SetQuestSlotState(slot, QuestSlotStateMask.Fail);
+
+                            if (quest.HasFlagEx(QuestFlagsEx.RecastAcceptSpellOnLogin) && quest.HasFlag(QuestFlags.PlayerCastAccept) && quest.SourceSpellID > 0)
+                                CastSpell(this, quest.SourceSpellID, new CastSpellExtraArgs(TriggerCastFlags.FullMask));
 
                             ++slot;
                         }

@@ -41,6 +41,7 @@ namespace Scripts.Spells.Priest
         public const uint DivineStarShadowDamage = 390845;
         public const uint DivineStarShadowHeal = 390981;
         public const uint DivineWrath = 40441;
+        public const uint EmpoweredRenewHeal = 391359;
         public const uint FlashHeal = 2061;
         public const uint GuardianSpiritHeal = 48153;
         public const uint HaloHoly = 120517;
@@ -50,6 +51,7 @@ namespace Scripts.Spells.Priest
         public const uint HaloShadowDamage = 390964;
         public const uint HaloShadowHeal = 390971;
         public const uint Heal = 2060;
+        public const uint HolyMendingHeal = 391156;
         public const uint HolyWordChastise = 88625;
         public const uint HolyWordSanctify = 34861;
         public const uint HolyWordSerenity = 2050;
@@ -82,6 +84,7 @@ namespace Scripts.Spells.Priest
         public const uint RenewedHope = 197469;
         public const uint RenewedHopeEffect = 197470;
         public const uint RevelInPurity = 373003;
+        public const uint SayYourPrayers = 391186;
         public const uint ShadowMendDamage = 186439;
         public const uint ShadowMendPeriodicDummy = 187464;
         public const uint ShadowWordPain = 589;
@@ -206,8 +209,7 @@ namespace Scripts.Spells.Priest
         public override bool Validate(SpellInfo spellInfo)
         {
             return ValidateSpellInfo(SpellIds.AtonementHeal, SpellIds.SinsOfTheMany)
-            && spellInfo.GetEffects().Count > 1
-            && Global.SpellMgr.GetSpellInfo(SpellIds.SinsOfTheMany, Difficulty.None).GetEffects().Count > 2;
+            && ValidateSpellEffect((spellInfo.Id, 1), (SpellIds.SinsOfTheMany, 2));
         }
 
         bool CheckProc(ProcEventInfo eventInfo)
@@ -313,6 +315,32 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    [Script] // 204883 - Circle of Healing
+    class spell_pri_circle_of_healing : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellEffect(spellInfo.Id, 1);
+        }
+
+        void FilterTargets(List<WorldObject> targets)
+        {
+            // Note: we must remove one since target is always chosen.
+            uint maxTargets = (uint)(GetSpellInfo().GetEffect(1).CalcValue(GetCaster()) - 1);
+
+            SelectRandomInjuredTargets(targets, maxTargets, true);
+
+            Unit explicitTarget = GetExplTargetUnit();
+            if (explicitTarget != null)
+                targets.Insert(0, explicitTarget);
+        }
+
+        public override void Register()
+        {
+            OnObjectAreaTargetSelect.Add(new ObjectAreaTargetSelectHandler(FilterTargets, 0, Targets.UnitDestAreaAlly));
+        }
+    }
+    
     [Script] // 64844 - Divine Hymn
     class spell_pri_divine_hymn : SpellScript
     {
@@ -475,6 +503,35 @@ namespace Scripts.Spells.Priest
                 });
         }
     }
+
+    [Script] // 391339 - Empowered Renew
+    class spell_pri_empowered_renew : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.Renew, SpellIds.EmpoweredRenewHeal)
+                && ValidateSpellEffect(SpellIds.Renew, 0)
+                && Global.SpellMgr.GetSpellInfo(SpellIds.Renew, Difficulty.None).GetEffect(0).IsAura(AuraType.PeriodicHeal);
+        }
+
+        void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            Unit caster = eventInfo.GetActor();
+            Unit target = eventInfo.GetProcTarget();
+
+            SpellInfo renewSpellInfo = Global.SpellMgr.GetSpellInfo(SpellIds.Renew, GetCastDifficulty());
+            SpellEffectInfo renewEffect = renewSpellInfo.GetEffect(0);
+            int estimatedTotalHeal = (int)AuraEffect.CalculateEstimatedfTotalPeriodicAmount(caster, target, renewSpellInfo, renewEffect, renewEffect.CalcValue(caster), 1);
+            int healAmount = MathFunctions.CalculatePct(estimatedTotalHeal, aurEff.GetAmount());
+
+            caster.CastSpell(target, SpellIds.EmpoweredRenewHeal, new CastSpellExtraArgs(aurEff).AddSpellMod(SpellValueMod.BasePoint0, healAmount));
+        }
+
+        public override void Register()
+        {
+            OnEffectProc.Add(new EffectProcHandler(HandleProc, 0, AuraType.Dummy));
+        }
+    }
     
     [Script] // 47788 - Guardian Spirit
     class spell_pri_guardian_spirit : AuraScript
@@ -483,7 +540,7 @@ namespace Scripts.Spells.Priest
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.GuardianSpiritHeal) && spellInfo.GetEffects().Count > 1;
+            return ValidateSpellInfo(SpellIds.GuardianSpiritHeal) && ValidateSpellEffect(spellInfo.Id, 1);
         }
 
         public override bool Load()
@@ -557,6 +614,31 @@ namespace Scripts.Spells.Priest
             }
         }
     }
+
+    [Script] // 391154 - Holy Mending
+    class spell_pri_holy_mending : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.Renew, SpellIds.HolyMendingHeal);
+        }
+
+        bool CheckProc(AuraEffect aurEff, ProcEventInfo procInfo)
+        {
+            return procInfo.GetProcTarget().HasAura(SpellIds.Renew, procInfo.GetActor().GetGUID());
+        }
+
+        void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            eventInfo.GetActor().CastSpell(eventInfo.GetProcTarget(), SpellIds.HolyMendingHeal, new CastSpellExtraArgs(aurEff));
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new CheckEffectProcHandler(CheckProc, 0, AuraType.ProcTriggerSpell));
+            OnEffectProc.Add(new EffectProcHandler(HandleProc, 0, AuraType.ProcTriggerSpell));
+        }
+    }
     
     [Script] // 63733 - Holy Words
     class spell_pri_holy_words : AuraScript
@@ -564,9 +646,7 @@ namespace Scripts.Spells.Priest
         public override bool Validate(SpellInfo spellInfo)
         {
             return ValidateSpellInfo(SpellIds.Heal, SpellIds.FlashHeal, SpellIds.PrayerOfHealing, SpellIds.Renew, SpellIds.Smite, SpellIds.HolyWordChastise, SpellIds.HolyWordSanctify, SpellIds.HolyWordSerenity)
-                && Global.SpellMgr.GetSpellInfo(SpellIds.HolyWordSerenity, Difficulty.None).GetEffects().Count > 1
-                && Global.SpellMgr.GetSpellInfo(SpellIds.HolyWordSanctify, Difficulty.None).GetEffects().Count > 3
-                && Global.SpellMgr.GetSpellInfo(SpellIds.HolyWordChastise, Difficulty.None).GetEffects().Count > 1;
+                && ValidateSpellEffect((SpellIds.HolyWordSerenity, 1), (SpellIds.HolyWordSanctify, 3), (SpellIds.HolyWordChastise, 1));
         }
 
         void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
@@ -907,7 +987,7 @@ namespace Scripts.Spells.Priest
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.Atonement, SpellIds.AtonementTriggered, SpellIds.Trinity) && spellInfo.GetEffects().Count > 3;
+            return ValidateSpellInfo(SpellIds.Atonement, SpellIds.AtonementTriggered, SpellIds.Trinity) && ValidateSpellEffect(spellInfo.Id, 3);
         }
 
         void OnTargetSelect(List<WorldObject> targets)
@@ -1110,7 +1190,7 @@ namespace Scripts.Spells.Priest
         public override bool Validate(SpellInfo spellInfo)
         {
             return ValidateSpellInfo(SpellIds.PrayerOfMendingHeal, SpellIds.PrayerOfMendingAura)
-                && !Global.SpellMgr.GetSpellInfo(SpellIds.PrayerOfMendingHeal, Difficulty.None).GetEffects().Empty();
+                && ValidateSpellEffect(SpellIds.PrayerOfMendingHeal, 0);
         }
 
         public override bool Load()
@@ -1140,7 +1220,7 @@ namespace Scripts.Spells.Priest
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.PrayerOfMendingHeal, SpellIds.PrayerOfMendingJump);
+            return ValidateSpellInfo(SpellIds.PrayerOfMendingHeal, SpellIds.PrayerOfMendingJump, SpellIds.SayYourPrayers) && ValidateSpellEffect(SpellIds.SayYourPrayers, 0);
         }
 
         void HandleHeal(AuraEffect aurEff, ProcEventInfo eventInfo)
@@ -1160,7 +1240,15 @@ namespace Scripts.Spells.Priest
                 {
                     CastSpellExtraArgs args = new(aurEff);
                     args.OriginalCaster = caster.GetGUID();
-                    args.AddSpellMod(SpellValueMod.BasePoint0, stackAmount - 1);
+
+                    int newStackAmount = stackAmount - 1;
+                    AuraEffect sayYourPrayers = caster.GetAuraEffect(SpellIds.SayYourPrayers, 0);
+                    if (sayYourPrayers != null)
+                        if (RandomHelper.randChance(sayYourPrayers.GetAmount()))
+                            ++newStackAmount;
+
+                    args.AddSpellMod(SpellValueMod.BasePoint0, newStackAmount);
+
                     target.CastSpell(target, SpellIds.PrayerOfMendingJump, args);
                 }
 
@@ -1270,7 +1358,7 @@ namespace Scripts.Spells.Priest
         public override bool Validate(SpellInfo spellInfo)
         {
             return ValidateSpellInfo(SpellIds.PurgeTheWickedPeriodic, SpellIds.RevelInPurity)
-                && Global.SpellMgr.GetSpellInfo(SpellIds.RevelInPurity, Difficulty.None)?.GetEffects().Count > 1;
+                && ValidateSpellEffect(SpellIds.RevelInPurity, 1);
         }
 
         void FilterTargets(List<WorldObject> targets)

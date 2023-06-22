@@ -639,7 +639,7 @@ namespace Scripts.Spells.Generic
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            if (spellInfo.GetEffects().Empty() || !spellInfo.GetEffect(0).IsAura(AuraType.ModPowerRegen))
+            if (!ValidateSpellEffect(spellInfo.Id, 0) || !spellInfo.GetEffect(0).IsAura(AuraType.ModPowerRegen))
             {
                 Log.outError(LogFilter.Spells, "Aura {GetId()} structure has been changed - first aura is no longer SPELL_AURA_MOD_POWER_REGEN");
                 return false;
@@ -718,7 +718,7 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return !spellInfo.GetEffects().Empty() && ValidateSpellInfo(spellInfo.GetEffect(0).TriggerSpell);
+            return ValidateSpellEffect(spellInfo.Id, 0) && ValidateSpellInfo(spellInfo.GetEffect(0).TriggerSpell);
         }
 
         void PeriodicTick(AuraEffect aurEff)
@@ -1103,7 +1103,7 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return spellInfo.GetEffects().Count > 2 && ValidateSpellInfo((uint)spellInfo.GetEffect(2).CalcValue());
+            return ValidateSpellEffect(spellInfo.Id, 2) && ValidateSpellInfo((uint)spellInfo.GetEffect(2).CalcValue());
         }
 
         void HandleApply(AuraEffect aurEff, AuraEffectHandleModes mode)
@@ -2115,7 +2115,7 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return spellInfo.GetEffects().Count > 1;
+            return ValidateSpellEffect(spellInfo.Id, 1);
         }
 
         void CalculateAmount(AuraEffect aurEff, ref int amount, ref bool canBeRecalculated)
@@ -2602,7 +2602,7 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return spellInfo.GetEffects().Count > 1;
+            return ValidateSpellEffect(spellInfo.Id, 1);
         }
 
         public override bool Load()
@@ -3002,7 +3002,7 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return spellInfo.GetEffects().Count > 1;
+            return ValidateSpellEffect(spellInfo.Id, 1);
         }
 
         void PeriodicTick(AuraEffect aurEff)
@@ -3808,7 +3808,7 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            if (spellInfo.GetEffects().Empty())
+            if (!ValidateSpellEffect(spellInfo.Id, 0))
                 return false;
 
             if (spellInfo.GetEffect(0).CalcValue() < 1)
@@ -4033,7 +4033,7 @@ namespace Scripts.Spells.Generic
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo((uint)RequiredMixologySpells.Mixology) && !spellInfo.GetEffects().Empty();
+            return ValidateSpellInfo((uint)RequiredMixologySpells.Mixology) && ValidateSpellEffect(spellInfo.Id, 0);
         }
 
         public override bool Load()
@@ -4582,11 +4582,11 @@ namespace Scripts.Spells.Generic
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.FaceRage) && spellInfo.GetEffects().Count > 2;
+            return ValidateSpellInfo(SpellIds.FaceRage) && ValidateSpellEffect(spellInfo.Id, 2);
         }
 
         void OnRemove(AuraEffect effect, AuraEffectHandleModes mode)
-        {
+        {   
             GetTarget().RemoveAurasDueToSpell(GetEffectInfo(2).TriggerSpell);
         }
 

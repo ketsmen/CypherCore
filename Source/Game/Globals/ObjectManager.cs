@@ -754,10 +754,10 @@ namespace Game
         {
             uint oldMSTime = Time.GetMSTime();
 
-            GraveYardStorage.Clear();                                  // need for reload case
+            GraveyardStorage.Clear();                                  // need for reload case
 
-            //                                         0       1         2
-            SQLResult result = DB.World.Query("SELECT ID, GhostZone, faction FROM graveyard_zone");
+            //                                         0   1
+            SQLResult result = DB.World.Query("SELECT ID, GhostZone FROM graveyard_zone");
 
             if (result.IsEmpty())
             {
@@ -769,10 +769,8 @@ namespace Game
 
             do
             {
-                ++count;
                 uint safeLocId = result.Read<uint>(0);
                 uint zoneId = result.Read<uint>(1);
-                Team team = (Team)result.Read<uint>(2);
 
                 WorldSafeLocsEntry entry = GetWorldSafeLoc(safeLocId);
                 if (entry == null)
@@ -788,18 +786,15 @@ namespace Game
                     continue;
                 }
 
-                if (team != 0 && team != Team.Horde && team != Team.Alliance)
-                {
-                    Log.outError(LogFilter.Sql, "Table `graveyard_zone` has a record for non player faction ({0}), skipped.", team);
-                    continue;
-                }
-
-                if (!AddGraveYardLink(safeLocId, zoneId, team, false))
+                if (!AddGraveyardLink(safeLocId, zoneId, 0, false))
                     Log.outError(LogFilter.Sql, "Table `graveyard_zone` has a duplicate record for Graveyard (ID: {0}) and Zone (ID: {1}), skipped.", safeLocId, zoneId);
+
+                ++count;
             } while (result.NextRow());
 
             Log.outInfo(LogFilter.ServerLoading, "Loaded {0} graveyard-zone links in {1} ms", count, Time.GetMSTimeDiffToNow(oldMSTime));
         }
+
         public void LoadWorldSafeLocs()
         {
             uint oldMSTime = Time.GetMSTime();
@@ -831,7 +826,7 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, $"Loaded {_worldSafeLocs.Count} world locations {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
         }
 
-        public WorldSafeLocsEntry GetDefaultGraveYard(Team team)
+        public WorldSafeLocsEntry GetDefaultGraveyard(Team team)
         {
             if (team == Team.Horde)
                 return GetWorldSafeLoc(10);
@@ -840,7 +835,7 @@ namespace Game
             else return null;
         }
 
-        public WorldSafeLocsEntry GetClosestGraveYard(WorldLocation location, Team team, WorldObject conditionObject)
+        public WorldSafeLocsEntry GetClosestGraveyard(WorldLocation location, Team team, WorldObject conditionObject)
         {
             float x, y, z;
             location.GetPosition(out x, out y, out z);
@@ -853,7 +848,7 @@ namespace Game
                 if (z > -500)
                 {
                     Log.outError(LogFilter.Server, "ZoneId not found for map {0} coords ({1}, {2}, {3})", MapId, x, y, z);
-                    return GetDefaultGraveYard(team);
+                    return GetDefaultGraveyard(team);
                 }
             }
 
@@ -884,7 +879,7 @@ namespace Game
             //     then check faction
             //   if mapId != graveyard.mapId (ghost in instance) and search any graveyard associated
             //     then check faction
-            var range = GraveYardStorage.LookupByKey(zoneId);
+            var range = GraveyardStorage.LookupByKey(zoneId);
             MapRecord mapEntry = CliDB.MapStorage.LookupByKey(MapId);
 
             ConditionSourceInfo conditionSource = new(conditionObject);
@@ -894,7 +889,7 @@ namespace Game
             {
                 if (zoneId != 0) // zone == 0 can't be fixed, used by bliz for bugged zones
                     Log.outError(LogFilter.Sql, "Table `game_graveyard_zone` incomplete: Zone {0} Team {1} does not have a linked graveyard.", zoneId, team);
-                return GetDefaultGraveYard(team);
+                return GetDefaultGraveyard(team);
             }
 
             // at corpse map
@@ -912,24 +907,36 @@ namespace Game
 
             foreach (var data in range)
             {
-                WorldSafeLocsEntry entry = GetWorldSafeLoc(data.safeLocId);
+                WorldSafeLocsEntry entry = GetWorldSafeLoc(data.SafeLocId);
                 if (entry == null)
                 {
-                    Log.outError(LogFilter.Sql, "Table `game_graveyard_zone` has record for not existing graveyard (WorldSafeLocs.dbc id) {0}, skipped.", data.safeLocId);
+                    Log.outError(LogFilter.Sql, "Table `game_graveyard_zone` has record for not existing graveyard (WorldSafeLocs.dbc id) {0}, skipped.", data.SafeLocId);
                     continue;
                 }
 
-                // skip enemy faction graveyard
-                // team == 0 case can be at call from .neargrave
-                if (data.team != 0 && team != 0 && data.team != (uint)team)
-                    continue;
-
                 if (conditionObject)
                 {
-                    if (!Global.ConditionMgr.IsObjectMeetingNotGroupedConditions(ConditionSourceType.Graveyard, data.safeLocId, conditionSource))
+                    if (!Global.ConditionMgr.IsObjectMeetToConditions(conditionSource, data.Conditions))
                         continue;
 
                     if (entry.Loc.GetMapId() == mapEntry.ParentMapID && !conditionObject.GetPhaseShift().HasVisibleMapId(entry.Loc.GetMapId()))
+                        continue;
+                }
+                else if (team != 0)
+                {
+                    bool teamConditionMet = true;
+                    foreach (Condition cond in data.Conditions)
+                    {
+                        if (cond.ConditionType != ConditionTypes.Team)
+                            continue;
+
+                        if (cond.ConditionValue1 == (uint)team)
+                            continue;
+
+                        teamConditionMet = false;
+                    }
+
+                    if (!teamConditionMet)
                         continue;
                 }
 
@@ -995,12 +1002,12 @@ namespace Game
             return entryFar;
         }
 
-        public GraveYardData FindGraveYardData(uint id, uint zoneId)
+        public GraveyardData FindGraveyardData(uint id, uint zoneId)
         {
-            var range = GraveYardStorage.LookupByKey(zoneId);
+            var range = GraveyardStorage.LookupByKey(zoneId);
             foreach (var data in range)
             {
-                if (data.safeLocId == id)
+                if (data.SafeLocId == id)
                     return data;
             }
             return null;
@@ -1010,22 +1017,22 @@ namespace Game
         {
             return _worldSafeLocs.LookupByKey(id);
         }
+
         public Dictionary<uint, WorldSafeLocsEntry> GetWorldSafeLocs()
         {
             return _worldSafeLocs;
         }
 
-        public bool AddGraveYardLink(uint id, uint zoneId, Team team, bool persist = true)
+        public bool AddGraveyardLink(uint id, uint zoneId, Team team, bool persist = true)
         {
-            if (FindGraveYardData(id, zoneId) != null)
+            if (FindGraveyardData(id, zoneId) != null)
                 return false;
 
             // add link to loaded data
-            GraveYardData data = new();
-            data.safeLocId = id;
-            data.team = (uint)team;
+            GraveyardData data = new();
+            data.SafeLocId = id;
 
-            GraveYardStorage.Add(zoneId, data);
+            GraveyardStorage.Add(zoneId, data);
 
             // add link to DB
             if (persist)
@@ -1034,58 +1041,38 @@ namespace Game
 
                 stmt.AddValue(0, id);
                 stmt.AddValue(1, zoneId);
-                stmt.AddValue(2, (uint)team);
 
                 DB.World.Execute(stmt);
+
+                // Store graveyard condition if team is set
+                if (team != 0)
+                {
+                    PreparedStatement conditionStmt = WorldDatabase.GetPreparedStatement(WorldStatements.INS_CONDITION);
+                    conditionStmt.AddValue(0, (uint)ConditionSourceType.Graveyard); // SourceTypeOrReferenceId
+                    conditionStmt.AddValue(1, zoneId); // SourceGroup
+                    conditionStmt.AddValue(2, id); // SourceEntry
+                    conditionStmt.AddValue(3, 0); // SourceId
+                    conditionStmt.AddValue(4, 0); // ElseGroup
+                    conditionStmt.AddValue(5, (uint)ConditionTypes.Team); // ConditionTypeOrReference
+                    conditionStmt.AddValue(6, 0); // ConditionTarget
+                    conditionStmt.AddValue(7, (uint)team); // ConditionValue1
+                    conditionStmt.AddValue(8, 0); // ConditionValue2
+                    conditionStmt.AddValue(9, 0); // ConditionValue3
+                    conditionStmt.AddValue(10, 0); // NegativeCondition
+                    conditionStmt.AddValue(11, 0); // ErrorType
+                    conditionStmt.AddValue(12, 0); // ErrorTextId
+                    conditionStmt.AddValue(13, ""); // ScriptName
+                    conditionStmt.AddValue(14, ""); // Comment
+
+                    DB.World.Execute(conditionStmt);
+
+                    // reload conditions to make sure everything is loaded as it should be
+                    Global.ConditionMgr.LoadConditions(true);
+                    //Global.ScriptMgr.NotifyScriptIDUpdate();
+                }
             }
 
             return true;
-        }
-        public void RemoveGraveYardLink(uint id, uint zoneId, Team team, bool persist = false)
-        {
-            var range = GraveYardStorage.LookupByKey(zoneId);
-            if (range.Empty())
-            {
-                Log.outError(LogFilter.Sql, "Table `game_graveyard_zone` incomplete: Zone {0} Team {1} does not have a linked graveyard.", zoneId, team);
-                return;
-            }
-
-            bool found = false;
-
-
-            foreach (var data in range)
-            {
-                // skip not matching safezone id
-                if (data.safeLocId != id)
-                    continue;
-
-                // skip enemy faction graveyard at same map (normal area, city, or Battleground)
-                // team == 0 case can be at call from .neargrave
-                if (data.team != 0 && team != 0 && data.team != (uint)team)
-                    continue;
-
-                found = true;
-                break;
-            }
-
-            // no match, return
-            if (!found)
-                return;
-
-            // remove from links
-            GraveYardStorage.Remove(zoneId);
-
-            // remove link from DB
-            if (persist)
-            {
-                PreparedStatement stmt = WorldDatabase.GetPreparedStatement(WorldStatements.DEL_GRAVEYARD_ZONE);
-
-                stmt.AddValue(0, id);
-                stmt.AddValue(1, zoneId);
-                stmt.AddValue(2, (uint)team);
-
-                DB.World.Execute(stmt);
-            }
         }
 
         //Scripts
@@ -1227,15 +1214,12 @@ namespace Game
                             continue;
                         }
 
-                        if (!quest.HasSpecialFlag(QuestSpecialFlags.ExplorationOrEvent))
+                        if (!quest.HasFlag(QuestFlags.CompletionEvent) && !quest.HasFlag(QuestFlags.CompletionAreaTrigger))
                         {
-                            Log.outError(LogFilter.Sql, "Table `{0}` has quest (ID: {1}) in SCRIPT_COMMAND_QUEST_EXPLORED in `datalong` for script id {2}, but quest not have flag QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT in quest flags. Script command or quest flags wrong. Quest modified to require objective.",
+                            Log.outError(LogFilter.Sql, "Table `{0}` has quest (ID: {1}) in SCRIPT_COMMAND_QUEST_EXPLORED in `datalong` for script id {2}, but quest not have QUEST_FLAGS_COMPLETION_EVENT or QUEST_FLAGS_COMPLETION_AREA_TRIGGER in quest flags. Script command will do nothing.",
                                 tableName, tmp.QuestExplored.QuestID, tmp.id);
 
-                            // this will prevent quest completing without objective
-                            quest.SetSpecialFlag(QuestSpecialFlags.ExplorationOrEvent);
-
-                            // continue; - quest objective requirement set and command can be allowed
+                            continue;
                         }
 
                         if (tmp.QuestExplored.Distance > SharedConst.DefaultVisibilityDistance)
@@ -7194,8 +7178,10 @@ namespace Game
             }
 
             // Load `quest_objectives`
-            //                               0        1   2     3             4         5       6      7       8                  9
-            result = DB.World.Query("SELECT QuestID, ID, Type, StorageIndex, ObjectID, Amount, Flags, Flags2, ProgressBarWeight, Description FROM quest_objectives ORDER BY `Order` ASC, StorageIndex ASC");
+            //                                  0           1      2        3                4            5          6         7          8                     9
+            result = DB.World.Query("SELECT qo.QuestID, qo.ID, qo.Type, qo.StorageIndex, qo.ObjectID, qo.Amount, qo.Flags, qo.Flags2, qo.ProgressBarWeight, qo.Description, " +
+            //     10                11            12                   13                     14
+            "qoce.GameEventID, qoce.SpellID, qoce.ConversationID, qoce.UpdatePhaseShift, qoce.UpdateZoneAuras FROM quest_objectives qo LEFT JOIN quest_objectives_completion_effect qoce ON qo.ID = qoce.ObjectiveID ORDER BY `Order` ASC, StorageIndex ASC");
             if (result.IsEmpty())
             {
                 Log.outInfo(LogFilter.ServerLoading, "Loaded 0 quest objectives. DB table `quest_objectives` is empty.");
@@ -7260,7 +7246,7 @@ namespace Game
 
                 // additional quest integrity checks (GO, creaturetemplate and itemtemplate must be loaded already)
 
-                if (qinfo.Type >= QuestType.Max)
+                if (qinfo.Type >= QuestType.MaxDBAllowedQuestTypes)
                     Log.outError(LogFilter.Sql, "Quest {0} has `Method` = {1}, expected values are 0, 1 or 2.", qinfo.Id, qinfo.Type);
 
                 if (Convert.ToBoolean(qinfo.SpecialFlags & ~QuestSpecialFlags.DbAllowed))
@@ -7303,7 +7289,7 @@ namespace Game
                     }
                 }
 
-                if (Convert.ToBoolean(qinfo.Flags & QuestFlags.Tracking))
+                if (Convert.ToBoolean(qinfo.Flags & QuestFlags.TrackingEvent))
                 {
                     // at auto-reward can be rewarded only RewardChoiceItemId[0]
                     for (int j = 1; j < qinfo.RewardChoiceItemId.Length; ++j)
@@ -7889,35 +7875,7 @@ namespace Game
                 }
             }
 
-            // check QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT for spell with SPELL_EFFECT_QUEST_COMPLETE
-            foreach (SpellNameRecord spellNameEntry in CliDB.SpellNameStorage.Values)
-            {
-                SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(spellNameEntry.Id, Difficulty.None);
-                if (spellInfo == null)
-                    continue;
-
-                foreach (var spellEffectInfo in spellInfo.GetEffects())
-                {
-                    if (spellEffectInfo.Effect != SpellEffectName.QuestComplete)
-                        continue;
-
-                    uint questId = (uint)spellEffectInfo.MiscValue;
-                    Quest quest = GetQuestTemplate(questId);
-
-                    // some quest referenced in spells not exist (outdated spells)
-                    if (quest == null)
-                        continue;
-
-                    if (!quest.HasSpecialFlag(QuestSpecialFlags.ExplorationOrEvent))
-                    {
-                        Log.outError(LogFilter.Sql, "Spell (id: {0}) have SPELL_EFFECT_QUEST_COMPLETE for quest {1}, but quest not have flag QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT. " +
-                            "Quest flags must be fixed, quest modified to enable objective.", spellInfo.Id, questId);
-
-                        // this will prevent quest completing without objective
-                        quest.SetSpecialFlag(QuestSpecialFlags.ExplorationOrEvent);
-                    }
-                }
-            }
+            // don't check spells with SPELL_EFFECT_QUEST_COMPLETE, a lot of invalid db2 data
 
             // Make all paragon reward quests repeatable
             foreach (ParagonReputationRecord paragonReputation in CliDB.ParagonReputationStorage.Values)
@@ -8133,35 +8091,30 @@ namespace Game
             {
                 ++count;
 
-                uint trigger_ID = result.Read<uint>(0);
-                uint quest_ID = result.Read<uint>(1);
+                uint triggerId = result.Read<uint>(0);
+                uint questId = result.Read<uint>(1);
 
-                AreaTriggerRecord atEntry = CliDB.AreaTriggerStorage.LookupByKey(trigger_ID);
+                AreaTriggerRecord atEntry = CliDB.AreaTriggerStorage.LookupByKey(triggerId);
                 if (atEntry == null)
                 {
-                    Log.outError(LogFilter.Sql, "Area trigger (ID:{0}) does not exist in `AreaTrigger.dbc`.", trigger_ID);
+                    Log.outError(LogFilter.Sql, "Area trigger (ID:{0}) does not exist in `AreaTrigger.dbc`.", triggerId);
                     continue;
                 }
 
-                Quest quest = GetQuestTemplate(quest_ID);
-
+                Quest quest = GetQuestTemplate(questId);
                 if (quest == null)
                 {
-                    Log.outError(LogFilter.Sql, "Table `areatrigger_involvedrelation` has record (id: {0}) for not existing quest {1}", trigger_ID, quest_ID);
+                    Log.outError(LogFilter.Sql, "Table `areatrigger_involvedrelation` has record (id: {0}) for not existing quest {1}", triggerId, questId);
                     continue;
                 }
 
-                if (!quest.HasSpecialFlag(QuestSpecialFlags.ExplorationOrEvent))
+                if (!quest.HasFlag(QuestFlags.CompletionAreaTrigger) && !quest.HasQuestObjectiveType(QuestObjectiveType.AreaTrigger))
                 {
-                    Log.outError(LogFilter.Sql, "Table `areatrigger_involvedrelation` has record (id: {0}) for not quest {1}, but quest not have flag QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT. Trigger or quest flags must be fixed, quest modified to require objective.", trigger_ID, quest_ID);
-
-                    // this will prevent quest completing without objective
-                    quest.SetSpecialFlag(QuestSpecialFlags.ExplorationOrEvent);
-
-                    // continue; - quest modified to required objective and trigger can be allowed.
+                    Log.outError(LogFilter.Sql, $"Table `areatrigger_involvedrelation` has record (id: {triggerId}) for not quest {questId}, but quest not have flag QUEST_FLAGS_COMPLETION_AREA_TRIGGER and no objective with type QUEST_OBJECTIVE_AREATRIGGER. Trigger is obsolete, skipped.");
+                    continue;
                 }
 
-                _questAreaTriggerStorage.Add(trigger_ID, quest_ID);
+                _questAreaTriggerStorage.Add(triggerId, questId);
 
             } while (result.NextRow());
 
@@ -10893,7 +10846,7 @@ namespace Game
         Dictionary<(uint mapId, Difficulty difficulty), Dictionary<uint, CellObjectGuids>> mapObjectGuidsStore = new();
         Dictionary<(uint mapId, Difficulty diffuculty, uint phaseId), Dictionary<uint, CellObjectGuids>> mapPersonalObjectGuidsStore = new();
         Dictionary<uint, InstanceTemplate> instanceTemplateStorage = new();
-        public MultiMap<uint, GraveYardData> GraveYardStorage = new();
+        public MultiMap<uint, GraveyardData> GraveyardStorage = new();
         List<ushort> _transportMaps = new();
         Dictionary<uint, SpawnGroupTemplateData> _spawnGroupDataStorage = new();
         MultiMap<uint, SpawnMetadata> _spawnGroupMapStorage = new();
@@ -11402,10 +11355,10 @@ namespace Game
         public WorldLocation Loc;
     }
 
-    public class GraveYardData
+    public class GraveyardData
     {
-        public uint safeLocId;
-        public uint team;
+        public uint SafeLocId;
+        public List<Condition> Conditions = new();
     }
 
     public class QuestPOIBlobData

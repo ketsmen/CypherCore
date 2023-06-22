@@ -235,7 +235,7 @@ namespace Game
 
         public void LoadQuestObjective(SQLFields fields)
         {
-            QuestObjective obj = new();  
+            QuestObjective obj = new();
             obj.QuestID = fields.Read<uint>(0);
             obj.Id = fields.Read<uint>(1);
             obj.Type = (QuestObjectiveType)fields.Read<byte>(2);
@@ -246,6 +246,31 @@ namespace Game
             obj.Flags2 = fields.Read<uint>(7);
             obj.ProgressBarWeight = fields.Read<float>(8);
             obj.Description = fields.Read<string>(9);
+
+            bool hasCompletionEffect = false;
+            for (var i = 10; i < 15; ++i)
+            {
+                if (!fields.IsNull(i))
+                {
+                    hasCompletionEffect = true;
+                    break;
+                }
+            }
+
+            if (hasCompletionEffect)
+            {
+                obj.CompletionEffect = new QuestObjectiveAction();
+                if (!fields.IsNull(10))
+                    obj.CompletionEffect.GameEventId = fields.Read<uint>(10);
+                if (!fields.IsNull(11))
+                    obj.CompletionEffect.SpellId = fields.Read<uint>(11);
+                if (!fields.IsNull(12))
+                    obj.CompletionEffect.ConversationId = fields.Read<uint>(12);
+                if (!fields.IsNull(13))
+                    obj.CompletionEffect.UpdatePhaseShift = fields.Read<bool>(13);
+                if (!fields.IsNull(14))
+                    obj.CompletionEffect.UpdateZoneAuras = fields.Read<bool>(14);
+            }
 
             Objectives.Add(obj);
             _usedQuestObjectiveTypes[(int)obj.Type] = true;
@@ -437,7 +462,7 @@ namespace Game
         {
             return (uint)(MaxMoneyValue() * WorldConfig.GetFloatValue(WorldCfg.RateMoneyQuest));
         }
-        
+
         public QuestTagType? GetQuestTag()
         {
             QuestInfoRecord questInfo = CliDB.QuestInfoStorage.LookupByKey(QuestInfoID);
@@ -446,7 +471,7 @@ namespace Game
 
             return null;
         }
-        
+
         public void BuildQuestRewards(QuestRewards rewards, Player player)
         {
             rewards.ChoiceItemCount = GetRewChoiceItemsCount();
@@ -469,7 +494,7 @@ namespace Game
                 if (++displaySpellIndex >= rewards.SpellCompletionDisplayID.Length)
                     break;
             }
-            
+
             rewards.SpellCompletionID = RewardSpell;
             rewards.SkillLineID = RewardSkillId;
             rewards.NumSkillUps = RewardSkillPoints;
@@ -507,7 +532,7 @@ namespace Game
         public uint GetRewMoneyMaxLevel()
         {
             // If Quest has flag to not give money on max level, it's 0
-            if (HasFlag(QuestFlags.NoMoneyFromXp))
+            if (HasFlag(QuestFlags.NoMoneyForXp))
                 return 0;
 
             // Else, return the rewarded copper sum modified by the rate
@@ -519,9 +544,9 @@ namespace Game
             return !WorldConfig.GetBoolValue(WorldCfg.QuestIgnoreAutoAccept) && HasFlag(QuestFlags.AutoAccept);
         }
 
-        public bool IsAutoComplete()
+        public bool IsTurnIn()
         {
-            return !WorldConfig.GetBoolValue(WorldCfg.QuestIgnoreAutoComplete) && Type == QuestType.AutoComplete;
+            return !WorldConfig.GetBoolValue(WorldCfg.QuestIgnoreAutoComplete) && Type == QuestType.TurnIn;
         }
 
         public bool IsRaidQuest(Difficulty difficulty)
@@ -538,7 +563,7 @@ namespace Game
                     break;
             }
 
-            if (Flags.HasAnyFlag(QuestFlags.Raid))
+            if (Flags.HasAnyFlag(QuestFlags.RaidGroupOk))
                 return true;
 
             return false;
@@ -630,7 +655,7 @@ namespace Game
             response.Info.RewardXPDifficulty = RewardXPDifficulty;
             response.Info.RewardXPMultiplier = RewardXPMultiplier;
 
-            if (!HasFlag(QuestFlags.HiddenRewards))
+            if (!HasFlag(QuestFlags.HideReward))
                 response.Info.RewardMoney = (int)(player != null ? player.GetQuestMoneyReward(this) : GetMaxMoneyReward());
 
             response.Info.RewardMoneyDifficulty = RewardMoneyDifficulty;
@@ -674,7 +699,7 @@ namespace Game
                 response.Info.ItemDropQuantity[i] = (int)ItemDropQuantity[i];
             }
 
-            if (!HasFlag(QuestFlags.HiddenRewards))
+            if (!HasFlag(QuestFlags.HideReward))
             {
                 for (byte i = 0; i < SharedConst.QuestRewardItemCount; ++i)
                 {
@@ -755,12 +780,12 @@ namespace Game
         public void SetSpecialFlag(QuestSpecialFlags flag) { SpecialFlags |= flag; }
 
         public bool HasQuestObjectiveType(QuestObjectiveType type) { return _usedQuestObjectiveTypes[(int)type]; }
-        
-        public bool IsAutoPush() { return HasFlagEx(QuestFlagsEx.AutoPush);    }
-        public bool IsWorldQuest() { return HasFlagEx(QuestFlagsEx.IsWorldQuest);}
+
+        public bool IsAutoPush() { return HasFlagEx(QuestFlagsEx.AutoPush); }
+        public bool IsWorldQuest() { return HasFlagEx(QuestFlagsEx.IsWorldQuest); }
 
         // Possibly deprecated flag
-        public bool IsUnavailable() { return HasFlag(QuestFlags.Unavailable); }
+        public bool IsUnavailable() { return HasFlag(QuestFlags.Deprecated); }
 
         // table data accessors:
         public bool IsRepeatable() { return SpecialFlags.HasAnyFlag(QuestSpecialFlags.Repeatable); }
@@ -775,7 +800,8 @@ namespace Game
         }
         public bool IsDailyOrWeekly() { return Flags.HasAnyFlag(QuestFlags.Daily | QuestFlags.Weekly); }
         public bool IsDFQuest() { return SpecialFlags.HasAnyFlag(QuestSpecialFlags.DfQuest); }
-
+        public bool IsPushedToPartyOnAccept() { return HasSpecialFlag(QuestSpecialFlags.AutoPushToParty); }
+        
         public uint GetRewChoiceItemsCount() { return _rewChoiceItemsCount; }
         public uint GetRewItemsCount() { return _rewItemsCount; }
         public uint GetRewCurrencyCount() { return _rewCurrencyCount; }
@@ -996,6 +1022,15 @@ namespace Game
         public StringArray Text = new((int)Locale.Total);
     }
 
+    public class QuestObjectiveAction
+    {
+        public uint? GameEventId;
+        public uint? SpellId;
+        public uint? ConversationId;
+        public bool UpdatePhaseShift;
+        public bool UpdateZoneAuras;
+    }
+
     public class QuestObjective
     {
         public uint Id;
@@ -1009,6 +1044,7 @@ namespace Game
         public float ProgressBarWeight;
         public string Description;
         public int[] VisualEffects = Array.Empty<int>();
+        public QuestObjectiveAction CompletionEffect;
 
         public bool IsStoringValue()
         {

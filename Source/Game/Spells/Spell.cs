@@ -71,10 +71,10 @@ namespace Game.Spells
             _triggeredCastFlags = triggerFlags;
 
             if (info.HasAttribute(SpellAttr2.DoNotReportSpellFailure))
-                _triggeredCastFlags = _triggeredCastFlags | TriggerCastFlags.DontReportCastError;
+                _triggeredCastFlags |= TriggerCastFlags.DontReportCastError;
 
             if (m_spellInfo.HasAttribute(SpellAttr4.AllowCastWhileCasting))
-                _triggeredCastFlags = _triggeredCastFlags | TriggerCastFlags.IgnoreCastInProgress;
+                _triggeredCastFlags |= TriggerCastFlags.IgnoreCastInProgress;
 
             m_castItemLevel = -1;
 
@@ -9241,6 +9241,12 @@ namespace Game.Spells
             Targets.SetDst(dest);
         }
 
+        public CastSpellTargetArg(SpellDestination dest)
+        {
+            Targets = new();
+            Targets.SetDst(dest);
+        }
+        
         public CastSpellTargetArg(SpellCastTargets targets)
         {
             Targets = new();
