@@ -922,7 +922,7 @@ namespace Game.Entities
             return false;
         }
 
-        public void RewardQuestPackage(uint questPackageId, uint onlyItemId = 0)
+        public void RewardQuestPackage(uint questPackageId, ItemContext context, uint onlyItemId = 0)
         {
             bool hasFilteredQuestPackageReward = false;
             var questPackageItems = Global.DB2Mgr.GetQuestPackageItems(questPackageId);
@@ -939,7 +939,7 @@ namespace Game.Entities
                         List<ItemPosCount> dest = new();
                         if (CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, questPackageItem.ItemID, questPackageItem.ItemQuantity) == InventoryResult.Ok)
                         {
-                            Item item = StoreNewItem(dest, questPackageItem.ItemID, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(questPackageItem.ItemID));
+                            Item item = StoreNewItem(dest, questPackageItem.ItemID, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(questPackageItem.ItemID), null, context);
                             SendNewItem(item, questPackageItem.ItemQuantity, true, false);
                         }
                     }
@@ -959,7 +959,7 @@ namespace Game.Entities
                         List<ItemPosCount> dest = new();
                         if (CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, questPackageItem.ItemID, questPackageItem.ItemQuantity) == InventoryResult.Ok)
                         {
-                            Item item = StoreNewItem(dest, questPackageItem.ItemID, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(questPackageItem.ItemID));
+                            Item item = StoreNewItem(dest, questPackageItem.ItemID, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(questPackageItem.ItemID), null, context);
                             SendNewItem(item, questPackageItem.ItemQuantity, true, false);
                         }
                     }
@@ -1020,7 +1020,7 @@ namespace Game.Entities
                         List<ItemPosCount> dest = new();
                         if (CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, itemId, quest.RewardItemCount[i]) == InventoryResult.Ok)
                         {
-                            Item item = StoreNewItem(dest, itemId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(itemId));
+                            Item item = StoreNewItem(dest, itemId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(itemId), null, ItemContext.QuestReward);
                             SendNewItem(item, quest.RewardItemCount[i], true, false);
                         }
                         else if (quest.IsDFQuest())
@@ -1035,8 +1035,8 @@ namespace Game.Entities
             {
                 if (quest.IsWorldQuest())
                     currencyGainSource = CurrencyGainSource.WorldQuestRewardIgnoreCaps;
-
-                currencyGainSource = CurrencyGainSource.QuestRewardIgnoreCaps;
+                else
+                    currencyGainSource = CurrencyGainSource.QuestRewardIgnoreCaps;
             }
             else if (quest.IsDaily())
                 currencyGainSource = CurrencyGainSource.DailyQuestReward;
@@ -1058,7 +1058,7 @@ namespace Game.Entities
                                 List<ItemPosCount> dest = new();
                                 if (CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, rewardId, quest.RewardChoiceItemCount[i]) == InventoryResult.Ok)
                                 {
-                                    Item item = StoreNewItem(dest, rewardId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(rewardId));
+                                    Item item = StoreNewItem(dest, rewardId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(rewardId), null, ItemContext.QuestReward);
                                     SendNewItem(item, quest.RewardChoiceItemCount[i], true, false);
                                 }
                             }
@@ -1068,7 +1068,7 @@ namespace Game.Entities
 
                     // QuestPackageItem.db2
                     if (rewardProto != null && quest.PackageID != 0)
-                        RewardQuestPackage(quest.PackageID, rewardId);
+                        RewardQuestPackage(quest.PackageID, ItemContext.QuestReward, rewardId);
                     break;
                 case LootItemType.Currency:
                     if (CliDB.CurrencyTypesStorage.HasRecord(rewardId) && quest.GetRewChoiceItemsCount() != 0)
@@ -1232,55 +1232,27 @@ namespace Game.Entities
             //lets remove flag for delayed teleports
             SetCanDelayTeleport(false);
 
-            switch (questGiver.GetTypeId())
+            if (questGiver != null && questGiver.IsTypeMask(TypeMask.Unit | TypeMask.GameObject))
             {
-                case TypeId.Unit:
-                case TypeId.Player:
+                //For AutoSubmition was added plr case there as it almost same exclute AI script cases.
+                // Send next quest
+                Quest nextQuest = GetNextQuest(questGiver, quest);
+                if (nextQuest != null)
                 {
-                    //For AutoSubmition was added plr case there as it almost same exclute AI script cases.
-                    // Send next quest
-                    Quest nextQuest = GetNextQuest(questGiver, quest);
-                    if (nextQuest != null)
+                    // Only send the quest to the player if the conditions are met
+                    if (CanTakeQuest(nextQuest, false))
                     {
-                        // Only send the quest to the player if the conditions are met
-                        if (CanTakeQuest(nextQuest, false))
-                        {
-                            if (nextQuest.IsAutoAccept() && CanAddQuest(nextQuest, true))
-                                AddQuestAndCheckCompletion(nextQuest, questGiver);
+                        if (nextQuest.IsAutoAccept() && CanAddQuest(nextQuest, true))
+                            AddQuestAndCheckCompletion(nextQuest, questGiver);
 
-                            PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, questGiver.GetGUID(), true, false);
-                        }
+                        PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, questGiver.GetGUID(), true, false);
                     }
-
-                    PlayerTalkClass.ClearMenus();
-                    Creature creatureQGiver = questGiver.ToCreature();
-                    if (creatureQGiver != null)
-                        creatureQGiver.GetAI().OnQuestReward(this, quest, rewardType, rewardId);
-                    break;
                 }
-                case TypeId.GameObject:
-                {
-                    // Send next quest
-                    Quest nextQuest = GetNextQuest(questGiver, quest);
-                    if (nextQuest != null)
-                    {
-                        // Only send the quest to the player if the conditions are met
-                        if (CanTakeQuest(nextQuest, false))
-                        {
-                            if (nextQuest.IsAutoAccept() && CanAddQuest(nextQuest, true))
-                                AddQuestAndCheckCompletion(nextQuest, questGiver);
 
-                            PlayerTalkClass.SendQuestGiverQuestDetails(nextQuest, questGiver.GetGUID(), true, false);
-                        }
-                    }
-
-                    PlayerTalkClass.ClearMenus();
-                    questGiver.ToGameObject()?.GetAI()?.OnQuestReward(this, quest, rewardType, rewardId);
-                    break;
-                }
-                default:
-                    break;
-            }            
+                PlayerTalkClass.ClearMenus();
+                questGiver.ToCreature()?.GetAI().OnQuestReward(this, quest, rewardType, rewardId);
+                questGiver.ToGameObject()?.GetAI().OnQuestReward(this, quest, rewardType, rewardId);
+            }           
 
             Global.ScriptMgr.OnQuestStatusChange(this, questId);
             Global.ScriptMgr.OnQuestStatusChange(this, quest, oldStatus, QuestStatus.Rewarded);

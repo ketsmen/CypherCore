@@ -280,6 +280,8 @@ namespace Game.Entities
             for (byte i = 0; i < SharedConst.MaxCreatureSpells; ++i)
                 m_spells[i] = GetCreatureTemplate().Spells[i];
 
+            ApplyAllStaticFlags(m_creatureDifficulty.StaticFlags);
+
             _staticFlags.ApplyFlag(CreatureStaticFlags.NoXp, creatureInfo.CreatureType == CreatureType.Critter || IsPet() || IsTotem() || creatureInfo.FlagsExtra.HasFlag(CreatureFlagsExtra.NoXP));
             _staticFlags.ApplyFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells, GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.TreatAsRaidUnit));
 
@@ -301,9 +303,7 @@ namespace Game.Entities
 
             SetFaction(cInfo.Faction);
 
-            ulong npcFlags;
-            uint unitFlags, unitFlags2, unitFlags3, dynamicFlags;
-            ObjectManager.ChooseCreatureFlags(cInfo, out npcFlags, out unitFlags, out unitFlags2, out unitFlags3, out dynamicFlags, data);
+            ObjectManager.ChooseCreatureFlags(cInfo, out ulong npcFlags, out uint unitFlags, out uint unitFlags2, out uint unitFlags3, data);
 
             if (cInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Worldevent))
                 npcFlags |= Global.GameEventMgr.GetNPCFlag(this);
@@ -320,7 +320,7 @@ namespace Game.Entities
             ReplaceAllUnitFlags2((UnitFlags2)unitFlags2);
             ReplaceAllUnitFlags3((UnitFlags3)unitFlags3);
 
-            ReplaceAllDynamicFlags((UnitDynFlags)dynamicFlags);
+            ReplaceAllDynamicFlags(UnitDynFlags.None);
 
             SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.StateAnimID), Global.DB2Mgr.GetEmptyAnimStateID());
 
@@ -400,6 +400,14 @@ namespace Game.Entities
             return true;
         }
 
+        void ApplyAllStaticFlags(CreatureStaticFlagsHolder flags)
+        {
+            _staticFlags = flags;
+
+            // Apply all other side effects of flag changes
+            SetTemplateRooted(flags.HasFlag(CreatureStaticFlags.Sessile));
+        }
+        
         public override void Update(uint diff)
         {
             if (IsAIEnabled() && triggerJustAppeared && m_deathState != DeathState.Dead)
@@ -1078,7 +1086,7 @@ namespace Game.Entities
 
             ClearUnitState(UnitState.AttackPlayer);
             if (IsAlive() && HasDynamicFlag(UnitDynFlags.Tapped))
-                ReplaceAllDynamicFlags((UnitDynFlags)GetCreatureTemplate().DynamicFlags);
+                RemoveDynamicFlag(UnitDynFlags.Tapped);
 
             if (IsPet() || IsGuardian()) // update pets' speed for catchup OOC speed
             {
@@ -1311,7 +1319,6 @@ namespace Game.Entities
             uint unitFlags = m_unitData.Flags;
             uint unitFlags2 = m_unitData.Flags2;
             uint unitFlags3 = m_unitData.Flags3;
-            UnitDynFlags dynamicflags = (UnitDynFlags)(uint)m_objectData.DynamicFlags;
 
             // check if it's a custom model and if not, use 0 for displayId
             CreatureTemplate cinfo = GetCreatureTemplate();
@@ -1332,9 +1339,6 @@ namespace Game.Entities
 
                 if (unitFlags3 == cinfo.UnitFlags3)
                     unitFlags3 = 0;
-
-                if (dynamicflags == (UnitDynFlags)cinfo.DynamicFlags)
-                    dynamicflags = 0;
             }
 
             if (data.SpawnId == 0)
@@ -1370,7 +1374,6 @@ namespace Game.Entities
             data.unit_flags = unitFlags;
             data.unit_flags2 = unitFlags2;
             data.unit_flags3 = unitFlags3;
-            data.dynamicflags = (uint)dynamicflags;
             if (data.spawnGroupData == null)
                 data.spawnGroupData = Global.ObjectMgr.GetDefaultSpawnGroup();
 
@@ -1409,7 +1412,6 @@ namespace Game.Entities
             stmt.AddValue(index++, unitFlags);
             stmt.AddValue(index++, unitFlags2);
             stmt.AddValue(index++, unitFlags3);
-            stmt.AddValue(index++, (uint)dynamicflags);
             trans.Append(stmt);
 
             DB.World.CommitTransaction(trans);
@@ -1983,9 +1985,7 @@ namespace Game.Entities
                     CreatureData creatureData = GetCreatureData();
                     CreatureTemplate cInfo = GetCreatureTemplate();
 
-                    ulong npcFlags;
-                    uint unitFlags, unitFlags2, unitFlags3, dynamicFlags;
-                    ObjectManager.ChooseCreatureFlags(cInfo, out npcFlags, out unitFlags, out unitFlags2, out unitFlags3, out dynamicFlags, creatureData);
+                    ObjectManager.ChooseCreatureFlags(cInfo, out ulong npcFlags, out uint unitFlags, out uint unitFlags2, out uint unitFlags3, creatureData);
 
                     if (cInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Worldevent))
                         npcFlags |= Global.GameEventMgr.GetNPCFlag(this);
@@ -1996,7 +1996,7 @@ namespace Game.Entities
                     ReplaceAllUnitFlags((UnitFlags)unitFlags);
                     ReplaceAllUnitFlags2((UnitFlags2)unitFlags2);
                     ReplaceAllUnitFlags3((UnitFlags3)unitFlags3);
-                    ReplaceAllDynamicFlags((UnitDynFlags)dynamicFlags);
+                    ReplaceAllDynamicFlags(UnitDynFlags.None);
 
                     RemoveUnitFlag(UnitFlags.InCombat);
 
@@ -2715,7 +2715,7 @@ namespace Game.Entities
         {
             CreatureTemplate cInfo = GetCreatureTemplate();
             CreatureDifficulty creatureDifficulty = GetCreatureDifficulty();
-            float baseHealth = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureHealth, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass);
+            float baseHealth = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureHealth, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass, 0);
 
             return (ulong)Math.Max(baseHealth * creatureDifficulty.HealthModifier, 1.0f);
         }
@@ -2736,7 +2736,7 @@ namespace Game.Entities
         {
             CreatureTemplate cInfo = GetCreatureTemplate();
             CreatureDifficulty creatureDifficulty = GetCreatureDifficulty();
-            return Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureAutoAttackDps, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass);
+            return Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureAutoAttackDps, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass, 0);
         }
 
         public override float GetDamageMultiplierForTarget(WorldObject target)
@@ -2753,7 +2753,7 @@ namespace Game.Entities
         {
             CreatureTemplate cInfo = GetCreatureTemplate();
             CreatureDifficulty creatureDifficulty = GetCreatureDifficulty();
-            float baseArmor = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureArmor, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass);
+            float baseArmor = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureArmor, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass, 0);
             return baseArmor * creatureDifficulty.ArmorModifier;
         }
 

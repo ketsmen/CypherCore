@@ -1185,6 +1185,18 @@ namespace Game.Spells
                 case Targets.DestDestGround:
                     dest.Position.posZ = m_caster.GetMapHeight(dest.Position.GetPositionX(), dest.Position.GetPositionY(), dest.Position.GetPositionZ());
                     break;
+                case Targets.DestDestTargetTowardsCaster:
+                {
+                    float dist = spellEffectInfo.CalcRadius(m_caster);
+                    Position pos = dest.Position;
+                    float angle = pos.GetAbsoluteAngle(m_caster) - m_caster.GetOrientation();
+
+                    m_caster.MovePositionToFirstCollision(pos, dist, angle);
+                    pos.SetOrientation(m_caster.GetAbsoluteAngle(dest.Position));
+
+                    dest.Relocate(pos);
+                    break;
+                }
                 default:
                 {
                     float angle = targetType.CalcDirectionAngle();
@@ -5575,6 +5587,16 @@ namespace Game.Spells
                         }
                         break;
                     }
+                    case SpellEffectName.CreateHeirloomItem:
+                    {
+                        if (!m_caster.IsPlayer())
+                            return SpellCastResult.BadTargets;
+
+                        if (!m_caster.ToPlayer().GetSession().GetCollectionMgr().HasHeirloom(m_misc.ItemId))
+                            return SpellCastResult.BadTargets;
+
+                        break;
+                    }
                     case SpellEffectName.GiveArtifactPower:
                     case SpellEffectName.GiveArtifactPowerNoBonus:
                     {
@@ -7849,7 +7871,7 @@ namespace Game.Spells
             m_caster.ToUnit().GetSpellHistory().CancelGlobalCooldown(m_spellInfo);
         }
 
-        string GetDebugInfo()
+        public string GetDebugInfo()
         {
             return $"Id: {GetSpellInfo().Id} Name: '{GetSpellInfo().SpellName[Global.WorldMgr.GetDefaultDbcLocale()]}' OriginalCaster: {m_originalCasterGUID} State: {GetState()}";
         }
@@ -8004,7 +8026,7 @@ namespace Game.Spells
         {
             return spell != null;
         }
-
+        
         #region Fields
         Dictionary<SpellEffectName, SpellLogEffect> _executeLogEffects = new();
         PathGenerator m_preGeneratedPath;
@@ -9166,6 +9188,8 @@ namespace Game.Spells
         }
 
         public Spell GetSpell() { return m_Spell; }
+
+        public string GetDebugInfo() { return m_Spell.GetDebugInfo(); }
 
         Spell m_Spell;
     }
