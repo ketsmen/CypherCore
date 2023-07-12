@@ -266,7 +266,7 @@ namespace Game.Spells
                 if (spellInfo.NeedsToBeTriggeredByCaster(m_spellInfo) && effectInfo.GetProvidedTargetMask().HasAnyFlag(SpellCastTargetFlags.UnitMask))
                     return;
 
-                if (spellInfo.GetExplicitTargetMask().HasAnyFlag(SpellCastTargetFlags.DestLocation))
+                if (spellInfo.GetExplicitTargetMask().HasAnyFlag(SpellCastTargetFlags.DestLocation) && m_targets.HasDst())
                     targets.SetDst(m_targets);
 
                 Unit target = m_targets.GetUnitTarget();
@@ -5027,7 +5027,7 @@ namespace Game.Spells
                 return;
 
             int duration = GetSpellInfo().CalcDuration(GetCaster());
-            AreaTrigger.CreateAreaTrigger((uint)effectInfo.MiscValue, unitCaster, null, GetSpellInfo(), destTarget.GetPosition(), duration, m_SpellVisual, m_castId);
+            AreaTrigger.CreateAreaTrigger((uint)effectInfo.MiscValue, unitCaster, null, GetSpellInfo(), destTarget.GetPosition(), duration, m_SpellVisual, this);
         }
 
         [SpellEffectHandler(SpellEffectName.RemoveTalent)]
