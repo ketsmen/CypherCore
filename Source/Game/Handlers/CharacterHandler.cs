@@ -11,6 +11,7 @@ using Game.Entities;
 using Game.Groups;
 using Game.Guilds;
 using Game.Maps;
+using Game.Miscellaneous;
 using Game.Networking;
 using Game.Networking.Packets;
 using Game.Spells;
@@ -85,7 +86,7 @@ namespace Game
 
                             charInfo.Customizations.Clear();
 
-                            if (charInfo.Flags2 != CharacterCustomizeFlags.Customize)
+                            if (!charInfo.Flags2.HasAnyFlag(CharacterCustomizeFlags.Customize | CharacterCustomizeFlags.Faction | CharacterCustomizeFlags.Race))
                             {
                                 PreparedStatement stmt = CharacterDatabase.GetPreparedStatement(CharStatements.UPD_ADD_AT_LOGIN_FLAG);
                                 stmt.AddValue(0, (ushort)AtLoginFlags.Customize);
@@ -165,12 +166,16 @@ namespace Game
             SendPacket(charEnum);
         }
 
-        public bool MeetsChrCustomizationReq(ChrCustomizationReqRecord req, Class playerClass, bool checkRequiredDependentChoices, List<ChrCustomizationChoice> selectedChoices)
+        public bool MeetsChrCustomizationReq(ChrCustomizationReqRecord req, Race race, Class playerClass, bool checkRequiredDependentChoices, List<ChrCustomizationChoice> selectedChoices)
         {
             if (!req.GetFlags().HasFlag(ChrCustomizationReqFlag.HasRequirements))
                 return true;
 
             if (req.ClassMask != 0 && (req.ClassMask & (1 << ((int)playerClass - 1))) == 0)
+                return false;
+
+            var raceMask = new RaceMask<long>(req.RaceMask);
+            if (race != Race.None && !raceMask.IsEmpty() && raceMask.RawValue != -1 && !raceMask.HasRace(race))
                 return false;
 
             if (req.AchievementID != 0 /*&& !HasAchieved(req->AchievementID)*/)
@@ -181,7 +186,7 @@ namespace Game
 
             if (req.QuestID != 0)
             {
-                if (!_player)
+                if (_player == null)
                     return false;
 
                 if (!_player.IsQuestRewarded((uint)req.QuestID))
@@ -240,7 +245,7 @@ namespace Game
 
                 ChrCustomizationReqRecord req = CliDB.ChrCustomizationReqStorage.LookupByKey(customizationOptionData.ChrCustomizationReqID);
                 if (req != null)
-                    if (!MeetsChrCustomizationReq(req, playerClass, false, customizations))
+                    if (!MeetsChrCustomizationReq(req, race, playerClass, false, customizations))
                         return false;
 
                 var choicesForOption = Global.DB2Mgr.GetCustomiztionChoices(playerChoice.ChrCustomizationOptionID);
@@ -255,7 +260,7 @@ namespace Game
 
                 ChrCustomizationReqRecord reqEntry = CliDB.ChrCustomizationReqStorage.LookupByKey(customizationChoiceData.ChrCustomizationReqID);
                 if (reqEntry != null)
-                    if (!MeetsChrCustomizationReq(reqEntry, playerClass, true, customizations))
+                    if (!MeetsChrCustomizationReq(reqEntry, race, playerClass, true, customizations))
                         return false;
             }
 
@@ -374,8 +379,8 @@ namespace Game
                     return;
                 }
 
-                ulong raceMaskDisabled = WorldConfig.GetUInt64Value(WorldCfg.CharacterCreatingDisabledRacemask);
-                if (Convert.ToBoolean((ulong)SharedConst.GetMaskForRace(charCreate.CreateInfo.RaceId) & raceMaskDisabled))
+                RaceMask<ulong> raceMaskDisabled = new(WorldConfig.GetUInt64Value(WorldCfg.CharacterCreatingDisabledRacemask));
+                if (raceMaskDisabled.HasRace(charCreate.CreateInfo.RaceId))
                 {
                     SendCharCreate(ResponseCodes.CharCreateDisabled);
                     return;
@@ -642,14 +647,14 @@ namespace Game
             uint initAccountId = GetAccountId();
 
             // can't delete loaded character
-            if (Global.ObjAccessor.FindPlayer(charDelete.Guid))
+            if (Global.ObjAccessor.FindPlayer(charDelete.Guid) != null)
             {
                 Global.ScriptMgr.OnPlayerFailedDelete(charDelete.Guid, initAccountId);
                 return;
             }
 
             // is guild leader
-            if (Global.GuildMgr.GetGuildByLeader(charDelete.Guid))
+            if (Global.GuildMgr.GetGuildByLeader(charDelete.Guid) != null)
             {
                 Global.ScriptMgr.OnPlayerFailedDelete(charDelete.Guid, initAccountId);
                 SendCharDelete(ResponseCodes.CharDeleteFailedGuildLeader);
@@ -759,7 +764,7 @@ namespace Game
 
         public void HandleContinuePlayerLogin()
         {
-            if (!PlayerLoading() || GetPlayer())
+            if (!PlayerLoading() || GetPlayer() != null)
             {
                 KickPlayer("WorldSession::HandleContinuePlayerLogin incorrect player state when logging in");
                 return;
@@ -829,7 +834,7 @@ namespace Game
                 pCurrChar.SetInGuild(resultGuild.Read<uint>(0));
                 pCurrChar.SetGuildRank(resultGuild.Read<byte>(1));
                 Guild guild = Global.GuildMgr.GetGuildById(pCurrChar.GetGuildId());
-                if (guild)
+                if (guild != null)
                     pCurrChar.SetGuildLevel(guild.GetLevel());
             }
             else if (pCurrChar.GetGuildId() != 0)
@@ -838,10 +843,6 @@ namespace Game
                 pCurrChar.SetGuildRank(0);
                 pCurrChar.SetGuildLevel(0);
             }
-
-            // Send stable contents to display icons on Call Pet spells
-            if (pCurrChar.HasSpell(SharedConst.CallPetSpellId))
-                SendStablePet(ObjectGuid.Empty);
 
             pCurrChar.GetSession().GetBattlePetMgr().SendJournalLockStatus();
 
@@ -889,7 +890,7 @@ namespace Game
             if (pCurrChar.GetGuildId() != 0)
             {
                 Guild guild = Global.GuildMgr.GetGuildById(pCurrChar.GetGuildId());
-                if (guild)
+                if (guild != null)
                     guild.SendLoginInfo(this);
                 else
                 {
@@ -916,7 +917,7 @@ namespace Game
 
             // announce group about member online (must be after add to player list to receive announce to self)
             Group group = pCurrChar.GetGroup();
-            if (group)
+            if (group != null)
             {
                 group.SendUpdate();
                 if (group.GetLeaderGUID() == pCurrChar.GetGUID())
@@ -1092,7 +1093,7 @@ namespace Game
 
         public void AbortLogin(LoginFailureReason reason)
         {
-            if (!PlayerLoading() || GetPlayer())
+            if (!PlayerLoading() || GetPlayer() != null)
             {
                 KickPlayer("WorldSession::AbortLogin incorrect player state when logging in");
                 return;
@@ -1382,11 +1383,28 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.AlterAppearance)]
         void HandleAlterAppearance(AlterApperance packet)
         {
+            if (packet.CustomizedChrModelID != 0)
+            {
+                var conditionalChrModel = CliDB.ConditionalChrModelStorage.LookupByKey(packet.CustomizedChrModelID);
+                if (conditionalChrModel == null)
+                    return;
+
+                var req = CliDB.ChrCustomizationReqStorage.LookupByKey(conditionalChrModel.ChrCustomizationReqID);
+                if (req != null)
+                    if (!MeetsChrCustomizationReq(req, (Race)packet.CustomizedRace, _player.GetClass(), false, packet.Customizations))
+                        return;
+
+                var condition = CliDB.PlayerConditionStorage.LookupByKey(conditionalChrModel.PlayerConditionID);
+                if (condition != null)
+                    if (!ConditionManager.IsPlayerMeetingCondition(_player, condition))
+                        return;
+            }
+
             if (!ValidateAppearance(_player.GetRace(), _player.GetClass(), (Gender)packet.NewSex, packet.Customizations))
                 return;
 
             GameObject go = GetPlayer().FindNearestGameObjectOfType(GameObjectTypes.BarberChair, 5.0f);
-            if (!go)
+            if (go == null)
             {
                 SendPacket(new BarberShopResult(BarberShopResult.ResultEnum.NotOnChair));
                 return;
@@ -1565,7 +1583,7 @@ namespace Game
                             Item item = _player.GetItemByPos(InventorySlots.Bag0, i);
 
                             // cheating check 1 (item equipped but sent empty guid)
-                            if (!item)
+                            if (item == null)
                                 return;
 
                             // cheating check 2 (sent guid does not match equipped item)
@@ -1660,10 +1678,10 @@ namespace Game
                 Item item = GetPlayer().GetItemByGuid(useEquipmentSet.Items[i].Item);
 
                 ushort dstPos = (ushort)(i | (InventorySlots.Bag0 << 8));
-                if (!item)
+                if (item == null)
                 {
                     Item uItem = GetPlayer().GetItemByPos(InventorySlots.Bag0, i);
-                    if (!uItem)
+                    if (uItem == null)
                         continue;
 
                     List<ItemPosCount> itemPosCount = new();
@@ -1743,6 +1761,7 @@ namespace Game
 
             AtLoginFlags atLoginFlags = (AtLoginFlags)result.Read<ushort>(0);
             string knownTitlesStr = result.Read<string>(1);
+            uint groupId = !result.IsNull(2) ? result.Read<uint>(2) : 0;
 
             AtLoginFlags usedLoginFlag = (factionChangeInfo.FactionChange ? AtLoginFlags.ChangeFaction : AtLoginFlags.ChangeRace);
             if (!atLoginFlags.HasAnyFlag(usedLoginFlag))
@@ -1766,8 +1785,8 @@ namespace Game
 
             if (!HasPermission(RBACPermissions.SkipCheckCharacterCreationRacemask))
             {
-                ulong raceMaskDisabled = WorldConfig.GetUInt64Value(WorldCfg.CharacterCreatingDisabledRacemask);
-                if (Convert.ToBoolean((ulong)SharedConst.GetMaskForRace(factionChangeInfo.RaceID) & raceMaskDisabled))
+                RaceMask<ulong> raceMaskDisabled = new(WorldConfig.GetUInt64Value(WorldCfg.CharacterCreatingDisabledRacemask));
+                if (raceMaskDisabled.HasRace(factionChangeInfo.RaceID))
                 {
                     SendCharFactionChange(ResponseCodes.CharCreateError, factionChangeInfo);
                     return;
@@ -1971,6 +1990,13 @@ namespace Game
                         Player.LeaveAllArenaTeams(factionChangeInfo.Guid);
                     }
 
+                    if (groupId != 0 && !WorldConfig.GetBoolValue(WorldCfg.AllowTwoSideInteractionGroup))
+                    {
+                        Group group = Global.GroupMgr.GetGroupByDbStoreId(groupId);
+                        if (group != null)
+                            group.RemoveMember(factionChangeInfo.Guid);
+                    }
+
                     if (!HasPermission(RBACPermissions.TwoSideAddFriend))
                     {
                         // Delete Friend List
@@ -2078,8 +2104,8 @@ namespace Game
                         var questTemplates = Global.ObjectMgr.GetQuestTemplates();
                         foreach (Quest quest in questTemplates.Values)
                         {
-                            long newRaceMask = (long)(newTeamId == TeamId.Alliance ? SharedConst.RaceMaskAlliance : SharedConst.RaceMaskHorde);
-                            if (quest.AllowableRaces != -1 && !Convert.ToBoolean(quest.AllowableRaces & newRaceMask))
+                            RaceMask<ulong> newRaceMask = newTeamId == TeamId.Alliance ? RaceMask.Alliance : RaceMask.Horde;
+                            if (quest.AllowableRaces.RawValue != unchecked((ulong)-1) && (quest.AllowableRaces & newRaceMask).IsEmpty())
                             {
                                 stmt = CharacterDatabase.GetPreparedStatement(CharStatements.UPD_CHAR_QUESTSTATUS_REWARDED_ACTIVE_BY_QUEST);
                                 stmt.AddValue(0, lowGuid);
@@ -2447,7 +2473,7 @@ namespace Game
                 return;
 
             Corpse corpse = GetPlayer().GetCorpse();
-            if (!corpse)
+            if (corpse == null)
                 return;
 
             // prevent resurrect before 30-sec delay after body release not finished
@@ -2480,7 +2506,7 @@ namespace Game
                 return;
 
             Player ressPlayer = Global.ObjAccessor.GetPlayer(GetPlayer(), packet.Resurrecter);
-            if (ressPlayer)
+            if (ressPlayer != null)
             {
                 InstanceScript instance = ressPlayer.GetInstanceScript();
                 if (instance != null)

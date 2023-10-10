@@ -3,6 +3,7 @@
 
 using Framework.Constants;
 using Framework.Database;
+using Game.Miscellaneous;
 using Game.Networking;
 using System;
 using System.Collections;
@@ -215,7 +216,7 @@ namespace Game.DataStorage
                 //ASSERT(chrSpec.OrderIndex < MAX_SPECIALIZATIONS);
 
                 uint storageIndex = chrSpec.ClassID;
-                if (chrSpec.Flags.HasAnyFlag(ChrSpecializationFlag.PetOverrideSpec))
+                if (chrSpec.GetFlags().HasFlag(ChrSpecializationFlag.PetOverrideSpec))
                 {
                     //ASSERT(!chrSpec.ClassID);
                     storageIndex = (int)Class.Max;
@@ -241,14 +242,18 @@ namespace Game.DataStorage
             foreach (CurrencyContainerRecord currencyContainer in CurrencyContainerStorage.Values)
                 _currencyContainers.Add(currencyContainer.CurrencyTypesID, currencyContainer);
 
-            foreach (CurvePointRecord curvePoint in CurvePointStorage.Values)
-            {
+            MultiMap<uint, CurvePointRecord> unsortedPoints = new();
+            foreach (var curvePoint in CurvePointStorage.Values)
                 if (CurveStorage.ContainsKey(curvePoint.CurveID))
-                    _curvePoints.Add(curvePoint.CurveID, curvePoint);
+                    unsortedPoints.Add(curvePoint.CurveID, curvePoint);
+
+            foreach (var curveId in unsortedPoints.Keys)
+            {
+                var curvePoints = unsortedPoints[curveId];
+                curvePoints.Sort((point1, point2) => point1.OrderIndex.CompareTo(point2.OrderIndex));
+                _curvePoints.AddRange(curveId, curvePoints.Select(p => p.Pos));
             }
 
-            foreach (var key in _curvePoints.Keys.ToList())
-                _curvePoints[key] = _curvePoints[key].OrderBy(point => point.OrderIndex).ToList();
 
             foreach (EmotesTextSoundRecord emoteTextSound in EmotesTextSoundStorage.Values)
                 _emoteTextSounds[Tuple.Create(emoteTextSound.EmotesTextId, emoteTextSound.RaceId, emoteTextSound.SexId, emoteTextSound.ClassId)] = emoteTextSound;
@@ -283,7 +288,7 @@ namespace Game.DataStorage
                 _glyphBindableSpells.Add(glyphBindableSpell.GlyphPropertiesID, (uint)glyphBindableSpell.SpellID);
 
             foreach (GlyphRequiredSpecRecord glyphRequiredSpec in GlyphRequiredSpecStorage.Values)
-                _glyphRequiredSpecs.Add(glyphRequiredSpec.GlyphPropertiesID, glyphRequiredSpec.ChrSpecializationID);
+                _glyphRequiredSpecs.Add(glyphRequiredSpec.GlyphPropertiesID, (ChrSpecialization)glyphRequiredSpec.ChrSpecializationID);
 
             foreach (ItemChildEquipmentRecord itemChildEquipment in ItemChildEquipmentStorage.Values)
             {
@@ -1100,12 +1105,12 @@ namespace Game.DataStorage
         {
             var points = _curvePoints.LookupByKey(curveId);
             if (!points.Empty())
-                return Tuple.Create(points.First().Pos.X, points.Last().Pos.X);
+                return Tuple.Create(points.First().X, points.Last().X);
 
             return Tuple.Create(0.0f, 0.0f);
         }
 
-        static CurveInterpolationMode DetermineCurveType(CurveRecord curve, List<CurvePointRecord> points)
+        static CurveInterpolationMode DetermineCurveType(CurveRecord curve, List<Vector2> points)
         {
             switch (curve.Type)
             {
@@ -1139,92 +1144,97 @@ namespace Game.DataStorage
 
         public float GetCurveValueAt(uint curveId, float x)
         {
+            var curve = CurveStorage.LookupByKey(curveId);
             var points = _curvePoints.LookupByKey(curveId);
             if (points.Empty())
                 return 0.0f;
 
-            CurveRecord curve = CurveStorage.LookupByKey(curveId);
-            switch (DetermineCurveType(curve, points))
+            return GetCurveValueAt(DetermineCurveType(curve, points), points, x);
+        }
+
+        public float GetCurveValueAt(CurveInterpolationMode mode, IList<Vector2> points, float x)
+        {
+            switch (mode)
             {
                 case CurveInterpolationMode.Linear:
                 {
                     int pointIndex = 0;
-                    while (pointIndex < points.Count && points[pointIndex].Pos.X <= x)
+                    while (pointIndex < points.Count && points[pointIndex].X <= x)
                         ++pointIndex;
                     if (pointIndex == 0)
-                        return points[0].Pos.Y;
+                        return points[0].Y;
                     if (pointIndex >= points.Count)
-                        return points.Last().Pos.Y;
-                    float xDiff = points[pointIndex].Pos.X - points[pointIndex - 1].Pos.X;
+                        return points[points.Count - 1].Y;
+                    float xDiff = points[pointIndex].X - points[pointIndex - 1].X;
                     if (xDiff == 0.0)
-                        return points[pointIndex].Pos.Y;
-                    return (((x - points[pointIndex - 1].Pos.X) / xDiff) * (points[pointIndex].Pos.Y - points[pointIndex - 1].Pos.Y)) + points[pointIndex - 1].Pos.Y;
+                        return points[pointIndex].Y;
+                    return (((x - points[pointIndex - 1].X) / xDiff) * (points[pointIndex].Y - points[pointIndex - 1].Y)) + points[pointIndex - 1].Y;
                 }
                 case CurveInterpolationMode.Cosine:
                 {
                     int pointIndex = 0;
-                    while (pointIndex < points.Count && points[pointIndex].Pos.X <= x)
+                    while (pointIndex < points.Count && points[pointIndex].X <= x)
                         ++pointIndex;
                     if (pointIndex == 0)
-                        return points[0].Pos.Y;
+                        return points[0].Y;
                     if (pointIndex >= points.Count)
-                        return points.Last().Pos.Y;
-                    float xDiff = points[pointIndex].Pos.X - points[pointIndex - 1].Pos.X;
+                        return points[points.Count - 1].Y;
+                    float xDiff = points[pointIndex].X - points[pointIndex - 1].X;
                     if (xDiff == 0.0)
-                        return points[pointIndex].Pos.Y;
-                    return (float)((points[pointIndex].Pos.Y - points[pointIndex - 1].Pos.Y) * (1.0f - Math.Cos((x - points[pointIndex - 1].Pos.X) / xDiff * Math.PI)) * 0.5f) + points[pointIndex - 1].Pos.Y;
+                        return points[pointIndex].Y;
+                    return (float)((points[pointIndex].Y - points[pointIndex - 1].Y) * (1.0f - Math.Cos((x - points[pointIndex - 1].X) / xDiff * Math.PI)) * 0.5f) + points[pointIndex - 1].Y;
                 }
                 case CurveInterpolationMode.CatmullRom:
                 {
                     int pointIndex = 1;
-                    while (pointIndex < points.Count && points[pointIndex].Pos.X <= x)
+                    while (pointIndex < points.Count && points[pointIndex].X <= x)
                         ++pointIndex;
                     if (pointIndex == 1)
-                        return points[1].Pos.Y;
+                        return points[1].Y;
                     if (pointIndex >= points.Count - 1)
-                        return points[^2].Pos.Y;
-                    float xDiff = points[pointIndex].Pos.X - points[pointIndex - 1].Pos.X;
+                        return points[^2].Y;
+                    float xDiff = points[pointIndex].X - points[pointIndex - 1].X;
                     if (xDiff == 0.0)
-                        return points[pointIndex].Pos.Y;
+                        return points[pointIndex].Y;
 
-                    float mu = (x - points[pointIndex - 1].Pos.X) / xDiff;
-                    float a0 = -0.5f * points[pointIndex - 2].Pos.Y + 1.5f * points[pointIndex - 1].Pos.Y - 1.5f * points[pointIndex].Pos.Y + 0.5f * points[pointIndex + 1].Pos.Y;
-                    float a1 = points[pointIndex - 2].Pos.Y - 2.5f * points[pointIndex - 1].Pos.Y + 2.0f * points[pointIndex].Pos.Y - 0.5f * points[pointIndex + 1].Pos.Y;
-                    float a2 = -0.5f * points[pointIndex - 2].Pos.Y + 0.5f * points[pointIndex].Pos.Y;
-                    float a3 = points[pointIndex - 1].Pos.Y;
+                    float mu = (x - points[pointIndex - 1].X) / xDiff;
+                    float a0 = -0.5f * points[pointIndex - 2].Y + 1.5f * points[pointIndex - 1].Y - 1.5f * points[pointIndex].Y + 0.5f * points[pointIndex + 1].Y;
+                    float a1 = points[pointIndex - 2].Y - 2.5f * points[pointIndex - 1].Y + 2.0f * points[pointIndex].Y - 0.5f * points[pointIndex + 1].Y;
+                    float a2 = -0.5f * points[pointIndex - 2].Y + 0.5f * points[pointIndex].Y;
+                    float a3 = points[pointIndex - 1].Y;
 
                     return a0 * mu * mu * mu + a1 * mu * mu + a2 * mu + a3;
                 }
                 case CurveInterpolationMode.Bezier3:
                 {
-                    float xDiff = points[2].Pos.X - points[0].Pos.X;
+                    float xDiff = points[2].X - points[0].X;
                     if (xDiff == 0.0)
-                        return points[1].Pos.Y;
-                    float mu = (x - points[0].Pos.X) / xDiff;
-                    return ((1.0f - mu) * (1.0f - mu) * points[0].Pos.Y) + (1.0f - mu) * 2.0f * mu * points[1].Pos.Y + mu * mu * points[2].Pos.Y;
+                        return points[1].Y;
+                    float mu = (x - points[0].X) / xDiff;
+                    return ((1.0f - mu) * (1.0f - mu) * points[0].Y) + (1.0f - mu) * 2.0f * mu * points[1].Y + mu * mu * points[2].Y;
                 }
                 case CurveInterpolationMode.Bezier4:
                 {
-                    float xDiff = points[3].Pos.X - points[0].Pos.X;
+                    float xDiff = points[3].X - points[0].X;
                     if (xDiff == 0.0)
-                        return points[1].Pos.Y;
-                    float mu = (x - points[0].Pos.X) / xDiff;
-                    return (1.0f - mu) * (1.0f - mu) * (1.0f - mu) * points[0].Pos.Y
-                        + 3.0f * mu * (1.0f - mu) * (1.0f - mu) * points[1].Pos.Y
-                        + 3.0f * mu * mu * (1.0f - mu) * points[2].Pos.Y
-                        + mu * mu * mu * points[3].Pos.Y;
+                        return points[1].Y;
+                    float mu = (x - points[0].X) / xDiff;
+                    return (1.0f - mu) * (1.0f - mu) * (1.0f - mu) * points[0].Y
+                        + 3.0f * mu * (1.0f - mu) * (1.0f - mu) * points[1].Y
+                        + 3.0f * mu * mu * (1.0f - mu) * points[2].Y
+                        + mu * mu * mu * points[3].Y;
                 }
                 case CurveInterpolationMode.Bezier:
                 {
-                    float xDiff = points.Last().Pos.X - points[0].Pos.X;
+                    float xDiff = points[points.Count - 1].X - points[0].X;
                     if (xDiff == 0.0f)
-                        return points.Last().Pos.Y;
+                        return points[points.Count - 1].Y;
 
                     float[] tmp = new float[points.Count];
                     for (int c = 0; c < points.Count; ++c)
-                        tmp[c] = points[c].Pos.Y;
+                        tmp[c] = points[c].Y;
 
-                    float mu = (x - points[0].Pos.X) / xDiff;
+                    float mu = (x - points[0].X) / xDiff;
                     int i = points.Count - 1;
                     while (i > 0)
                     {
@@ -1238,7 +1248,7 @@ namespace Game.DataStorage
                     return tmp[0];
                 }
                 case CurveInterpolationMode.Constant:
-                    return points[0].Pos.Y;
+                    return points[0].Y;
                 default:
                     break;
             }
@@ -1432,7 +1442,7 @@ namespace Game.DataStorage
             return _glyphBindableSpells.LookupByKey(glyphPropertiesId);
         }
 
-        public List<uint> GetGlyphRequiredSpecs(uint glyphPropertiesId)
+        public List<ChrSpecialization> GetGlyphRequiredSpecs(uint glyphPropertiesId)
         {
             return _glyphRequiredSpecs.LookupByKey(glyphPropertiesId);
         }
@@ -1830,7 +1840,8 @@ namespace Game.DataStorage
             var bounds = _skillRaceClassInfoBySkill.LookupByKey(skill);
             foreach (var skllRaceClassInfo in bounds)
             {
-                if (skllRaceClassInfo.RaceMask != 0 && !Convert.ToBoolean(skllRaceClassInfo.RaceMask & SharedConst.GetMaskForRace(race)))
+                var raceMask = new RaceMask<long>(skllRaceClassInfo.RaceMask);
+                if (!raceMask.IsEmpty() && !raceMask.HasRace(race))
                     continue;
                 if (skllRaceClassInfo.ClassMask != 0 && !Convert.ToBoolean(skllRaceClassInfo.ClassMask & (1 << ((byte)class_ - 1))))
                     continue;
@@ -1881,7 +1892,7 @@ namespace Game.DataStorage
             return _talentsByPosition[(int)class_][tier][column];
         }
 
-        public bool IsTotemCategoryCompatibleWith(uint itemTotemCategoryId, uint requiredTotemCategoryId)
+        public bool IsTotemCategoryCompatibleWith(uint itemTotemCategoryId, uint requiredTotemCategoryId, bool requireAllTotems = true)
         {
             if (requiredTotemCategoryId == 0)
                 return true;
@@ -1898,7 +1909,8 @@ namespace Game.DataStorage
             if (itemEntry.TotemCategoryType != reqEntry.TotemCategoryType)
                 return false;
 
-            return (itemEntry.TotemCategoryMask & reqEntry.TotemCategoryMask) == reqEntry.TotemCategoryMask;
+            int sharedMask = itemEntry.TotemCategoryMask & reqEntry.TotemCategoryMask;
+            return requireAllTotems ? sharedMask == reqEntry.TotemCategoryMask : sharedMask != 0;
         }
 
         public bool IsToyItem(uint toy)
@@ -2234,7 +2246,7 @@ namespace Game.DataStorage
         MultiMap<uint, ConditionalContentTuningRecord> _conditionalContentTuning = new();
         List<(uint, int)> _contentTuningLabels = new();
         MultiMap<uint, CurrencyContainerRecord> _currencyContainers = new();
-        MultiMap<uint, CurvePointRecord> _curvePoints = new();
+        MultiMap<uint, Vector2> _curvePoints = new();
         Dictionary<Tuple<uint, byte, byte, byte>, EmotesTextSoundRecord> _emoteTextSounds = new();
         Dictionary<Tuple<uint, int>, ExpectedStatRecord> _expectedStatsByLevel = new();
         MultiMap<uint, ContentTuningXExpectedRecord> _expectedStatModsByContentTuning = new();
@@ -2242,7 +2254,7 @@ namespace Game.DataStorage
         MultiMap<uint, FriendshipRepReactionRecord> _friendshipRepReactions = new();
         Dictionary<uint, HeirloomRecord> _heirlooms = new();
         MultiMap<uint, uint> _glyphBindableSpells = new();
-        MultiMap<uint, uint> _glyphRequiredSpecs = new();
+        MultiMap<uint, ChrSpecialization> _glyphRequiredSpecs = new();
         Dictionary<uint, ItemChildEquipmentRecord> _itemChildEquipment = new();
         ItemClassRecord[] _itemClassByOldEnum = new ItemClassRecord[20];
         List<uint> _itemsWithCurrencyCost = new();
@@ -2547,16 +2559,5 @@ namespace Game.DataStorage
         public uint OptionID;
         public List<ChrCustomizationChoiceRecord> Choices = new();
         public List<ChrCustomizationDisplayInfoRecord> Displays = new();
-    }
-
-    enum CurveInterpolationMode
-    {
-        Linear = 0,
-        Cosine = 1,
-        CatmullRom = 2,
-        Bezier3 = 3,
-        Bezier4 = 4,
-        Bezier = 5,
-        Constant = 6,
     }
 }

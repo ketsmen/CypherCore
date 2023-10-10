@@ -38,7 +38,7 @@ namespace Game.Entities
             SetEntry(itemId);
             SetObjectScale(1.0f);
 
-            if (owner)
+            if (owner != null)
             {
                 SetOwnerGUID(owner.GetGUID());
                 SetContainedIn(owner.GetGUID());
@@ -74,7 +74,7 @@ namespace Game.Entities
 
                         PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(artifactAppearance.UnlockPlayerConditionID);
                         if (playerCondition != null)
-                            if (!owner || !ConditionManager.IsPlayerMeetingCondition(owner, playerCondition))
+                            if (owner == null || !ConditionManager.IsPlayerMeetingCondition(owner, playerCondition))
                                 continue;
 
                         SetModifier(ItemModifier.ArtifactAppearanceId, artifactAppearance.Id);
@@ -624,7 +624,7 @@ namespace Game.Entities
 
         public void CheckArtifactRelicSlotUnlock(Player owner)
         {
-            if (!owner)
+            if (owner == null)
                 return;
 
             byte artifactId = GetTemplate().GetArtifactID();
@@ -718,7 +718,7 @@ namespace Game.Entities
             if (uState == ItemUpdateState.New && state == ItemUpdateState.Removed)
             {
                 // pretend the item never existed
-                if (forplayer)
+                if (forplayer != null)
                 {
                     RemoveItemFromUpdateQueueOf(this, forplayer);
                     forplayer.DeleteRefundReference(GetGUID());
@@ -731,7 +731,7 @@ namespace Game.Entities
                 if (uState != ItemUpdateState.New)
                     uState = state;
 
-                if (forplayer)
+                if (forplayer != null)
                     AddItemToUpdateQueueOf(this, forplayer);
             }
             else
@@ -825,7 +825,7 @@ namespace Game.Entities
             SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.StackCount), value);
 
             Player player = GetOwner();
-            if (player)
+            if (player != null)
             {
                 TradeData tradeData = player.GetTradeData();
                 if (tradeData != null)
@@ -1351,7 +1351,7 @@ namespace Game.Entities
         public override bool AddToObjectUpdate()
         {
             Player owner = GetOwner();
-            if (owner)
+            if (owner != null)
             {
                 owner.GetMap().AddUpdateObject(this);
                 return true;
@@ -1363,7 +1363,7 @@ namespace Game.Entities
         public override void RemoveFromObjectUpdate()
         {
             Player owner = GetOwner();
-            if (owner)
+            if (owner != null)
                 owner.GetMap().RemoveUpdateObject(this);
         }
 
@@ -1509,7 +1509,7 @@ namespace Game.Entities
             Player owner = GetOwner();
             for (byte i = 0; i < ItemConst.MaxStats; ++i)
             {
-                if ((owner ? GetItemStatValue(i, owner) : proto.GetStatPercentEditor(i)) != 0)
+                if ((owner != null ? GetItemStatValue(i, owner) : proto.GetStatPercentEditor(i)) != 0)
                     return true;
             }
 
@@ -2038,6 +2038,22 @@ namespace Game.Entities
             return (ushort)GetAppearanceModId();
         }
 
+        uint GetVisibleModifiedAppearanceId(Player owner)
+        {
+            uint itemModifiedAppearanceId = GetModifier(ItemConst.AppearanceModifierSlotBySpec[owner.GetActiveTalentGroup()]);
+            if (itemModifiedAppearanceId == 0)
+                itemModifiedAppearanceId = GetModifier(ItemModifier.TransmogAppearanceAllSpecs);
+
+            if (itemModifiedAppearanceId == 0)
+            {
+                var itemModifiedAppearance = GetItemModifiedAppearance();
+                if (itemModifiedAppearance != null)
+                    itemModifiedAppearanceId = itemModifiedAppearance.Id;
+            }
+
+            return itemModifiedAppearanceId;
+        }
+        
         public uint GetVisibleSecondaryModifiedAppearanceId(Player owner)
         {
             uint itemModifiedAppearanceId = GetModifier(ItemConst.SecondaryAppearanceModifierSlotBySpec[owner.GetActiveTalentGroup()]);
@@ -2315,7 +2331,7 @@ namespace Game.Entities
         public void GiveArtifactXp(ulong amount, Item sourceItem, ArtifactCategory artifactCategoryId)
         {
             Player owner = GetOwner();
-            if (!owner)
+            if (owner == null)
                 return;
 
             if (artifactCategoryId != 0)
@@ -2487,7 +2503,7 @@ namespace Game.Entities
 
                 eff.SetBonuses.Add(itemSetSpell);
                 // spell cast only if fit form requirement, in other case will cast at form change
-                if (itemSetSpell.ChrSpecID == 0 || itemSetSpell.ChrSpecID == player.GetPrimarySpecialization())
+                if (itemSetSpell.ChrSpecID == 0 || (ChrSpecialization)itemSetSpell.ChrSpecID == player.GetPrimarySpecialization())
                     player.ApplyEquipSpell(spellInfo, null, true);
             }
         }

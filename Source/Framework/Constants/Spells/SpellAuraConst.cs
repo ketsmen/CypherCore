@@ -256,7 +256,7 @@ namespace Framework.Constants
         ModAuraDurationByDispelNotStack = 246,
         CloneCaster = 247,
         ModCombatResultChance = 248,
-        ConvertRune = 249,
+        ModDamagePercentDoneByTargetAuraMechanic = 249,
         ModIncreaseHealth2 = 250,
         ModEnemyDodge = 251,
         ModSpeedSlowAll = 252,
@@ -545,6 +545,12 @@ namespace Framework.Constants
         Unk535 = 535,
         IgnoreSpellCreatureTypeRequirements = 536,
         Unk537 = 537,
+        ModFakeInebriationMovementOnly = 538,
+        AllowMountInCombat = 539,
+        ModSupportStat = 540, // NYI
+        ModRequiredMountCapabilityFlags = 541,
+        Unk542 = 542,
+        Unk543 = 543,
         Total
     }
 

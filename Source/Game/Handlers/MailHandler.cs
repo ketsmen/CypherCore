@@ -30,12 +30,12 @@ namespace Game
             }
             else if (guid.IsGameObject())
             {
-                if (!GetPlayer().GetGameObjectIfCanInteractWith(guid, GameObjectTypes.Mailbox))
+                if (GetPlayer().GetGameObjectIfCanInteractWith(guid, GameObjectTypes.Mailbox) == null)
                     return false;
             }
             else if (guid.IsAnyTypeCreature())
             {
-                if (!GetPlayer().GetNPCIfCanInteractWith(guid, NPCFlags.Mailbox, NPCFlags2.None))
+                if (GetPlayer().GetNPCIfCanInteractWith(guid, NPCFlags.Mailbox, NPCFlags2.None) == null)
                     return false;
             }
             else
@@ -186,6 +186,13 @@ namespace Game
                         return;
                     }
 
+                    // handle empty bag before CanBeTraded, since that func already has that check
+                    if (item.IsNotEmptyBag())
+                    {
+                        player.SendMailResult(0, MailResponseType.Send, MailResponseResult.EquipError, InventoryResult.DestroyNonemptyBag);
+                        return;
+                    }
+
                     if (!item.CanBeTraded(true))
                     {
                         player.SendMailResult(0, MailResponseType.Send, MailResponseResult.EquipError, InventoryResult.MailBoundItem);
@@ -210,12 +217,6 @@ namespace Game
                     if (sendMail.Info.Cod != 0 && item.IsWrapped())
                     {
                         player.SendMailResult(0, MailResponseType.Send, MailResponseResult.CantSendWrappedCod);
-                        return;
-                    }
-
-                    if (item.IsNotEmptyBag())
-                    {
-                        player.SendMailResult(0, MailResponseType.Send, MailResponseResult.EquipError, InventoryResult.DestroyNonemptyBag);
                         return;
                     }
 
@@ -388,7 +389,7 @@ namespace Game
                     foreach (var itemInfo in m.items)
                     {
                         Item item = player.GetMItem(itemInfo.item_guid);
-                        if (item)
+                        if (item != null)
                             draft.AddItem(item);
                         player.RemoveMItem(itemInfo.item_guid);
                     }
@@ -453,7 +454,7 @@ namespace Game
                     if (HasPermission(RBACPermissions.LogGmTrade))
                     {
                         string sender_name;
-                        if (receiver)
+                        if (receiver != null)
                         {
                             sender_accId = receiver.GetSession().GetAccountId();
                             sender_name = receiver.GetName();
@@ -469,11 +470,11 @@ namespace Game
                         Log.outCommand(GetAccountId(), "GM {0} (Account: {1}) receiver mail item: {2} (Entry: {3} Count: {4}) and send COD money: {5} to player: {6} (Account: {7})",
                             GetPlayerName(), GetAccountId(), it.GetTemplate().GetName(), it.GetEntry(), it.GetCount(), m.COD, sender_name, sender_accId);
                     }
-                    else if (!receiver)
+                    else if (receiver == null)
                         sender_accId = Global.CharacterCacheStorage.GetCharacterAccountIdByGuid(sender_guid);
 
                     // check player existence
-                    if (receiver || sender_accId != 0)
+                    if (receiver != null || sender_accId != 0)
                     {
                         new MailDraft(m.subject, "")
                             .AddMoney(m.COD)

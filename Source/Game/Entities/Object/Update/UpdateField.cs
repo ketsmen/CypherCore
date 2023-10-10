@@ -13,21 +13,19 @@ namespace Game.Entities
     {
         UpdateMask _changesMask = new((int)TypeId.Max);
 
-        public UpdateFieldHolder(WorldObject owner) { }
-
-        public BaseUpdateData<T> ModifyValue<T>(BaseUpdateData<T> updateData)
+        public HasChangesMask ModifyValue(HasChangesMask updateData)
         {
             _changesMask.Set(updateData.Bit);
             return updateData;
         }
 
-        public void ClearChangesMask<T>(BaseUpdateData<T> updateData)
+        public void ClearChangesMask(HasChangesMask updateData)
         {
             _changesMask.Reset(updateData.Bit);
             updateData.ClearChangesMask();
         }
 
-        public void ClearChangesMask<T, U>(BaseUpdateData<T> updateData, ref UpdateField<U> updateField) where T : new() where U : new()
+        public void ClearChangesMask<U>(HasChangesMask updateData, ref UpdateField<U> updateField) where U : new()
         {
             _changesMask.Reset(updateData.Bit);
 
@@ -342,20 +340,20 @@ namespace Game.Entities
         UpdateMask GetUpdateMask();
     }
 
-    public abstract class BaseUpdateData<T> : IHasChangesMask
+    public abstract class HasChangesMask : IHasChangesMask
     {
         public UpdateMask _changesMask;
         public int _blockBit;
         public int Bit;
 
-        public BaseUpdateData(int blockBit, TypeId bit, int changeMask)
+        public HasChangesMask(int blockBit, TypeId bit, int changeMask)
         {
             _blockBit = blockBit;
             Bit = (int)bit;
             _changesMask = new UpdateMask(changeMask);
         }
 
-        public BaseUpdateData(int changeMask)
+        public HasChangesMask(int changeMask)
         {
             _changesMask = new UpdateMask(changeMask);
         }
@@ -423,6 +421,12 @@ namespace Game.Entities
             return updateField;
         }
 
+        public OptionalUpdateField<U> ModifyValue<U>(OptionalUpdateField<U> updateField) where U : new()
+        {
+            MarkChanged(updateField);
+            return updateField;
+        }
+
         public UpdateFieldString ModifyValue(UpdateFieldString updateField)
         {
             MarkChanged(updateField);
@@ -459,6 +463,12 @@ namespace Game.Entities
         }
 
         public void MarkChanged<U>(UpdateField<U> updateField) where U : new()
+        {
+            _changesMask.Set(updateField.BlockBit);
+            _changesMask.Set(updateField.Bit);
+        }
+
+        public void MarkChanged<U>(OptionalUpdateField<U> updateField) where U : new()
         {
             _changesMask.Set(updateField.BlockBit);
             _changesMask.Set(updateField.Bit);

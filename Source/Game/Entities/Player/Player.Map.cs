@@ -156,12 +156,12 @@ namespace Game.Entities
             }
 
             // group update
-            if (GetGroup())
+            if (GetGroup() != null)
             {
                 SetGroupUpdateFlag(GroupUpdateFlags.Full);
 
                 Pet pet = GetPet();
-                if (pet)
+                if (pet != null)
                     pet.SetGroupUpdateFlag(GroupUpdatePetFlags.Full);
             }
 
@@ -213,7 +213,7 @@ namespace Game.Entities
                 Global.BattleFieldMgr.HandlePlayerEnterZone(this, newZone);
                 SendInitWorldStates(newZone, newArea);              // only if really enters to new zone, not just area change, works strange...
                 Guild guild = GetGuild();
-                if (guild)
+                if (guild != null)
                     guild.UpdateMemberData(this, GuildMemberData.ZoneId, newZone);
             }
         }
@@ -437,7 +437,7 @@ namespace Game.Entities
                 if (group == null || group.IsRaidGroup())
                     return false;
 
-            if (group)
+            if (group != null)
             {
                 // check if player's group is bound to this instance
                 if (group != instance.GetOwningGroup())
@@ -464,6 +464,45 @@ namespace Game.Entities
         {
             if (!_instanceResetTimes.ContainsKey(instanceId))
                 _instanceResetTimes.Add(instanceId, enterTime + Time.Hour);
+        }
+
+        public WorldSafeLocsEntry GetInstanceEntrance(uint targetMapId)
+        {
+            WorldSafeLocsEntry entranceLocation = null;
+            MapRecord mapEntry = CliDB.MapStorage.LookupByKey(targetMapId);
+
+            if (mapEntry.Instanceable())
+            {
+                // Check if we can contact the instancescript of the instance for an updated entrance location
+                uint targetInstanceId = Global.MapMgr.FindInstanceIdForPlayer(targetMapId, this);
+                if (targetInstanceId != 0)
+                {
+                    Map map = Global.MapMgr.FindMap(targetMapId, targetInstanceId);
+                    if (map != null)
+                    {
+                        InstanceMap instanceMap = map.ToInstanceMap();
+                        if (instanceMap != null)
+                        {
+                            InstanceScript instanceScript = instanceMap.GetInstanceScript();
+                            if (instanceScript != null)
+                                entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceScript.GetEntranceLocation());
+                        }
+                    }
+                }
+
+                // Finally check with the instancesave for an entrance location if we did not get a valid one from the instancescript
+                if (entranceLocation == null)
+                {
+                    Group group = GetGroup();
+                    Difficulty difficulty = group != null ? group.GetDifficultyID(mapEntry) : GetDifficultyID(mapEntry);
+                    ObjectGuid instanceOwnerGuid = group != null ? group.GetRecentInstanceOwner(targetMapId) : GetGUID();
+
+                    InstanceLock instanceLock = Global.InstanceLockMgr.FindActiveInstanceLock(instanceOwnerGuid, new MapDb2Entries(mapEntry, Global.DB2Mgr.GetDownscaledMapDifficultyData(targetMapId, ref difficulty)));
+                    if (instanceLock != null)
+                        entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceLock.GetData().EntranceWorldSafeLocId);
+                }
+            }
+            return entranceLocation;
         }
 
         public void SendDungeonDifficulty(int forcedDifficulty = -1)
@@ -493,7 +532,7 @@ namespace Game.Entities
             {
                 Map map = Global.MapMgr.FindMap(mapId, instanceId);
                 bool forgetInstance = false;
-                if (map)
+                if (map != null)
                 {
                     InstanceMap instance = map.ToInstanceMap();
                     if (instance != null)
@@ -555,6 +594,19 @@ namespace Game.Entities
                 return false;
 
             InstanceLock instanceLock = Global.InstanceLockMgr.FindActiveInstanceLock(GetGUID(), new MapDb2Entries(GetMap().GetEntry(), GetMap().GetMapDifficulty()));
+            if (instanceLock == null)
+                return false;
+
+            return (instanceLock.GetData().CompletedEncountersMask & (1u << dungeonEncounter.Bit)) != 0;
+        }
+
+        public bool IsLockedToDungeonEncounter(uint dungeonEncounterId, Difficulty difficulty)
+        {
+            var dungeonEncounter = CliDB.DungeonEncounterStorage.LookupByKey(dungeonEncounterId);
+            if (dungeonEncounter == null)
+                return false;
+
+            InstanceLock instanceLock = Global.InstanceLockMgr.FindActiveInstanceLock(GetGUID(), new MapDb2Entries((uint)dungeonEncounter.MapID, difficulty));
             if (instanceLock == null)
                 return false;
 

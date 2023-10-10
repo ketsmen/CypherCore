@@ -18,7 +18,7 @@ namespace Game.Chat.Commands
         static bool HandleLearnCommand(CommandHandler handler, uint spellId, [OptionalArg] string allRanksStr)
         {
             Player targetPlayer = handler.GetSelectedPlayerOrSelf();
-            if (!targetPlayer)
+            if (targetPlayer == null)
             {
                 handler.SendSysMessage(CypherStrings.PlayerNotFound);
                 return false;
@@ -141,7 +141,7 @@ namespace Game.Chat.Commands
                 //  Example: .learn all_recipes enchanting
 
                 Player target = handler.GetSelectedPlayer();
-                if (!target)
+                if (target == null)
                 {
                     handler.SendSysMessage(CypherStrings.PlayerNotFound);
                     return false;
@@ -207,7 +207,7 @@ namespace Game.Chat.Commands
                     if (playerClass != talentInfo.ClassID)
                         continue;
 
-                    if (talentInfo.SpecID != 0 && player.GetPrimarySpecialization() != talentInfo.SpecID)
+                    if (talentInfo.SpecID != 0 && player.GetPrimarySpecialization() != (ChrSpecialization)talentInfo.SpecID)
                         continue;
 
                     SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(talentInfo.SpellID, Difficulty.None);
@@ -317,7 +317,7 @@ namespace Game.Chat.Commands
         static bool HandleUnLearnCommand(CommandHandler handler, uint spellId, [OptionalArg] string allRanksStr)
         {
             Player target = handler.GetSelectedPlayer();
-            if (!target)
+            if (target == null)
             {
                 handler.SendSysMessage(CypherStrings.NoCharSelected);
                 return false;

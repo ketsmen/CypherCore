@@ -4,6 +4,7 @@
 using Framework.Constants;
 using Framework.Dynamic;
 using Game.DataStorage;
+using Game.Miscellaneous;
 using Game.Networking.Packets;
 using Game.Spells;
 using System;
@@ -210,7 +211,7 @@ namespace Game.Entities
         {
             Pet pet = GetPet();
 
-            if (!pet)
+            if (pet == null)
                 return;
 
             Log.outDebug(LogFilter.Pet, "Pet Spells Groups");
@@ -249,7 +250,7 @@ namespace Game.Entities
 
         public bool CanSeeSpellClickOn(Creature creature)
         {
-            if (!creature.HasNpcFlag(NPCFlags.SpellClick))
+            if (creature.HasNpcFlag(NPCFlags.SpellClick))
                 return false;
 
             var clickBounds = Global.ObjectMgr.GetSpellClickInfoMapBounds(creature.GetEntry());
@@ -298,7 +299,7 @@ namespace Game.Entities
 
         void LearnSpecializationSpells()
         {
-            var specSpells = Global.DB2Mgr.GetSpecializationSpells(GetPrimarySpecialization());
+            var specSpells = Global.DB2Mgr.GetSpecializationSpells((uint)GetPrimarySpecialization());
             if (specSpells != null)
             {
                 for (int j = 0; j < specSpells.Count; ++j)
@@ -870,7 +871,7 @@ namespace Game.Entities
         public void StopCastingBindSight()
         {
             WorldObject target = GetViewpoint();
-            if (target)
+            if (target != null)
             {
                 if (target.IsTypeMask(TypeMask.Unit))
                 {
@@ -949,7 +950,7 @@ namespace Game.Entities
                 var enchantDuration = m_enchantDuration[i];
                 if (enchantDuration.slot == slot)
                 {
-                    if (enchantDuration.item && enchantDuration.item.GetEnchantmentId(slot) != 0)
+                    if (enchantDuration.item != null && enchantDuration.item.GetEnchantmentId(slot) != 0)
                     {
                         // Poisons and DK runes are enchants which are allowed on arenas
                         if (Global.SpellMgr.IsArenaAllowedEnchancment(enchantDuration.item.GetEnchantmentId(slot)))
@@ -972,7 +973,7 @@ namespace Game.Entities
             for (byte i = InventorySlots.ItemStart; i < inventoryEnd; ++i)
             {
                 Item pItem = GetItemByPos(InventorySlots.Bag0, i);
-                if (pItem && !Global.SpellMgr.IsArenaAllowedEnchancment(pItem.GetEnchantmentId(slot)))
+                if (pItem != null && !Global.SpellMgr.IsArenaAllowedEnchancment(pItem.GetEnchantmentId(slot)))
                     pItem.ClearEnchantment(slot);
             }
 
@@ -980,12 +981,12 @@ namespace Game.Entities
             for (byte i = InventorySlots.BagStart; i < InventorySlots.BagEnd; ++i)
             {
                 Bag pBag = GetBagByPos(i);
-                if (pBag)
+                if (pBag != null)
                 {
                     for (byte j = 0; j < pBag.GetBagSize(); j++)
                     {
                         Item pItem = pBag.GetItemByPos(j);
-                        if (pItem && !Global.SpellMgr.IsArenaAllowedEnchancment(pItem.GetEnchantmentId(slot)))
+                        if (pItem != null && !Global.SpellMgr.IsArenaAllowedEnchancment(pItem.GetEnchantmentId(slot)))
                             pItem.ClearEnchantment(slot);
                     }
                 }
@@ -999,7 +1000,7 @@ namespace Game.Entities
                 return;
 
             // Call not from spell cast, send cooldown event for item spells if no in combat
-            if (!spell)
+            if (spell == null)
             {
                 // spell/item pair let set proper cooldown (except not existed charged spell cooldown spellmods for potions)
                 ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(m_lastPotionId);
@@ -1028,7 +1029,7 @@ namespace Game.Entities
 
         public bool CanUseMastery()
         {
-            ChrSpecializationRecord chrSpec = CliDB.ChrSpecializationStorage.LookupByKey(GetPrimarySpecialization());
+            ChrSpecializationRecord chrSpec = GetPrimarySpecializationEntry();
             if (chrSpec != null)
                 return HasSpell(chrSpec.MasterySpellID[0]) || HasSpell(chrSpec.MasterySpellID[1]);
 
@@ -1118,7 +1119,7 @@ namespace Game.Entities
                     {
                         if (currVal == 0)   // activated skill, mark as new to save into database
                         {
-                            skillStatusData.State = SkillState.New;
+                            skillStatusData.State = skillStatusData.State != SkillState.Deleted ? SkillState.New : SkillState.Changed; // skills marked as SKILL_DELETED already exist in database, mark as changed instead of new
 
                             // Set profession line
                             int freeProfessionSlot = FindEmptyProfessionSlotFor(id);
@@ -1175,8 +1176,7 @@ namespace Game.Entities
                     SetSkillPermBonus(skillStatusData.Pos, 0);
 
                     // mark as deleted so the next save will delete the data from the database
-                    skillStatusData.State = SkillState.Deleted;
-
+                    skillStatusData.State = skillStatusData.State != SkillState.New ? SkillState.Deleted : SkillState.Unchanged; // skills marked as SKILL_NEW don't exist in database (this distinction is not neccessary for deletion but for re-learning the same skill before save to db happens)
 
                     // remove all spells that related to this skill
                     List<SkillLineAbilityRecord> skillLineAbilities = Global.DB2Mgr.GetSkillLineAbilitiesBySkill(id);
@@ -1628,7 +1628,6 @@ namespace Game.Entities
 
         public void LearnSkillRewardedSpells(uint skillId, uint skillValue, Race race)
         {
-            long raceMask = SharedConst.GetMaskForRace(race);
             uint classMask = GetClassMask();
 
             List<SkillLineAbilityRecord> skillLineAbilities = Global.DB2Mgr.GetSkillLineAbilitiesBySkill(skillId);
@@ -1660,7 +1659,8 @@ namespace Game.Entities
                     continue;
 
                 // Check race if set
-                if (ability.RaceMask != 0 && !Convert.ToBoolean(ability.RaceMask & raceMask))
+                var raceMask = new RaceMask<long>(ability.RaceMask);
+                if (!raceMask.IsEmpty() && !raceMask.HasRace(race))
                     continue;
 
                 // Check class if set
@@ -1755,12 +1755,12 @@ namespace Game.Entities
                 case ItemClass.Weapon:
                 {
                     Item item = GetUseableItemByPos(InventorySlots.Bag0, EquipmentSlot.MainHand);
-                    if (item)
+                    if (item != null)
                         if (item != ignoreItem && item.IsFitToSpellRequirements(spellInfo))
                             return true;
 
                     item = GetUseableItemByPos(InventorySlots.Bag0, EquipmentSlot.OffHand);
-                    if (item)
+                    if (item != null)
                         if (item != ignoreItem && item.IsFitToSpellRequirements(spellInfo))
                             return true;
                     break;
@@ -1790,7 +1790,7 @@ namespace Game.Entities
                         for (byte i = EquipmentSlot.Start; i < EquipmentSlot.MainHand; ++i)
                         {
                             Item item = GetUseableItemByPos(InventorySlots.Bag0, i);
-                            if (item)
+                            if (item != null)
                                 if (item != ignoreItem && item.IsFitToSpellRequirements(spellInfo))
                                     return true;
                         }
@@ -1801,7 +1801,7 @@ namespace Game.Entities
                         foreach (byte i in new[] { EquipmentSlot.Head, EquipmentSlot.Shoulders, EquipmentSlot.Chest, EquipmentSlot.Waist, EquipmentSlot.Legs, EquipmentSlot.Feet, EquipmentSlot.Wrist, EquipmentSlot.Hands })
                         {
                             Item item = GetUseableItemByPos(InventorySlots.Bag0, i);
-                            if (!item || item == ignoreItem || !item.IsFitToSpellRequirements(spellInfo))
+                            if (item == null || item == ignoreItem || !item.IsFitToSpellRequirements(spellInfo))
                                 return false;
                         }
 
@@ -1834,20 +1834,20 @@ namespace Game.Entities
             for (byte slot = InventorySlots.ItemStart; slot < inventoryEnd; ++slot)
             {
                 Item item = GetItemByPos(InventorySlots.Bag0, slot);
-                if (item)
+                if (item != null)
                     ApplyItemObtainSpells(item, true);
             }
 
             for (byte i = InventorySlots.BagStart; i < InventorySlots.BagEnd; ++i)
             {
                 Bag bag = GetBagByPos(i);
-                if (!bag)
+                if (bag == null)
                     continue;
 
                 for (byte slot = 0; slot < bag.GetBagSize(); ++slot)
                 {
                     Item item = bag.GetItemByPos(slot);
-                    if (item)
+                    if (item != null)
                         ApplyItemObtainSpells(item, true);
                 }
             }
@@ -2946,7 +2946,7 @@ namespace Game.Entities
             pct = 1.0f;
 
             // Drop charges for triggering spells instead of triggered ones
-            if (m_spellModTakingSpell)
+            if (m_spellModTakingSpell != null)
                 spell = m_spellModTakingSpell;
 
             switch (op)
@@ -3114,7 +3114,7 @@ namespace Game.Entities
                 return false;
 
             // First time this aura applies a mod to us and is out of charges
-            if (spell && mod.ownerAura.IsUsingCharges() && mod.ownerAura.GetCharges() == 0 && !spell.m_appliedMods.Contains(mod.ownerAura))
+            if (spell != null && mod.ownerAura.IsUsingCharges() && mod.ownerAura.GetCharges() == 0 && !spell.m_appliedMods.Contains(mod.ownerAura))
                 return false;
 
             switch (mod.op)
@@ -3234,7 +3234,7 @@ namespace Game.Entities
         {
             for (byte i = 0; i < InventorySlots.BagEnd; ++i)
             {
-                if (m_items[i] && !m_items[i].IsBroken() && CanUseAttackType(GetAttackBySlot(i, m_items[i].GetTemplate().GetInventoryType())))
+                if (m_items[i] != null && !m_items[i].IsBroken() && CanUseAttackType(GetAttackBySlot(i, m_items[i].GetTemplate().GetInventoryType())))
                 {
                     ApplyItemEquipSpell(m_items[i], false, true);     // remove spells that not fit to form
                     ApplyItemEquipSpell(m_items[i], true, true);      // add spells that fit form but not active
@@ -3257,7 +3257,7 @@ namespace Game.Entities
                 {
                     SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(itemSetSpell.SpellID, Difficulty.None);
 
-                    if (itemSetSpell.ChrSpecID != 0 && itemSetSpell.ChrSpecID != GetPrimarySpecialization())
+                    if (itemSetSpell.ChrSpecID != 0 && (ChrSpecialization)itemSetSpell.ChrSpecID != GetPrimarySpecialization())
                         ApplyEquipSpell(spellInfo, null, false, false);  // item set aura is not for current spec
                     else
                     {
@@ -3283,7 +3283,7 @@ namespace Game.Entities
             if (removeActivePetCooldowns)
             {
                 Pet pet = GetPet();
-                if (pet)
+                if (pet != null)
                     pet.GetSpellHistory().ResetAllCooldowns();
             }
         }

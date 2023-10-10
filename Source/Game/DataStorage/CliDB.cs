@@ -34,7 +34,13 @@ namespace Game.DataStorage
             DB6Storage<T> ReadDB2<T>(string fileName, HotfixStatements preparedStatement, HotfixStatements preparedStatementLocale = 0) where T : new()
             {
                 DB6Storage<T> storage = new();
-                storage.LoadData($"{db2Path}/{defaultLocale}/{fileName}");
+                if (!storage.LoadData($"{db2Path}/{defaultLocale}/{fileName}"))
+                {
+                    Log.outError(LogFilter.ServerLoading, "Error loading DB2 files");
+                    Environment.Exit(1);
+                    return null;
+                }
+
                 storage.LoadHotfixData(availableDb2Locales, preparedStatement, preparedStatementLocale);
 
                 Global.DB2Mgr.AddDB2(storage.GetTableHash(), storage);
@@ -107,6 +113,7 @@ namespace Game.DataStorage
             ChrSpecializationStorage = ReadDB2<ChrSpecializationRecord>("ChrSpecialization.db2", HotfixStatements.SEL_CHR_SPECIALIZATION, HotfixStatements.SEL_CHR_SPECIALIZATION_LOCALE);
             CinematicCameraStorage = ReadDB2<CinematicCameraRecord>("CinematicCamera.db2", HotfixStatements.SEL_CINEMATIC_CAMERA);
             CinematicSequencesStorage = ReadDB2<CinematicSequencesRecord>("CinematicSequences.db2", HotfixStatements.SEL_CINEMATIC_SEQUENCES);
+            ConditionalChrModelStorage = ReadDB2<ConditionalChrModelRecord>("ConditionalChrModel.db2", HotfixStatements.SEL_CONDITIONAL_CHR_MODEL);
             ConditionalContentTuningStorage = ReadDB2<ConditionalContentTuningRecord>("ConditionalContentTuning.db2", HotfixStatements.SEL_CONDITIONAL_CONTENT_TUNING);
             ContentTuningStorage = ReadDB2<ContentTuningRecord>("ContentTuning.db2", HotfixStatements.SEL_CONTENT_TUNING);
             ContentTuningXExpectedStorage = ReadDB2<ContentTuningXExpectedRecord>("ContentTuningXExpected.db2", HotfixStatements.SEL_CONTENT_TUNING_X_EXPECTED);
@@ -539,6 +546,7 @@ namespace Game.DataStorage
         public static DB6Storage<ChrSpecializationRecord> ChrSpecializationStorage;
         public static DB6Storage<CinematicCameraRecord> CinematicCameraStorage;
         public static DB6Storage<CinematicSequencesRecord> CinematicSequencesStorage;
+        public static DB6Storage<ConditionalChrModelRecord> ConditionalChrModelStorage;
         public static DB6Storage<ConditionalContentTuningRecord> ConditionalContentTuningStorage;
         public static DB6Storage<ContentTuningRecord> ContentTuningStorage;
         public static DB6Storage<ContentTuningXExpectedRecord> ContentTuningXExpectedStorage;

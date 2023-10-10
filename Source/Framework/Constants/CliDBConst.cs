@@ -1114,10 +1114,60 @@ namespace Framework.Constants
         Caster = 0x01,
         Ranged = 0x02,
         Melee = 0x04,
-        Unknown = 0x08,
         DualWieldTwoHanded = 0x10,     // Used For Cunitdisplay::Setsheatheinvertedfordualwield
         PetOverrideSpec = 0x20,
         Recommended = 0x40,
+    }
+
+    public enum ChrSpecializationRole
+    {
+        Tank = 0,
+        Healer = 1,
+        Dps = 2
+    }
+
+    public enum ChrSpecialization
+    {
+        None = 0,
+        MageArcane = 62,
+        MageFire = 63,
+        MageFrost = 64,
+        PaladinHoly = 65,
+        PaladinProtection = 66,
+        PaladinRetribution = 70,
+        WarriorArms = 71,
+        WarriorFury = 72,
+        WarriorProtection = 73,
+        DruidBalance = 102,
+        DruidFeral = 103,
+        DruidGuardian = 104,
+        DruidRestoration = 105,
+        DeathKnightBlood = 250,
+        DeathKnightFrost = 251,
+        DeathKnightUnholy = 252,
+        HunterBeastMastery = 253,
+        HunterMarksmanship = 254,
+        HunterSurvival = 255,
+        PriestDiscipline = 256,
+        PriestHoly = 257,
+        PriestShadow = 258,
+        RogueAssassination = 259,
+        RogueOutlaw = 260,
+        RogueSubtely = 261,
+        ShamanElemental = 262,
+        ShamanEnhancement = 263,
+        ShamanRestoration = 264,
+        WarlockAffliction = 265,
+        WarlockDemonology = 266,
+        WarlockDestruction = 267,
+        MonkBrewmaster = 268,
+        MonkWindwalker = 269,
+        MonkMistweaver = 270,
+        DemonHunterHavoc = 577,
+        DemonHunterVengeance = 581,
+        EvokerDevastation = 1467,
+        EvokerPreservation = 1468,
+        EvokerAugmentation = 1473
     }
 
     public enum ContentTuningCalcType
@@ -1555,6 +1605,14 @@ namespace Framework.Constants
         StateEmotetalk = 1006,
         StateWainteraction = 1007,
         OneshotTakeOffStart = 1009,
+        OneshotBattleroarNoSound = 1010,
+        StateWaweaponsharpen = 1011,
+        OneshotRollstart = 1012,
+        OneshotRollend = 1013,
+        OneshotWareact02 = 1014,
+        OneshotWathreaten = 1015,
+        Artoffloop = 1016,
+        StateReadyspellomniNosheath = 1017,
     }
 
     public enum GlyphSlotType
@@ -1904,7 +1962,7 @@ namespace Framework.Constants
         MonoValue = 0x400     // Skill always has value 1
     }
 
-    public enum SpellCategoryFlags : sbyte
+    public enum SpellCategoryFlags : int
     {
         CooldownScalesWithWeaponSpeed = 0x01, // unused
         CooldownStartsOnEvent = 0x04,
@@ -1992,14 +2050,14 @@ namespace Framework.Constants
         DontDismissWhenEncounterIsAborted = 0x80000000  // NYI
     }
 
-    public enum TaxiNodeFlags : ushort
+    public enum TaxiNodeFlags : int
     {
         Alliance = 0x1,
         Horde = 0x2,
         UseFavoriteMount = 0x10
     }
 
-    public enum TaxiPathNodeFlags : byte
+    public enum TaxiPathNodeFlags : int
     {
         Teleport = 0x1,
         Stop = 0x2

@@ -19,6 +19,7 @@ using Game.Loots;
 using Game.Mails;
 using Game.Maps;
 using Game.Misc;
+using Game.Miscellaneous;
 using Game.Networking;
 using Game.Networking.Packets;
 using Game.Spells;
@@ -40,7 +41,11 @@ namespace Game.Entities
             m_playerData = new PlayerData();
             m_activePlayerData = new ActivePlayerData();
 
-            Session = session;
+            _session = session;
+
+            ModMeleeHitChance = 7.5f;
+            ModRangedHitChance = 7.5f;
+            ModSpellHitChance = 15.0f;
 
             // players always accept
             if (!GetSession().HasPermission(RBACPermissions.CanFilterWhispers))
@@ -104,8 +109,8 @@ namespace Game.Entities
             m_questObjectiveCriteriaMgr = new QuestObjectiveCriteriaManager(this);
             m_sceneMgr = new SceneMgr(this);
 
-            m_bgBattlegroundQueueID[0] = new BgBattlegroundQueueID_Rec();
-            m_bgBattlegroundQueueID[1] = new BgBattlegroundQueueID_Rec();
+            for (var i = 0; i < SharedConst.MaxPlayerBGQueues; ++i)
+                m_bgBattlegroundQueueID[i] = new BgBattlegroundQueueID_Rec();
 
             m_bgData = new BGData();
 
@@ -640,8 +645,8 @@ namespace Game.Entities
 
                 // drunken state is cleared on death
                 SetDrunkValue(0);
-                // lost combo points at any target (targeted combo points clear in Unit::setDeathState)
-                ClearComboPoints();
+
+                SetPower(PowerType.ComboPoints, 0);
 
                 ClearResurrectRequestData();
 
@@ -718,7 +723,7 @@ namespace Game.Entities
                 StopCastingCharm();
                 StopCastingBindSight();
                 UnsummonPetTemporaryIfAny();
-                ClearComboPoints();
+                SetPower(PowerType.ComboPoints, 0);
                 GetSession().DoLootReleaseAll();
                 m_lootRolls.Clear();
                 OutdoorPvPMgr.HandlePlayerLeaveZone(this, m_zoneUpdateId);
@@ -808,7 +813,7 @@ namespace Game.Entities
         //Network
         public void SendPacket(ServerPacket data)
         {
-            Session.SendPacket(data);
+            _session.SendPacket(data);
         }
 
         public DeclinedName GetDeclinedNames() { return _declinedname; }
@@ -859,15 +864,252 @@ namespace Game.Entities
             return m_petStable;
         }
 
+        public void AddPetToUpdateFields(PetStable.PetInfo pet, PetSaveMode slot, PetStableFlags flags)
+        {
+            StableInfo ufStable = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
+            StablePetInfo ufPet = new();
+            ufPet.ModifyValue(ufPet.PetSlot).SetValue((uint)slot);
+            ufPet.ModifyValue(ufPet.PetNumber).SetValue(pet.PetNumber);
+            ufPet.ModifyValue(ufPet.CreatureID).SetValue(pet.CreatureId);
+            ufPet.ModifyValue(ufPet.DisplayID).SetValue(pet.DisplayId);
+            ufPet.ModifyValue(ufPet.ExperienceLevel).SetValue(pet.Level);
+            ufPet.ModifyValue(ufPet.PetFlags).SetValue((byte)flags);
+            ufPet.ModifyValue(ufPet.Name).SetValue(pet.Name);
+            AddDynamicUpdateFieldValue(ufStable.ModifyValue(ufStable.Pets), ufPet);
+        }
+
+        public void SetPetSlot(uint petNumber, PetSaveMode dstPetSlot)
+        {
+            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.Interacting);
+
+            WorldSession sess = GetSession();
+            PetStable petStable = GetPetStable();
+            if (petStable == null)
+            {
+                sess.SendPetStableResult(StableResult.InternalError);
+                return;
+            }
+
+            var (srcPet, srcPetSlot) = Pet.GetLoadPetInfo(petStable, 0, petNumber, null);
+            PetStable.PetInfo dstPet = Pet.GetLoadPetInfo(petStable, 0, 0, dstPetSlot).Item1;
+
+            if (srcPet == null || srcPet.Type != PetType.Hunter)
+            {
+                sess.SendPetStableResult(StableResult.InternalError);
+                return;
+            }
+
+            if (dstPet != null && dstPet.Type != PetType.Hunter)
+            {
+                sess.SendPetStableResult(StableResult.InternalError);
+                return;
+            }
+
+            PetStable.PetInfo src = null;
+            PetStable.PetInfo dst = null;
+            uint? newActivePetIndex = null;
+
+            if (SharedConst.IsActivePetSlot(srcPetSlot) && SharedConst.IsActivePetSlot(dstPetSlot))
+            {
+                // active<.active: only swap ActivePets and CurrentPetIndex (do not despawn pets)
+                src = petStable.ActivePets[srcPetSlot - PetSaveMode.FirstActiveSlot];
+                dst = petStable.ActivePets[dstPetSlot - PetSaveMode.FirstActiveSlot];
+
+                if (petStable.GetCurrentActivePetIndex() == (uint)srcPetSlot)
+                    newActivePetIndex = (uint)dstPetSlot;
+                else if (petStable.GetCurrentActivePetIndex() == (uint)dstPetSlot)
+                    newActivePetIndex = (uint)srcPetSlot;
+            }
+            else if (SharedConst.IsStabledPetSlot(srcPetSlot) && SharedConst.IsStabledPetSlot(dstPetSlot))
+            {
+                // stabled<.stabled: only swap StabledPets
+                src = petStable.StabledPets[srcPetSlot - PetSaveMode.FirstStableSlot];
+                dst = petStable.StabledPets[dstPetSlot - PetSaveMode.FirstStableSlot];
+            }
+            else if (SharedConst.IsActivePetSlot(srcPetSlot) && SharedConst.IsStabledPetSlot(dstPetSlot))
+            {
+                // active<.stabled: swap petStable contents and despawn active pet if it is involved in swap
+                if (petStable.CurrentPetIndex == (uint)srcPetSlot)
+                {
+                    Pet oldPet = GetPet();
+                    if (oldPet != null && !oldPet.IsAlive())
+                    {
+                        sess.SendPetStableResult(StableResult.InternalError);
+                        return;
+                    }
+
+                    RemovePet(oldPet, PetSaveMode.NotInSlot);
+                }
+
+                if (dstPet != null)
+                {
+                    CreatureTemplate creatureInfo = Global.ObjectMgr.GetCreatureTemplate(dstPet.CreatureId);
+                    if (creatureInfo == null || !creatureInfo.IsTameable(CanTameExoticPets(), creatureInfo.GetDifficulty(Difficulty.None)))
+                    {
+                        sess.SendPetStableResult(StableResult.CantControlExotic);
+                        return;
+                    }
+                }
+
+                src = petStable.ActivePets[srcPetSlot - PetSaveMode.FirstActiveSlot];
+                dst = petStable.StabledPets[dstPetSlot - PetSaveMode.FirstStableSlot];
+            }
+            else if (SharedConst.IsStabledPetSlot(srcPetSlot) && SharedConst.IsActivePetSlot(dstPetSlot))
+            {
+                // stabled<.active: swap petStable contents and despawn active pet if it is involved in swap
+                if (petStable.CurrentPetIndex == (uint)dstPetSlot)
+                {
+                    Pet oldPet = GetPet();
+                    if (oldPet != null && !oldPet.IsAlive())
+                    {
+                        sess.SendPetStableResult(StableResult.InternalError);
+                        return;
+                    }
+
+                    RemovePet(oldPet, PetSaveMode.NotInSlot);
+                }
+
+                CreatureTemplate creatureInfo = Global.ObjectMgr.GetCreatureTemplate(srcPet.CreatureId);
+                if (creatureInfo == null || !creatureInfo.IsTameable(CanTameExoticPets(), creatureInfo.GetDifficulty(Difficulty.None)))
+                {
+                    sess.SendPetStableResult(StableResult.CantControlExotic);
+                    return;
+                }
+
+                src = petStable.StabledPets[srcPetSlot - PetSaveMode.FirstStableSlot];
+                dst = petStable.ActivePets[dstPetSlot - PetSaveMode.FirstActiveSlot];
+            }
+
+            SQLTransaction trans = new SQLTransaction();
+
+            PreparedStatement stmt = CharacterDatabase.GetPreparedStatement(CharStatements.UPD_CHAR_PET_SLOT_BY_ID);
+            stmt.AddValue(0, (short)dstPetSlot);
+            stmt.AddValue(1, GetGUID().GetCounter());
+            stmt.AddValue(2, srcPet.PetNumber);
+            trans.Append(stmt);
+
+            if (dstPet != null)
+            {
+                stmt = CharacterDatabase.GetPreparedStatement(CharStatements.UPD_CHAR_PET_SLOT_BY_ID);
+                stmt.AddValue(0, (short)srcPetSlot);
+                stmt.AddValue(1, GetGUID().GetCounter());
+                stmt.AddValue(2, dstPet.PetNumber);
+                trans.Append(stmt);
+            }
+
+
+            GetSession().AddTransactionCallback(DB.Characters.AsyncCommitTransaction(trans)).AfterComplete(success =>
+            {
+                if (sess.GetPlayer() == this)
+                {
+                    if (success)
+                    {
+                        Extensions.Swap(ref src, ref dst);
+                        if (newActivePetIndex.HasValue)
+                            sess.GetPlayer().GetPetStable().SetCurrentActivePetIndex(newActivePetIndex.Value);
+
+                        int srcPetIndex = m_activePlayerData.PetStable.GetValue().Pets.FindIndexIf(p => p.PetSlot == (uint)srcPetSlot);
+                        int dstPetIndex = m_activePlayerData.PetStable.GetValue().Pets.FindIndexIf(p => p.PetSlot == (uint)dstPetSlot);
+
+                        if (srcPetIndex >= 0)
+                        {
+                            StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
+                            StablePetInfo stablePetInfo = stableInfo.ModifyValue(stableInfo.Pets, srcPetIndex);
+                            SetUpdateFieldValue(stablePetInfo.ModifyValue(stablePetInfo.PetSlot), (uint)dstPetSlot);
+                        }
+
+                        if (dstPetIndex >= 0)
+                        {
+                            StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
+                            StablePetInfo stablePetInfo = stableInfo.ModifyValue(stableInfo.Pets, dstPetIndex);
+                            SetUpdateFieldValue(stablePetInfo.ModifyValue(stablePetInfo.PetSlot), (uint)srcPetSlot);
+                        }
+
+                        sess.SendPetStableResult(StableResult.StableSuccess);
+                    }
+                    else
+                    {
+                        sess.SendPetStableResult(StableResult.InternalError);
+                    }
+                }
+            });
+        }
+
+        public ObjectGuid GetStableMaster()
+        {
+            if (!m_activePlayerData.PetStable.HasValue())
+                return ObjectGuid.Empty;
+
+            return m_activePlayerData.PetStable.GetValue().StableMaster;              
+        }
+
+        public void SetStableMaster(ObjectGuid stableMaster)
+        {
+            if (!m_activePlayerData.PetStable.HasValue())
+                return;
+
+            StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
+            SetUpdateFieldValue(stableInfo.ModifyValue(stableInfo.StableMaster), stableMaster);
+        }
+        
         // last used pet number (for BG's)
         public uint GetLastPetNumber() { return m_lastpetnumber; }
         public void SetLastPetNumber(uint petnumber) { m_lastpetnumber = petnumber; }
         public uint GetTemporaryUnsummonedPetNumber() { return m_temporaryUnsummonedPetNumber; }
         public void SetTemporaryUnsummonedPetNumber(uint petnumber) { m_temporaryUnsummonedPetNumber = petnumber; }
+
+        public ReactStates? GetTemporaryPetReactState() { return m_temporaryPetReactState; }
+        
+        public void DisablePetControlsOnMount(ReactStates reactState, CommandStates commandState)
+        {
+            Pet pet = GetPet();
+            if (pet == null)
+                return;
+
+            m_temporaryPetReactState = pet.GetReactState();
+            pet.SetReactState(reactState);
+            CharmInfo charmInfo = pet.GetCharmInfo();
+            if (charmInfo != null)
+                charmInfo.SetCommandState(commandState);
+
+            pet.GetMotionMaster().MoveFollow(this, SharedConst.PetFollowDist, pet.GetFollowAngle());
+
+            PetMode petMode = new();
+            petMode.PetGUID = pet.GetGUID();
+            petMode.ReactState = reactState;
+            petMode.CommandState = commandState;
+            petMode.Flag = 0;
+            SendPacket(petMode);
+        }
+
+        public void EnablePetControlsOnDismount()
+        {
+            Pet pet = GetPet();
+            if (pet != null)
+            {
+                PetMode petMode = new();
+                petMode.PetGUID = pet.GetGUID();
+                if (m_temporaryPetReactState.HasValue)
+                {
+                    petMode.ReactState = m_temporaryPetReactState.Value;
+                    pet.SetReactState(m_temporaryPetReactState.Value);
+                }
+
+                CharmInfo charmInfo = pet.GetCharmInfo();
+                if (charmInfo != null)
+                    petMode.CommandState = charmInfo.GetCommandState();
+
+                petMode.Flag = 0;
+                SendPacket(petMode);
+            }
+
+            m_temporaryPetReactState = null;
+        }
+
         public void UnsummonPetTemporaryIfAny()
         {
             Pet pet = GetPet();
-            if (!pet)
+            if (pet == null)
                 return;
 
             if (m_temporaryUnsummonedPetNumber == 0 && pet.IsControlled() && !pet.IsTemporarySummoned())
@@ -898,7 +1140,7 @@ namespace Game.Entities
 
         public bool IsPetNeedBeTemporaryUnsummoned()
         {
-            return !IsInWorld || !IsAlive() || IsMounted();
+            return !IsInWorld || !IsAlive() || HasUnitMovementFlag(MovementFlag.Flying) || HasExtraUnitMovementFlag2(MovementFlags3.AdvFlying);
         }
 
         public void SendRemoveControlBar()
@@ -937,7 +1179,7 @@ namespace Game.Entities
         public void StopCastingCharm()
         {
             Unit charm = GetCharmed();
-            if (!charm)
+            if (charm == null)
                 return;
 
             if (charm.IsTypeId(TypeId.Unit))
@@ -977,7 +1219,7 @@ namespace Game.Entities
         public void CharmSpellInitialize()
         {
             Unit charm = GetFirstControlled();
-            if (!charm)
+            if (charm == null)
                 return;
 
             CharmInfo charmInfo = charm.GetCharmInfo();
@@ -1015,7 +1257,7 @@ namespace Game.Entities
         public void PossessSpellInitialize()
         {
             Unit charm = GetCharmed();
-            if (!charm)
+            if (charm == null)
                 return;
 
             CharmInfo charmInfo = charm.GetCharmInfo();
@@ -1039,14 +1281,14 @@ namespace Game.Entities
         public void VehicleSpellInitialize()
         {
             Creature vehicle = GetVehicleCreatureBase();
-            if (!vehicle)
+            if (vehicle == null)
                 return;
 
             PetSpells petSpells = new();
             petSpells.PetGUID = vehicle.GetGUID();
             petSpells.CreatureFamily = 0;                          // Pet Family (0 for all vehicles)
             petSpells.Specialization = 0;
-            petSpells.TimeLimit = vehicle.IsSummon() ? vehicle.ToTempSummon().GetTimer() : 0;
+            petSpells.TimeLimit = (uint)(vehicle.IsSummon() ? vehicle.ToTempSummon().GetTimer().TotalMilliseconds : 0);
             petSpells.ReactState = vehicle.GetReactState();
             petSpells.CommandState = CommandStates.Follow;
             petSpells.Flag = 0x8;
@@ -1601,7 +1843,7 @@ namespace Game.Entities
         // Calculates how many reputation points player gains in victim's enemy factions
         public void RewardReputation(Unit victim, float rate)
         {
-            if (!victim || victim.IsTypeId(TypeId.Player))
+            if (victim == null || victim.IsTypeId(TypeId.Player))
                 return;
 
             if (victim.ToCreature().IsReputationGainDisabled())
@@ -1779,7 +2021,7 @@ namespace Game.Entities
             // The player was ported to another map and loses the duel immediately.
             // We have to perform this check before the teleport, otherwise the
             // ObjectAccessor won't find the flag.
-            if (duel != null && GetMapId() != mapid && GetMap().GetGameObject(m_playerData.DuelArbiter))
+            if (duel != null && GetMapId() != mapid && GetMap().GetGameObject(m_playerData.DuelArbiter) != null)
                 DuelComplete(DuelCompleteType.Fled);
 
             if (GetMapId() == mapid && (!instanceId.HasValue || GetInstanceId() == instanceId))
@@ -1803,7 +2045,7 @@ namespace Game.Entities
                 if (!options.HasAnyFlag(TeleportToOptions.NotUnSummonPet))
                 {
                     //same map, only remove pet if out of range for new position
-                    if (pet && !pet.IsWithinDist3d(x, y, z, GetMap().GetVisibilityRange()))
+                    if (pet != null && !pet.IsWithinDist3d(x, y, z, GetMap().GetVisibilityRange()))
                         UnsummonPetTemporaryIfAny();
                 }
 
@@ -1848,7 +2090,7 @@ namespace Game.Entities
                 }
 
                 // Seamless teleport can happen only if cosmetic maps match
-                if (!oldmap || (oldmap.GetEntry().CosmeticParentMapID != mapid && GetMapId() != mEntry.CosmeticParentMapID &&
+                if (oldmap == null || (oldmap.GetEntry().CosmeticParentMapID != mapid && GetMapId() != mEntry.CosmeticParentMapID &&
                     !((oldmap.GetEntry().CosmeticParentMapID != -1) ^ (oldmap.GetEntry().CosmeticParentMapID != mEntry.CosmeticParentMapID))))
                     options &= ~TeleportToOptions.Seamless;
 
@@ -1876,7 +2118,7 @@ namespace Game.Entities
 
                 // remove player from Battlegroundon far teleport (when changing maps)
                 Battleground bg = GetBattleground();
-                if (bg)
+                if (bg != null)
                 {
                     // Note: at Battlegroundjoin Battlegroundid set before teleport
                     // and we already will found "current" Battleground
@@ -1890,12 +2132,12 @@ namespace Game.Entities
                 {
                     RemoveArenaSpellCooldowns(true);
                     RemoveArenaAuras();
-                    if (pet)
+                    if (pet != null)
                         pet.RemoveArenaAuras();
                 }
 
                 // remove pet on map change
-                if (pet)
+                if (pet != null)
                     UnsummonPetTemporaryIfAny();
 
                 // remove all dyn objects
@@ -2017,7 +2259,7 @@ namespace Game.Entities
                 }
             });
 
-            if (!m_unitMovedByMe.GetVehicleBase() || !m_unitMovedByMe.GetVehicle().GetVehicleInfo().Flags.HasAnyFlag(VehicleFlags.FixedPosition))
+            if (m_unitMovedByMe.GetVehicleBase() == null || !m_unitMovedByMe.GetVehicle().GetVehicleInfo().Flags.HasAnyFlag(VehicleFlags.FixedPosition))
                 RemoveViolatingFlags(mi.HasMovementFlag(MovementFlag.Root), MovementFlag.Root);
 
             /*! This must be a packet spoofing attempt. MOVEMENTFLAG_ROOT sent from the client is not valid
@@ -2140,7 +2382,7 @@ namespace Game.Entities
 
         public void SendSummonRequestFrom(Unit summoner)
         {
-            if (!summoner)
+            if (summoner == null)
                 return;
 
             // Player already has active summon request
@@ -2233,7 +2475,7 @@ namespace Game.Entities
             // drop flag at summon
             // this code can be reached only when GM is summoning player who carries flag, because player should be immune to summoning spells when he carries flag
             Battleground bg = GetBattleground();
-            if (bg)
+            if (bg != null)
                 bg.EventPlayerDroppedFlag(this);
 
             m_summon_expire = 0;
@@ -2384,7 +2626,7 @@ namespace Game.Entities
                 bool canTalk = true;
                 GameObject go = source.ToGameObject();
                 Creature creature = source.ToCreature();
-                if (creature)
+                if (creature != null)
                 {
                     switch (gossipMenuItem.OptionNpc)
                     {
@@ -2397,13 +2639,13 @@ namespace Game.Entities
                                 canTalk = false;
                             break;
                         case GossipOptionNpc.Battlemaster:
-                            if (!creature.CanInteractWithBattleMaster(this, false))
+                            if (creature.CanInteractWithBattleMaster(this, false))
                                 canTalk = false;
                             break;
                         case GossipOptionNpc.TalentMaster:
                         case GossipOptionNpc.SpecializationMaster:
                         case GossipOptionNpc.GlyphMaster:
-                            if (!creature.CanResetTalents(this))
+                            if (creature.CanResetTalents(this))
                                 canTalk = false;
                             break;
                         case GossipOptionNpc.Stablemaster:
@@ -2463,7 +2705,7 @@ namespace Game.Entities
         }
         public void SendPreparedGossip(WorldObject source)
         {
-            if (!source)
+            if (source == null)
                 return;
 
             if (source.IsTypeId(TypeId.Unit) || source.IsTypeId(TypeId.GameObject))
@@ -2568,7 +2810,8 @@ namespace Game.Entities
                     SendRespecWipeConfirm(guid, WorldConfig.GetBoolValue(WorldCfg.NoResetTalentCost) ? 0 : GetNextResetTalentsCost(), SpecResetType.Talents);
                     break;
                 case GossipOptionNpc.Stablemaster:
-                    GetSession().SendStablePet(guid);
+                    SetStableMaster(guid);
+                    handled = false;
                     break;
                 case GossipOptionNpc.PetSpecializationMaster:
                     PlayerTalkClass.SendCloseGossip();
@@ -3177,7 +3420,7 @@ namespace Game.Entities
                 {
                     Creature creature = GetMap().GetCreature(guid);
                     // Update fields of triggers, transformed units or unselectable units (values dependent on GM state)
-                    if (creature == null || (!creature.IsTrigger() && !creature.HasAuraType(AuraType.Transform) && !creature.HasUnitFlag(UnitFlags.Uninteractible)))
+                    if (creature == null || (!creature.IsTrigger() && !creature.HasAuraType(AuraType.Transform) && !creature.IsUninteractible()))
                         continue;
 
                     creature.m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayID);
@@ -3207,7 +3450,7 @@ namespace Game.Entities
 
         public bool IsAllowedToLoot(Creature creature)
         {
-            if (!creature.IsDead())
+            if (creature.IsDead())
                 return false;
 
             if (HasPendingBind())
@@ -3578,7 +3821,7 @@ namespace Game.Entities
 
         public static bool IsValidGender(Gender _gender) { return _gender <= Gender.Female; }
         public static bool IsValidClass(Class _class) { return Convert.ToBoolean((1 << ((int)_class - 1)) & (int)Class.ClassMaskAllPlayable); }
-        public static bool IsValidRace(Race _race) { return Convert.ToBoolean((ulong)SharedConst.GetMaskForRace(_race) & SharedConst.RaceMaskAllPlayable); }
+        public static bool IsValidRace(Race _race) { return RaceMask.AllPlayable.HasRace(_race); }
 
         void LeaveLFGChannel()
         {
@@ -4013,7 +4256,7 @@ namespace Game.Entities
             if (InBattleground())
             {
                 Battleground bg = GetBattleground();
-                if (bg)
+                if (bg != null)
                     bg.HandlePlayerResurrect(this);
             }
 
@@ -4056,14 +4299,14 @@ namespace Game.Entities
         
         public void SetAreaSpiritHealer(Creature creature)
         {
-            if (!creature)
+            if (creature == null)
             {
                 _areaSpiritHealerGUID = ObjectGuid.Empty;
                 RemoveAurasDueToSpell(BattlegroundConst.SpellWaitingForResurrect);
                 return;
             }
 
-            if (!creature.IsAreaSpiritHealer())
+            if (creature.IsAreaSpiritHealer())
                 return;
 
             _areaSpiritHealerGUID = creature.GetGUID();
@@ -4191,7 +4434,7 @@ namespace Game.Entities
         public void SpawnCorpseBones(bool triggerSave = true)
         {
             _corpseLocation = new WorldLocation();
-            if (GetMap().ConvertCorpseToBones(GetGUID()))
+            if (GetMap().ConvertCorpseToBones(GetGUID()) != null)
                 if (triggerSave && !GetSession().PlayerLogoutWithSave())   // at logout we will already store the player
                     SaveToDB();                                             // prevent loading as ghost without corpse
         }
@@ -4217,7 +4460,7 @@ namespace Game.Entities
 
             // Special handle for Battlegroundmaps
             Battleground bg = GetBattleground();
-            if (bg)
+            if (bg != null)
                 closestGrave = bg.GetClosestGraveyard(this);
             else
             {
@@ -4302,10 +4545,10 @@ namespace Game.Entities
         int CalculateCorpseReclaimDelay(bool load = false)
         {
             Corpse corpse = GetCorpse();
-            if (load && !corpse)
+            if (load && corpse == null)
                 return -1;
 
-            bool pvp = corpse ? corpse.GetCorpseType() == CorpseType.ResurrectablePVP : (m_ExtraFlags & PlayerExtraFlags.PVPDeath) != 0;
+            bool pvp = corpse != null ? corpse.GetCorpseType() == CorpseType.ResurrectablePVP : (m_ExtraFlags & PlayerExtraFlags.PVPDeath) != 0;
 
             uint delay;
             if (load)
@@ -4453,10 +4696,10 @@ namespace Game.Entities
 
         public void RemovePet(Pet pet, PetSaveMode mode, bool returnreagent = false)
         {
-            if (!pet)
+            if (pet == null)
                 pet = GetPet();
 
-            if (pet)
+            if (pet != null)
             {
                 Log.outDebug(LogFilter.Pet, "RemovePet {0}, {1}, {2}", pet.GetEntry(), mode, returnreagent);
 
@@ -4464,10 +4707,10 @@ namespace Game.Entities
                     return;
             }
 
-            if (returnreagent && (pet || m_temporaryUnsummonedPetNumber != 0) && !InBattleground())
+            if (returnreagent && (pet != null || m_temporaryUnsummonedPetNumber != 0) && !InBattleground())
             {
                 //returning of reagents only for players, so best done here
-                uint spellId = pet ? pet.m_unitData.CreatedBySpell : m_oldpetspell;
+                uint spellId = pet != null ? pet.m_unitData.CreatedBySpell : m_oldpetspell;
                 SpellInfo spellInfo = SpellMgr.GetSpellInfo(spellId, GetMap().GetDifficultyID());
 
                 if (spellInfo != null)
@@ -4506,8 +4749,26 @@ namespace Game.Entities
 
             PetStable.PetInfo currentPet = m_petStable.GetCurrentPet();
             Cypher.Assert(currentPet != null && currentPet.PetNumber == pet.GetCharmInfo().GetPetNumber());
-            if (mode == PetSaveMode.NotInSlot || mode == PetSaveMode.AsDeleted)
+            if (mode == PetSaveMode.NotInSlot)
                 m_petStable.CurrentPetIndex = null;
+            else if (mode == PetSaveMode.AsDeleted)
+            {
+                if (m_activePlayerData.PetStable.HasValue())
+                {
+                    int ufIndex = m_activePlayerData.PetStable.GetValue().Pets.FindIndexIf(p => p.PetNumber == currentPet.PetNumber);
+                    if (ufIndex >= 0)
+                    {
+                        StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
+                        RemoveDynamicUpdateFieldValue(stableInfo.ModifyValue(stableInfo.Pets), ufIndex);
+                    }
+                }
+
+                var petIndex = m_petStable.GetCurrentActivePetIndex();
+                if (petIndex.HasValue)
+                    m_petStable.ActivePets[petIndex.Value] = null;
+
+                m_petStable.CurrentPetIndex = null;
+            }
             // else if (stable slots) handled in opcode handlers due to required swaps
             // else (current pet) doesnt need to do anything
 
@@ -4520,7 +4781,7 @@ namespace Game.Entities
             {
                 SendPacket(new PetSpells());
 
-                if (GetGroup())
+                if (GetGroup() != null)
                     SetGroupUpdateFlag(GroupUpdateFlags.Pet);
             }
         }
@@ -4553,7 +4814,7 @@ namespace Game.Entities
         public bool InArena()
         {
             Battleground bg = GetBattleground();
-            if (!bg || !bg.IsArena())
+            if (bg == null || !bg.IsArena())
                 return false;
 
             return true;
@@ -5080,10 +5341,10 @@ namespace Game.Entities
 
             // update level to hunter/summon pet
             Pet pet = GetPet();
-            if (pet)
+            if (pet != null)
                 pet.SynchronizeLevelWithOwner();
 
-            MailLevelReward mailReward = ObjectMgr.GetMailLevelReward(level, (uint)SharedConst.GetMaskForRace(GetRace()));
+            MailLevelReward mailReward = ObjectMgr.GetMailLevelReward(level, GetRace());
             if (mailReward != null)
             {
                 //- TODO: Poor design of mail system
@@ -5187,7 +5448,7 @@ namespace Game.Entities
                 return null;
 
             // alive or spirit healer
-            if (!creature.IsAlive() && !creature.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.InteractWhileDead))
+            if (creature.IsAlive() && !creature.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.InteractWhileDead))
                 return null;
 
             // appropriate npc type
@@ -5206,7 +5467,7 @@ namespace Game.Entities
                 return null;
 
             // not allow interaction under control, but allow with own pets
-            if (!creature.GetCharmerGUID().IsEmpty())
+            if (creature.GetCharmerGUID().IsEmpty())
                 return null;
 
             // not unfriendly/hostile
@@ -5214,7 +5475,7 @@ namespace Game.Entities
                 return null;
 
             // not too far, taken from CGGameUI::SetInteractTarget
-            if (!creature.IsWithinDistInMap(this, creature.GetCombatReach() + 4.0f))
+            if (creature.IsWithinDistInMap(this, creature.GetCombatReach() + 4.0f))
                 return null;
 
             return creature;
@@ -5249,7 +5510,7 @@ namespace Game.Entities
         public GameObject GetGameObjectIfCanInteractWith(ObjectGuid guid, GameObjectTypes type)
         {
             GameObject go = GetGameObjectIfCanInteractWith(guid);
-            if (!go)
+            if (go == null)
                 return null;
 
             if (go.GetGoType() != type)
@@ -5719,7 +5980,7 @@ namespace Game.Entities
 
             // update level to hunter/summon pet
             Pet pet = GetPet();
-            if (pet)
+            if (pet != null)
                 pet.SynchronizeLevelWithOwner();
         }
         public void InitDataForForm(bool reapplyMods = false)
@@ -5985,10 +6246,10 @@ namespace Game.Entities
                 return false;
 
             // group update
-            if (GetGroup())
+            if (GetGroup() != null)
                 SetGroupUpdateFlag(GroupUpdateFlags.Position);
 
-            if (GetTrader() && !IsWithinDistInMap(GetTrader(), SharedConst.InteractionDistance))
+            if (GetTrader() != null && !IsWithinDistInMap(GetTrader(), SharedConst.InteractionDistance))
                 GetSession().SendCancelTrade();
 
             CheckAreaExploreAndOutdoor();
@@ -6175,12 +6436,12 @@ namespace Game.Entities
         }
         public void SendSysMessage(string str, params object[] args)
         {
-            new CommandHandler(Session).SendSysMessage(string.Format(str, args));
+            new CommandHandler(_session).SendSysMessage(string.Format(str, args));
         }
         public void SendBuyError(BuyResult msg, Creature creature, uint item)
         {
             BuyFailed packet = new();
-            packet.VendorGUID = creature ? creature.GetGUID() : ObjectGuid.Empty;
+            packet.VendorGUID = creature != null ? creature.GetGUID() : ObjectGuid.Empty;
             packet.Muid = item;
             packet.Reason = msg;
             SendPacket(packet);
@@ -6188,8 +6449,8 @@ namespace Game.Entities
         public void SendSellError(SellResult msg, Creature creature, ObjectGuid guid)
         {
             SellResponse sellResponse = new();
-            sellResponse.VendorGUID = (creature ? creature.GetGUID() : ObjectGuid.Empty);
-            sellResponse.ItemGUID = guid;
+            sellResponse.VendorGUID = creature != null ? creature.GetGUID() : ObjectGuid.Empty;
+            sellResponse.ItemGUIDs.Add(guid);
             sellResponse.Reason = msg;
             SendPacket(sellResponse);
         }
@@ -6292,7 +6553,7 @@ namespace Game.Entities
 
         public override void Whisper(uint textId, Player target, bool isBossWhisper = false)
         {
-            if (!target)
+            if (target == null)
                 return;
 
             BroadcastTextRecord bct = CliDB.BroadcastTextStorage.LookupByKey(textId);
@@ -6424,9 +6685,9 @@ namespace Game.Entities
                 bonus_xp = victim != null ? _restMgr.GetRestBonusFor(RestTypes.XP, xp) : 0; // XP resting bonus
 
             LogXPGain packet = new();
-            packet.Victim = victim ? victim.GetGUID() : ObjectGuid.Empty;
+            packet.Victim = victim != null ? victim.GetGUID() : ObjectGuid.Empty;
             packet.Original = (int)(xp + bonus_xp);
-            packet.Reason = victim ? PlayerLogXPReason.Kill : PlayerLogXPReason.NoKill;
+            packet.Reason = victim != null ? PlayerLogXPReason.Kill : PlayerLogXPReason.NoKill;
             packet.Amount = (int)xp;
             packet.GroupBonus = group_rate;
             SendPacket(packet);
@@ -6893,12 +7154,12 @@ namespace Game.Entities
             if (GetLevel() <= WorldConfig.GetIntValue(WorldCfg.MaxRecruitAFriendBonusPlayerLevel) || !forXP)
             {
                 Group group = GetGroup();
-                if (group)
+                if (group != null)
                 {
                     for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
                     {
                         Player player = refe.GetSource();
-                        if (!player)
+                        if (player == null)
                             continue;
 
                         if (!player.IsAtRecruitAFriendDistance(this))
@@ -6931,11 +7192,11 @@ namespace Game.Entities
 
         bool IsAtRecruitAFriendDistance(WorldObject pOther)
         {
-            if (!pOther || !IsInMap(pOther))
+            if (pOther == null || !IsInMap(pOther))
                 return false;
 
             WorldObject player = GetCorpse();
-            if (!player || IsAlive())
+            if (player == null || IsAlive())
                 player = this;
 
             return pOther.GetDistance(player) <= WorldConfig.GetFloatValue(WorldCfg.MaxRecruitAFriendDistance);
@@ -6967,7 +7228,7 @@ namespace Game.Entities
             randomRoll.RollerWowAccount = GetSession().GetAccountGUID();
 
             Group group = GetGroup();
-            if (group)
+            if (group != null)
                 group.BroadcastPacket(randomRoll, false);
             else
                 SendPacket(randomRoll);
@@ -7014,7 +7275,6 @@ namespace Game.Entities
         }
         public bool IsSpellFitByClassAndRace(uint spell_id)
         {
-            long racemask = SharedConst.GetMaskForRace(GetRace());
             uint classmask = GetClassMask();
 
             var bounds = SpellMgr.GetSkillLineAbilityMapBounds(spell_id);
@@ -7025,7 +7285,8 @@ namespace Game.Entities
             foreach (var _spell_idx in bounds)
             {
                 // skip wrong race skills
-                if (_spell_idx.RaceMask != 0 && (_spell_idx.RaceMask & racemask) == 0)
+                var raceMask = new RaceMask<long>(_spell_idx.RaceMask);
+                if (!raceMask.IsEmpty() && !raceMask.HasRace(GetRace()))
                     continue;
 
                 // skip wrong class skills
@@ -7148,7 +7409,7 @@ namespace Game.Entities
         public void SetClientControl(Unit target, bool allowMove)
         {
             // a player can never client control nothing
-            Cypher.Assert(target);
+            Cypher.Assert(target != null);
 
             // don't allow possession to be overridden
             if (target.HasUnitState(UnitState.Charmed) && (GetGUID() != target.GetCharmerGUID()))
@@ -7409,7 +7670,10 @@ namespace Game.Entities
         public void RemoveAuraVision(PlayerFieldByte2Flags flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.AuraVision), (byte)flags); }
 
         public void SetTransportServerTime(int transportServerTime) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.TransportServerTime), transportServerTime); }
-
+        
+        public void SetRequiredMountCapabilityFlag(byte flag) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.RequiredMountCapabilityFlags), flag); }
+        public void ReplaceAllRequiredMountCapabilityFlags(byte flags) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.RequiredMountCapabilityFlags), flags); }
+        
         public bool CanTameExoticPets() { return IsGameMaster() || HasAuraType(AuraType.AllowTamePetType); }
 
         void SendAttackSwingCantAttack() { SendPacket(new AttackSwingError(AttackSwingErr.CantAttack)); }

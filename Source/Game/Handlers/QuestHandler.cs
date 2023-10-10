@@ -20,7 +20,7 @@ namespace Game
             QuestGiverStatus questStatus = QuestGiverStatus.None;
 
             var questgiver = Global.ObjAccessor.GetObjectByTypeMask(GetPlayer(), packet.QuestGiverGUID, TypeMask.Unit | TypeMask.GameObject);
-            if (!questgiver)
+            if (questgiver == null)
             {
                 Log.outInfo(LogFilter.Network, "Error in CMSG_QUESTGIVER_STATUS_QUERY, called for non-existing questgiver {0}", packet.QuestGiverGUID.ToString());
                 return;
@@ -95,7 +95,7 @@ namespace Game
             }
 
             Player playerQuestObject = obj.ToPlayer();
-            if (playerQuestObject)
+            if (playerQuestObject != null)
             {
                 if ((_player.GetPlayerSharingQuest().IsEmpty() && _player.GetPlayerSharingQuest() != packet.QuestGiverGUID) || !playerQuestObject.CanShareQuest(packet.QuestID))
                 {
@@ -151,13 +151,13 @@ namespace Game
                     if (quest.IsPushedToPartyOnAccept())
                     {
                         var group = _player.GetGroup();
-                        if (group)
+                        if (group != null)
                         {
                             for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
                             {
                                 Player player = refe.GetSource();
 
-                                if (!player || player == _player || !player.IsInMap(_player))     // not self and in same map
+                                if (player == null || player == _player || !player.IsInMap(_player))     // not self and in same map
                                     continue;
 
                                 if (player.CanTakeQuest(quest, true))
@@ -207,7 +207,7 @@ namespace Game
         {
             // Verify that the guid is valid and is a questgiver or involved in the requested quest
             var obj = Global.ObjAccessor.GetObjectByTypeMask(GetPlayer(), packet.QuestGiverGUID, (TypeMask.Unit | TypeMask.GameObject | TypeMask.Item));
-            if (!obj || (!obj.HasQuest(packet.QuestID) && !obj.HasInvolvedQuest(packet.QuestID)))
+            if (obj == null || (!obj.HasQuest(packet.QuestID) && !obj.HasInvolvedQuest(packet.QuestID)))
             {
                 GetPlayer().PlayerTalkClass.SendCloseGossip();
                 return;
@@ -342,7 +342,7 @@ namespace Game
             if (!quest.HasFlag(QuestFlags.AutoComplete))
             {
                 obj = Global.ObjAccessor.GetObjectByTypeMask(GetPlayer(), packet.QuestGiverGUID, TypeMask.Unit | TypeMask.GameObject);
-                if (!obj || !obj.HasInvolvedQuest(packet.QuestID))
+                if (obj == null || !obj.HasInvolvedQuest(packet.QuestID))
                     return;
 
                 // some kind of WPE protection
@@ -376,23 +376,28 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.QuestGiverRequestReward, Processing = PacketProcessing.Inplace)]
         void HandleQuestgiverRequestReward(QuestGiverRequestReward packet)
         {
-            WorldObject obj = Global.ObjAccessor.GetObjectByTypeMask(GetPlayer(), packet.QuestGiverGUID, TypeMask.Unit | TypeMask.GameObject);
-            if (obj == null || !obj.HasInvolvedQuest(packet.QuestID))
+            Quest quest = Global.ObjectMgr.GetQuestTemplate(packet.QuestID);
+            if (quest == null)
                 return;
 
-            // some kind of WPE protection
-            if (!GetPlayer().CanInteractWithQuestGiver(obj))
-                return;
+            if (!quest.HasFlag(QuestFlags.AutoComplete))
+            {
+                WorldObject obj = Global.ObjAccessor.GetObjectByTypeMask(_player, packet.QuestGiverGUID, TypeMask.Unit | TypeMask.GameObject);
+                if (obj == null || !obj.HasInvolvedQuest(packet.QuestID))
+                    return;
+
+                // some kind of WPE protection
+                if (!_player.CanInteractWithQuestGiver(obj))
+                    return;
+            }
 
             if (GetPlayer().CanCompleteQuest(packet.QuestID))
                 GetPlayer().CompleteQuest(packet.QuestID);
 
             if (GetPlayer().GetQuestStatus(packet.QuestID) != QuestStatus.Complete)
                 return;
-
-            Quest quest = Global.ObjectMgr.GetQuestTemplate(packet.QuestID);
-            if (quest != null)
-                GetPlayer().PlayerTalkClass.SendQuestGiverOfferReward(quest, packet.QuestGiverGUID, true);
+            
+            GetPlayer().PlayerTalkClass.SendQuestGiverOfferReward(quest, packet.QuestGiverGUID, true);
         }
 
         [WorldPacketHandler(ClientOpcodes.QuestLogRemoveQuest, Processing = PacketProcessing.Inplace)]
@@ -494,7 +499,7 @@ namespace Game
             else
                 obj = Global.ObjAccessor.GetObjectByTypeMask(GetPlayer(), packet.QuestGiverGUID, TypeMask.Unit | TypeMask.GameObject);
 
-            if (!obj)
+            if (obj == null)
                 return;
 
             if (!quest.HasFlag(QuestFlags.AutoComplete))
@@ -572,7 +577,7 @@ namespace Game
             }
 
             Group group = sender.GetGroup();
-            if (!group)
+            if (group == null)
             {
                 sender.SendPushToPartyResponse(sender, QuestPushReason.NotInParty);
                 return;
@@ -582,7 +587,7 @@ namespace Game
             {
                 Player receiver = refe.GetSource();
 
-                if (!receiver || receiver == sender)
+                if (receiver == null || receiver == sender)
                     continue;
 
                 if (!receiver.GetPlayerSharingQuest().IsEmpty())
@@ -713,7 +718,7 @@ namespace Game
                 if (_player.GetPlayerSharingQuest() == packet.SenderGUID)
                 {
                     Player player = Global.ObjAccessor.FindPlayer(_player.GetPlayerSharingQuest());
-                    if (player)
+                    if (player != null)
                         player.SendPushToPartyResponse(_player, packet.Result);
                 }
 

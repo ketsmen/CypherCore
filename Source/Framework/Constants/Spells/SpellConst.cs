@@ -20,7 +20,9 @@ namespace Framework.Constants
 
         public const float TrajectoryMissileSize = 3.0f;
 
-        public const int MaxPowersPerSpell = 4;
+        public const int AoeDamageTargetCap = 20;
+
+        public const int MaxPowersPerSpell = 5;
 
         public const uint VisualKitFood = 406;
         public const uint VisualKitDrink = 438;
@@ -167,7 +169,10 @@ namespace Framework.Constants
         TouchingGround = 0x40000, // NYI
         ChromieTime = 0x80000, // NYI
         SplineFlightOrFreeFlight = 0x100000, // NYI
-        ProcOrPeriodicAttacking = 0x200000  // NYI
+        ProcOrPeriodicAttacking = 0x200000,  // NYI
+        StartOfMythicPlusRun = 0x400000, // Implemented in Unit::AtStartOfEncounter
+        StartOfDungeonEncounter = 0x800000, // Implemented in Unit::AtStartOfEncounter - Similar to StartOfEncounter (but only with bosses, not m+ run or battleground)
+        EndOfDungeonEncounter = 0x1000000, // Implemented in Unit::AtEndOfEncounter - Similar to EndOfEncounter (but only with bosses, not m+ run or battleground)
     }
 
     // Enum with EffectRadiusIndex and their actual radius
@@ -763,7 +768,9 @@ namespace Framework.Constants
         CantBeRecrafted = 316,
         PassiveReplaced = 317,
         CantFlyHere = 318,
-        Unknown = 319,
+        DragonridingRidingRequirement = 319,
+        ItemModAppearanceGroupAlreadyKnown = 320,
+        Unknown = 321,
 
         // Ok Cast Value - Here In Case A Future Version Removes Success And We Need To Use A Custom Value (Not Sent To Client Either Way)
         SpellCastOk = Success
@@ -1397,8 +1404,11 @@ namespace Framework.Constants
         RequiresADjaradinPillarShard = 831, // Requires A Djaradin Pillar Shard.
         RequiresAResilientStone = 832, // Requires A Resilient Stone.
         MyrritCannotCarryAnyMoreMaps = 835, // Myrrit Cannot Carry Any More Maps. Go On A Dig With Him!
+        SomeGiftsAreBetterLeftUndelivered = 836, // Some gifts are better left undelivered.
         RequiresNiffenCaveDiveKeyandShieldDisabled = 850, // Requires Niffen Cave Dive Key And Shield Disabled.
         ElusiveCreatureBaitWasRecentlyUsed = 851, // You Cannot Lure Anything In This Area For A Few Minutes. Elusive Creature Bait Was Recently Used.
+        MustBeInQuietPlaceWithinCaerDarrow = 852, // Must be in a suitably quiet place within Caer Darrow.
+        YouDontHaveAnyGlimmerOfLightsActive = 856, // You don't have any Glimmer of Lights active.
         YouDontHaveTheSwirlingMojoStone = 999, // You Don'T Have The Swirling Mojo Stone Equipped.
         YouMustBeNearADragonflightOathstone = 1000, // You Must Be Near One Of The Five Dragonflight Oathstones In The Dragon Isles.
         CanOnlyUseThisItemWhileAirborne = 1001, // You Can Only Use This Item While Airborne.
@@ -1528,12 +1538,12 @@ namespace Framework.Constants
         IgnoreCastItem = 0x08,   //! Will Not Take Away Cast Item Or Update Related Achievement Criteria
         IgnoreAuraScaling = 0x10,   //! Will Ignore Aura Scaling
         IgnoreCastInProgress = 0x20,   //! Will Not Check If A Current Cast Is In Progress
-        IgnoreComboPoints = 0x40,   //! Will Ignore Combo Point Requirement
+        // reuse = 0x40,   //
         CastDirectly = 0x80,   //! In Spell.Prepare, Will Be Cast Directly Without Setting Containers For Executed Spell
-        IgnoreAuraInterruptFlags = 0x100,   //! Will Ignore Interruptible Aura'S At Cast
+        // reuse = 0x100,   //
         IgnoreSetFacing = 0x200,   //! Will Not Adjust Facing To Target (If Any)
         IgnoreShapeshift = 0x400,   //! Will Ignore Shapeshift Checks
-        // reuse
+        // reuse = 0x800,   //
         DisallowProcEvents = 0x1000,   //! Disallows proc events from triggered spell (default)
         IgnoreCasterMountedOrOnVehicle = 0x2000,   //! Will Ignore Mounted/On Vehicle Restrictions
         // reuse                                        = 0x4000,
@@ -1592,7 +1602,7 @@ namespace Framework.Constants
         Unk16 = 0x8000,
         Unk17 = 0x10000,
         AdjustMissile = 0x20000,
-        NoGCD = 0x40000,
+        NoGCD = 0x40000, // no GCD for spell casts from charm/summon (vehicle spells is an example)
         VisualChain = 0x80000,
         Unk21 = 0x100000,
         RuneList = 0x200000,
@@ -1605,22 +1615,22 @@ namespace Framework.Constants
         Unk29 = 0x10000000,
         Unk30 = 0x20000000,
         HealPrediction = 0x40000000,
-        Unk32 = 0x80000000
+        TriggerPetCooldown = 0x80000000 // causes the cooldown to be stored in pets SpellHistory on client
     }
 
     [System.Flags]
     public enum SpellCastFlagsEx
     {
         None = 0x0,
-        Unknown1 = 0x01,
+        TriggerCooldownOnSpellStart = 0x01,
         Unknown2 = 0x02,
-        Unknown3 = 0x04,
+        DontConsumeCharges = 0x04,
         Unknown4 = 0x08,
-        Unknown5 = 0x10,
+        DelayStartingCooldowns = 0x10, // makes client start cooldown after precalculated delay instead of immediately after SPELL_GO (used by empower spells)
         Unknown6 = 0x20,
         Unknown7 = 0x40,
         Unknown8 = 0x80,
-        Unknown9 = 0x100,
+        IgnorePetCooldown = 0x100, // makes client not automatically start cooldown for pets after SPELL_GO
         IgnoreCooldown = 0x200, // makes client not automatically start cooldown after SPELL_GO
         Unknown11 = 0x400,
         Unknown12 = 0x800,
@@ -1926,7 +1936,7 @@ namespace Framework.Constants
         Unk6 = 0x40, // 6
         Unk7 = 0x80, // 7
         AffectPartyAndRaid = 0x100, // 8
-        DontResetPeriodicTimer = 0x200, // 9 Periodic Auras With This Flag Keep Old Periodic Timer When Refreshing At Close To One Tick Remaining (Kind Of Anti Dot Clipping)
+        PeriodicCanCrit = 0x200, // 9
         NameChangedDuringTransofrm = 0x400, // 10
         Unk11 = 0x800, // 11
         AuraSendAmount = 0x1000, // 12 Aura Must Have Flag AflagAnyEffectAmountSent To Send Amount
@@ -2500,7 +2510,7 @@ namespace Framework.Constants
         CreateTraitTreeConfig = 303, // Miscvalue[0] = Traittreeid
         ChangeActiveCombatTraitConfig = 304,
         Unk305 = 305,
-        Unk306 = 306,
+        UpdateInteractions = 306,
         Unk307 = 307,
         CancelPreloadWorld = 308,
         PreloadWorld = 309,
@@ -2509,6 +2519,7 @@ namespace Framework.Constants
         Unk312 = 312,
         ChangeItemBonuses2 = 313, // MiscValue[0] = ItemBonusTreeID to preserve
         AddSocketBonus = 314, // MiscValue[0] = required ItemBonusTreeID
+        LearnTransmogAppearanceFromItemModAppearanceGroup = 315, // MiscValue[0] = ItemModAppearanceGroupID (not in db2)
 
         TotalSpellEffects
     }
@@ -2955,5 +2966,11 @@ namespace Framework.Constants
         Shapeshifted = 8,
         ForcedDismount = 9,
         Ok = 10 // never sent
+    }
+
+    public enum SpellTargetIndex
+    {
+        TargetA = 0,
+        TargetB = 1
     }
 }

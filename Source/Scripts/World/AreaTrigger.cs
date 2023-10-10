@@ -2,12 +2,13 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
+using Game.AI;
 using Game.DataStorage;
 using Game.Entities;
+using Game.Maps;
 using Game.Scripting;
-using System.Collections.Generic;
-using Game.AI;
 using System;
+using System.Collections.Generic;
 
 namespace Scripts.World.Areatriggers
 {
@@ -109,7 +110,7 @@ namespace Scripts.World.Areatriggers
     }
 
     struct Misc
-    { 
+    {
         //Brewfest
         public const uint AreatriggerTalkCooldown = 5; // In Seconds
 
@@ -394,6 +395,60 @@ namespace Scripts.World.Areatriggers
 
             player.CastSpell(unit, SpellIds.DustInTheStormwind);
             player.KilledMonsterCredit(CreatureIds.KillCreditTeleportStormwind);
+        }
+    }
+
+    [Script]
+    class areatrigger_battleground_buffs : AreaTriggerAI
+    {
+        public areatrigger_battleground_buffs(AreaTrigger areatrigger) : base(areatrigger) { }
+
+        public override void OnUnitEnter(Unit unit)
+        {
+            if (!unit.IsPlayer())
+                return;
+
+            var player = unit.ToPlayer();
+            GameObject buffObject = player.FindNearestGameObjectWithOptions(4.0f, new FindGameObjectOptions() { StringId = "bg_buff_object" });
+            if (buffObject != null)
+            {
+                buffObject.ActivateObject(GameObjectActions.Disturb, 0, player);
+                buffObject.DespawnOrUnsummon();
+            }
+        }
+    }
+
+    [Script]
+    class AreaTrigger_at_battleground_buffs : AreaTriggerScript
+    {
+        public AreaTrigger_at_battleground_buffs() : base("at_battleground_buffs") { }
+
+        public override bool OnTrigger(Player player, AreaTriggerRecord areaTrigger)
+        {
+            GameObject buffObject = player.FindNearestGameObjectWithOptions(4.0f, new FindGameObjectOptions() { StringId = "bg_buff_object" });
+            if (buffObject != null)
+            {
+                buffObject.ActivateObject(GameObjectActions.Disturb, 0, player);
+                buffObject.DespawnOrUnsummon();
+            }
+            return true;
+        }
+    }
+
+    [Script]
+    class areatrigger_action_capture_flag : AreaTriggerAI
+    {
+        public areatrigger_action_capture_flag(AreaTrigger areatrigger) : base(areatrigger) { }
+
+        public override void OnUnitEnter(Unit unit)
+        {
+            if (!unit.IsPlayer())
+                return;
+
+            Player player = unit.ToPlayer();
+            ZoneScript zoneScript = at.GetZoneScript();
+            if (zoneScript != null && zoneScript.CanCaptureFlag(at, player))
+                zoneScript.OnCaptureFlag(at, player);
         }
     }
 }

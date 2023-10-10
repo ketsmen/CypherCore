@@ -518,9 +518,10 @@ namespace Game.Spells
             return false;
         }
 
-        public bool CanBeUsedInCombat()
+        public bool CanBeUsedInCombat(Unit caster)
         {
-            return !HasAttribute(SpellAttr0.NotInCombatOnlyPeaceful);
+            return !HasAttribute(SpellAttr0.NotInCombatOnlyPeaceful)
+                || (caster.HasAuraType(AuraType.AllowMountInCombat) && HasAura(AuraType.Mounted));
         }
 
         public bool IsPositive()
@@ -545,11 +546,6 @@ namespace Game.Spells
         public bool IsMoveAllowedChannel()
         {
             return IsChanneled() && !ChannelInterruptFlags.HasFlag(SpellAuraInterruptFlags.Moving | SpellAuraInterruptFlags.Turning);
-        }
-
-        public bool NeedsComboPoints()
-        {
-            return HasAttribute(SpellAttr1.FinishingMoveDamage | SpellAttr1.FinishingMoveDuration);
         }
 
         public bool IsNextMeleeSwingSpell()
@@ -612,7 +608,7 @@ namespace Game.Spells
                 return true;
 
             // item dependent spell
-            if (item && item.IsFitToSpellRequirements(this))
+            if (item != null && item.IsFitToSpellRequirements(this))
                 return true;
 
             return false;
@@ -828,7 +824,7 @@ namespace Game.Spells
                 List<uint> areaGroupMembers = Global.DB2Mgr.GetAreasForGroup((uint)RequiredAreasID);
                 foreach (uint areaId in areaGroupMembers)
                 {
-                    if (areaId == zone_id || areaId == area_id)
+                    if (Global.DB2Mgr.IsInArea(area_id, areaId))
                     {
                         found = true;
                         break;
@@ -843,7 +839,7 @@ namespace Game.Spells
             if (HasAttribute(SpellAttr4.OnlyFlyingAreas))
             {
                 AreaMountFlags mountFlags = 0;
-                if (player && player.HasAuraType(AuraType.MountRestrictions))
+                if (player != null && player.HasAuraType(AuraType.MountRestrictions))
                 {
                     foreach (AuraEffect auraEffect in player.GetAuraEffectsByType(AuraType.MountRestrictions))
                         mountFlags |= (AreaMountFlags)auraEffect.GetMiscValue();
@@ -857,7 +853,7 @@ namespace Game.Spells
                 if (!mountFlags.HasFlag(AreaMountFlags.AllowFlyingMounts))
                     return SpellCastResult.IncorrectArea;
 
-                if (player)
+                if (player != null)
                 {
                     uint mapToCheck = map_id;
                     MapRecord mapEntry1 = CliDB.MapStorage.LookupByKey(map_id);
@@ -921,7 +917,7 @@ namespace Game.Spells
                         return SpellCastResult.RequiresArea;
 
                     Battleground bg = player.GetBattleground();
-                    return bg && bg.GetStatus() == BattlegroundStatus.WaitJoin ? SpellCastResult.SpellCastOk : SpellCastResult.RequiresArea;
+                    return bg != null && bg.GetStatus() == BattlegroundStatus.WaitJoin ? SpellCastResult.SpellCastOk : SpellCastResult.RequiresArea;
                 }
                 case 32724:         // Gold Team (Alliance)
                 case 32725:         // Green Team (Alliance)
@@ -943,12 +939,12 @@ namespace Game.Spells
                         return SpellCastResult.RequiresArea;
 
                     Battleground bg = player.GetBattleground();
-                    return bg && bg.GetStatus() == BattlegroundStatus.WaitJoin ? SpellCastResult.SpellCastOk : SpellCastResult.RequiresArea;
+                    return bg != null && bg.GetStatus() == BattlegroundStatus.WaitJoin ? SpellCastResult.SpellCastOk : SpellCastResult.RequiresArea;
                 }
             }
 
             // aura limitations
-            if (player)
+            if (player != null)
             {
                 foreach (var effectInfo in _effects)
                 {
@@ -1144,10 +1140,10 @@ namespace Game.Spells
             if (HasAttribute(SpellAttr8.BattleResurrection))
             {
                 Map map = caster.GetMap();
-                if (map)
+                if (map != null)
                 {
                     InstanceMap iMap = map.ToInstanceMap();
-                    if (iMap)
+                    if (iMap != null)
                     {
                         InstanceScript instance = iMap.GetInstanceScript();
                         if (instance != null)
@@ -1207,7 +1203,7 @@ namespace Game.Spells
                 return SpellCastResult.SpellCastOk;
 
             Vehicle vehicle = caster.GetVehicle();
-            if (vehicle)
+            if (vehicle != null)
             {
                 VehicleSeatFlags checkMask = 0;
                 foreach (var effectInfo in _effects)
@@ -2397,6 +2393,38 @@ namespace Game.Spells
             }
         }
 
+        void _LoadSqrtTargetLimit(int maxTargets, int numNonDiminishedTargets, uint? maxTargetsEffectValueHolder, uint? numNonDiminishedTargetsEffectValueHolder)
+        {
+            SqrtDamageAndHealingDiminishing.MaxTargets = maxTargets;
+            SqrtDamageAndHealingDiminishing.NumNonDiminishedTargets = numNonDiminishedTargets;
+
+            if (maxTargetsEffectValueHolder.HasValue)
+            {
+                if (maxTargetsEffectValueHolder < GetEffects().Count)
+                {
+                    SpellEffectInfo valueHolder = GetEffect(maxTargetsEffectValueHolder.Value);
+                    int expectedValue = valueHolder.CalcBaseValue(null, null, 0, -1);
+                    if (maxTargets != expectedValue)
+                        Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {Id} has different value in effect {maxTargetsEffectValueHolder.Value} than expected, recheck target caps (expected {maxTargets}, got {expectedValue})");
+                }
+                else
+                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {Id} does not have effect {maxTargetsEffectValueHolder.Value}");
+            }
+
+            if (numNonDiminishedTargetsEffectValueHolder.HasValue)
+            {
+                if (numNonDiminishedTargetsEffectValueHolder < GetEffects().Count)
+                {
+                    SpellEffectInfo valueHolder = GetEffect(numNonDiminishedTargetsEffectValueHolder.Value);
+                    int expectedValue = valueHolder.CalcBaseValue(null, null, 0, -1);
+                    if (numNonDiminishedTargets != expectedValue)
+                        Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {Id} has different value in effect {numNonDiminishedTargetsEffectValueHolder.Value} than expected, recheck target caps (expected {numNonDiminishedTargets}, got {expectedValue})");
+                }
+                else
+                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {Id} does not have effect {numNonDiminishedTargetsEffectValueHolder.Value}");
+            }
+        }
+
         public void ApplyAllSpellImmunitiesTo(Unit target, SpellEffectInfo spellEffectInfo, bool apply)
         {
             ImmunityInfo immuneInfo = spellEffectInfo.GetImmunityInfo();
@@ -2650,7 +2678,7 @@ namespace Game.Spells
 
             return mechanicImmunityMask;
         }
-        
+
         public float GetMinRange(bool positive = false)
         {
             if (RangeEntry == null)
@@ -2678,10 +2706,10 @@ namespace Game.Spells
         {
             int duration = GetDuration();
 
-            if (caster)
+            if (caster != null)
             {
                 Player modOwner = caster.GetSpellModOwner();
-                if (modOwner)
+                if (modOwner != null)
                     modOwner.ApplySpellMod(this, SpellModOp.Duration, ref duration);
             }
 
@@ -2785,31 +2813,25 @@ namespace Game.Spells
         {
             // gameobject casts don't use power
             Unit unitCaster = caster.ToUnit();
-            if (!unitCaster)
+            if (unitCaster == null)
                 return null;
 
             if (power.RequiredAuraSpellID != 0 && !unitCaster.HasAura(power.RequiredAuraSpellID))
                 return null;
 
-            SpellPowerCost cost = new();
-
             // Spell drain all exist power on cast (Only paladin lay of Hands)
             if (HasAttribute(SpellAttr1.UseAllMana))
             {
+                if (optionalCost)
+                    return null;
+
                 // If power type - health drain all
                 if (power.PowerType == PowerType.Health)
-                {
-                    cost.Power = PowerType.Health;
-                    cost.Amount = (int)unitCaster.GetHealth();
-                    return cost;
-                }
+                    return new SpellPowerCost() { Power = PowerType.Health, Amount = (int)unitCaster.GetHealth() };
+
                 // Else drain all power
                 if (power.PowerType < PowerType.Max)
-                {
-                    cost.Power = power.PowerType;
-                    cost.Amount = unitCaster.GetPower(cost.Power);
-                    return cost;
-                }
+                    return new SpellPowerCost() { Power = power.PowerType, Amount = unitCaster.GetPower(power.PowerType) };
 
                 Log.outError(LogFilter.Spells, $"SpellInfo.CalcPowerCost: Unknown power type '{power.PowerType}' in spell {Id}");
                 return default;
@@ -2996,9 +3018,7 @@ namespace Game.Spells
             if (initiallyNegative != (powerCost < 0))
                 powerCost = 0;
 
-            cost.Power = power.PowerType;
-            cost.Amount = powerCost;
-            return cost;
+            return new SpellPowerCost() { Power = power.PowerType, Amount = powerCost };
         }
 
         public List<SpellPowerCost> CalcPowerCost(WorldObject caster, SpellSchoolMask schoolMask, Spell spell = null)
@@ -3012,10 +3032,7 @@ namespace Game.Spells
                     if (itr != null)
                         return itr;
 
-                    SpellPowerCost cost = new();
-                    cost.Power = powerType;
-                    cost.Amount = 0;
-                    costs.Add(cost);
+                    costs.Add(new SpellPowerCost() { Power = powerType, Amount = 0 });
                     return costs.Last();
                 }
 
@@ -3111,7 +3128,7 @@ namespace Game.Spells
         public float CalcProcPPM(Unit caster, int itemLevel)
         {
             float ppm = ProcBasePPM;
-            if (!caster)
+            if (caster == null)
                 return ppm;
 
             foreach (SpellProcsPerMinuteModRecord mod in ProcPPMMods)
@@ -3130,21 +3147,21 @@ namespace Game.Spells
                     }
                     case SpellProcsPerMinuteModType.Class:
                     {
-                        if (caster.GetClassMask().HasAnyFlag((uint)mod.Param))
+                        if (caster.GetClassMask().HasAnyFlag(mod.Param))
                             ppm *= 1.0f + mod.Coeff;
                         break;
                     }
                     case SpellProcsPerMinuteModType.Spec:
                     {
                         Player plrCaster = caster.ToPlayer();
-                        if (plrCaster)
-                            if (plrCaster.GetPrimarySpecialization() == mod.Param)
+                        if (plrCaster != null)
+                            if (plrCaster.GetPrimarySpecialization() == (ChrSpecialization)mod.Param)
                                 ppm *= 1.0f + mod.Coeff;
                         break;
                     }
                     case SpellProcsPerMinuteModType.Race:
                     {
-                        if (SharedConst.GetMaskForRace(caster.GetRace()).HasAnyFlag((int)mod.Param))
+                        if ((caster.GetRaceMask() & mod.Param) != 0)
                             ppm *= 1.0f + mod.Coeff;
                         break;
                     }
@@ -3274,12 +3291,12 @@ namespace Game.Spells
             {
                 var playerCondition = CliDB.PlayerConditionStorage.LookupByKey(visual.CasterPlayerConditionID);
                 if (playerCondition != null)
-                    if (!caster || !caster.IsPlayer() || !ConditionManager.IsPlayerMeetingCondition(caster.ToPlayer(), playerCondition))
+                    if (caster == null || !caster.IsPlayer() || !ConditionManager.IsPlayerMeetingCondition(caster.ToPlayer(), playerCondition))
                         continue;
 
                 var unitCondition = CliDB.UnitConditionStorage.LookupByKey(visual.CasterUnitConditionID);
                 if (unitCondition != null)
-                    if (!caster || !caster.IsUnit() || !ConditionManager.IsUnitMeetingCondition(caster.ToUnit(), viewer?.ToUnit(), unitCondition))
+                    if (caster == null || !caster.IsUnit() || !ConditionManager.IsUnitMeetingCondition(caster.ToUnit(), viewer?.ToUnit(), unitCondition))
                         continue;
 
                 return visual.Id;
@@ -3344,7 +3361,7 @@ namespace Game.Spells
 
         bool _isPositiveEffectImpl(SpellInfo spellInfo, SpellEffectInfo effect, List<Tuple<SpellInfo, uint>> visited)
         {
-            if ( !effect.IsEffect())
+            if (!effect.IsEffect())
                 return true;
 
             // attribute may be already set in DB
@@ -3634,7 +3651,7 @@ namespace Game.Spells
                                 if (_isPositiveTarget(spellTriggeredEffect) && !_isPositiveEffectImpl(spellTriggeredProto, spellTriggeredEffect, visited))
                                     return false;
                             }
-                        }                        
+                        }
                         break;
                     case AuraType.PeriodicTriggerSpell:
                     case AuraType.ModStun:
@@ -3987,8 +4004,8 @@ namespace Game.Spells
         public uint ExcludeCasterAuraSpell { get; set; }
         public uint ExcludeTargetAuraSpell { get; set; }
         public AuraType CasterAuraType { get; set; }
-        public AuraType TargetAuraType  { get; set; }
-        public AuraType ExcludeCasterAuraType  { get; set; }
+        public AuraType TargetAuraType { get; set; }
+        public AuraType ExcludeCasterAuraType { get; set; }
         public AuraType ExcludeTargetAuraType { get; set; }
         public SpellCastTimesRecord CastTimeEntry { get; set; }
         public uint RecoveryTime { get; set; }
@@ -4047,6 +4064,8 @@ namespace Game.Spells
         public uint ExplicitTargetMask { get; set; }
         public SpellChainNode ChainEntry { get; set; }
 
+        public SqrtDamageAndHealingDiminishingStruct SqrtDamageAndHealingDiminishing;
+
         List<SpellEffectInfo> _effects = new();
         List<SpellXSpellVisualRecord> _visuals = new();
         SpellSpecificType _spellSpecific;
@@ -4062,6 +4081,12 @@ namespace Game.Spells
             public uint MaxScalingLevel;
             public uint ScalesFromItemLevel;
         }
+
+        public struct SqrtDamageAndHealingDiminishingStruct
+        {
+            public int MaxTargets;               // The amount of targets after the damage decreases by the Square Root AOE formula
+            public int NumNonDiminishedTargets;  // The amount of targets that still take the full amount before the damage decreases by the Square Root AOE formula
+        }        
     }
 
     public class SpellEffectInfo
@@ -4087,8 +4112,8 @@ namespace Game.Spells
                 PositionFacing = effect.EffectPosFacing;
                 TargetA = new SpellImplicitTargetInfo((Targets)effect.ImplicitTarget[0]);
                 TargetB = new SpellImplicitTargetInfo((Targets)effect.ImplicitTarget[1]);
-                RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(effect.EffectRadiusIndex[0]);
-                MaxRadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(effect.EffectRadiusIndex[1]);
+                TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(effect.EffectRadiusIndex[0]);
+                TargetBRadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(effect.EffectRadiusIndex[1]);
                 ChainTargets = effect.EffectChainTargets;
                 ItemType = effect.EffectItemType;
                 TriggerSpell = effect.EffectTriggerSpell;
@@ -4203,7 +4228,7 @@ namespace Game.Spells
                 // bonus amount from combo points
                 if (comboDamage != 0)
                 {
-                    uint comboPoints = casterUnit.GetComboPoints();
+                    int comboPoints = casterUnit.GetPower(PowerType.ComboPoints);
                     if (comboPoints != 0)
                         value += comboDamage * comboPoints;
                 }
@@ -4220,7 +4245,7 @@ namespace Game.Spells
             if (Scaling.Coefficient != 0.0f)
             {
                 uint level = _spellInfo.SpellLevel;
-                if (target && _spellInfo.IsPositiveEffect(EffectIndex) && (Effect == SpellEffectName.ApplyAura))
+                if (target != null && _spellInfo.IsPositiveEffect(EffectIndex) && (Effect == SpellEffectName.ApplyAura))
                     level = target.GetLevel();
                 else if (caster != null && caster.IsUnit())
                     level = caster.ToUnit().GetLevel();
@@ -4331,21 +4356,27 @@ namespace Game.Spells
             return multiplierPercent / 100.0f;
         }
 
-        public bool HasRadius()
+        public bool HasRadius(SpellTargetIndex targetIndex)
         {
-            return RadiusEntry != null;
+            switch (targetIndex)
+            {
+                case SpellTargetIndex.TargetA:
+                    return TargetARadiusEntry != null;
+                case SpellTargetIndex.TargetB:
+                    return TargetBRadiusEntry != null;
+                default:
+                    return false;
+            }
         }
 
-        public bool HasMaxRadius()
+        public float CalcRadius(WorldObject caster = null, SpellTargetIndex targetIndex = SpellTargetIndex.TargetA, Spell spell = null)
         {
-            return MaxRadiusEntry != null;
-        }
-
-        public float CalcRadius(WorldObject caster = null, Spell spell = null)
-        {
-            SpellRadiusRecord entry = RadiusEntry;
-            if (!HasRadius() && HasMaxRadius())
-                entry = MaxRadiusEntry;
+            // TargetA -> TargetARadiusEntry
+            // TargetB -> TargetBRadiusEntry
+            // Aura effects have TargetARadiusEntry == TargetBRadiusEntry (mostly)
+            var entry = TargetARadiusEntry;
+            if (targetIndex == SpellTargetIndex.TargetB && HasRadius(targetIndex))
+                entry = TargetBRadiusEntry;
 
             if (entry == null)
                 return 0.0f;
@@ -4822,15 +4853,16 @@ namespace Game.Spells
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 303 SPELL_EFFECT_CREATE_TRAIT_TREE_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 304 SPELL_EFFECT_CHANGE_ACTIVE_COMBAT_TRAIT_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 305 SPELL_EFFECT_305
-            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 306 SPELL_EFFECT_306
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 306 SPELL_EFFECT_UPDATE_INTERACTIONS
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 307 SPELL_EFFECT_307
-            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 308 SPELL_EFFECT_308
-            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 309 SPELL_EFFECT_309
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 308 SPELL_EFFECT_CANCEL_PRELOAD_WORLD
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 309 SPELL_EFFECT_PRELOAD_WORLD
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 310 SPELL_EFFECT_310
-            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 311 SPELL_EFFECT_311
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 311 SPELL_EFFECT_ENSURE_WORLD_LOADED
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 312 SPELL_EFFECT_312
-            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Item), // 313 SPELL_EFFECT_313
-            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 314 SPELL_EFFECT_314
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Item), // 313 SPELL_EFFECT_CHANGE_ITEM_BONUSES_2
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 314 SPELL_EFFECT_ADD_SOCKET_BONUS
+            new StaticData(SpellEffectImplicitTargetTypes.Caster,   SpellTargetObjectTypes.Unit), // 315 SPELL_EFFECT_LEARN_TRANSMOG_APPEARANCE_FROM_ITEM_MOD_APPEARANCE_GROUP
         };
 
         #region Fields
@@ -4852,8 +4884,8 @@ namespace Game.Spells
         public float PositionFacing;
         public SpellImplicitTargetInfo TargetA = new();
         public SpellImplicitTargetInfo TargetB = new();
-        public SpellRadiusRecord RadiusEntry;
-        public SpellRadiusRecord MaxRadiusEntry;
+        public SpellRadiusRecord TargetARadiusEntry;
+        public SpellRadiusRecord TargetBRadiusEntry;
         public int ChainTargets;
         public uint ItemType;
         public uint TriggerSpell;

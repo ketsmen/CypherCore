@@ -22,7 +22,7 @@ namespace Game.Entities
 {
     public partial class Player
     {
-        public WorldSession GetSession() { return Session; }
+        public WorldSession GetSession() { return _session; }
         public PlayerSocial GetSocial() { return m_social; }
 
         //Gossip
@@ -49,7 +49,7 @@ namespace Game.Entities
 
         //PVP
         BgBattlegroundQueueID_Rec[] m_bgBattlegroundQueueID = new BgBattlegroundQueueID_Rec[SharedConst.MaxPlayerBGQueues];
-        BGData m_bgData;
+        public BGData m_bgData;
         bool m_IsBGRandomWinner;
         public PvPInfo pvpInfo;
         uint m_ArenaTeamIdInvited;
@@ -122,6 +122,7 @@ namespace Game.Entities
         PetStable m_petStable;
         public List<PetAura> m_petAuras = new();
         uint m_temporaryUnsummonedPetNumber;
+        ReactStates? m_temporaryPetReactState;
         uint m_lastpetnumber;
 
         // Player summoning
@@ -179,7 +180,7 @@ namespace Game.Entities
         WorldLocation _corpseLocation;
 
         //Core
-        WorldSession Session;
+        WorldSession _session;
 
         public PlayerData m_playerData;
         public ActivePlayerData m_activePlayerData;
@@ -583,6 +584,7 @@ namespace Game.Entities
         public uint[] taxiPath = new uint[2];
 
         public WorldLocation joinPos;                  //< From where player entered BG
+        public BattlegroundQueueTypeId queueId;
 
         public void ClearTaxiPath() { taxiPath[0] = taxiPath[1] = 0; }
         public bool HasTaxiPath() { return taxiPath[0] != 0 && taxiPath[1] != 0; }

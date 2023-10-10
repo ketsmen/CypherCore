@@ -26,28 +26,33 @@ namespace Game.Entities
                 return;
             }
 
-            if (m_duration <= diff)
+            if (m_duration <= TimeSpan.FromMilliseconds(diff))
             {
                 UnSummon();                                         // remove self
                 return;
             }
-            else
-                m_duration -= diff;
+
+            m_duration -= TimeSpan.FromMilliseconds(diff);
+
             base.Update(diff);
 
         }
 
-        public override void InitStats(WorldObject summoner, uint duration)
+        public override void InitStats(WorldObject summoner, TimeSpan duration)
         {
             // client requires SMSG_TOTEM_CREATED to be sent before adding to world and before removing old totem
             Player owner = GetOwner().ToPlayer();
-            if (owner)
+            if (owner != null)
             {
-                if (m_Properties.Slot >= (int)SummonSlot.Totem && m_Properties.Slot < SharedConst.MaxTotemSlot)
+                int slot = m_Properties.Slot;
+                if (slot == (int)SummonSlot.Any)
+                    slot = FindUsableTotemSlot(owner);
+
+                if (slot >= (int)SummonSlot.Totem && slot < SharedConst.MaxTotemSlot)
                 {
                     TotemCreated packet = new();
                     packet.Totem = GetGUID();
-                    packet.Slot = (byte)(m_Properties.Slot - (int)SummonSlot.Totem);
+                    packet.Slot = (byte)(slot - (int)SummonSlot.Totem);
                     packet.Duration = duration;
                     packet.SpellID = m_unitData.CreatedBySpell;
                     owner.ToPlayer().SendPacket(packet);
@@ -116,12 +121,12 @@ namespace Game.Entities
                     GetSpellHistory().SendCooldownEvent(spell, 0, null, false);
 
                 Group group = owner.GetGroup();
-                if (group)
+                if (group != null)
                 {
                     for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
                     {
                         Player target = refe.GetSource();
-                        if (target && target.IsInMap(owner) && group.SameSubGroup(owner, target))
+                        if (target != null && target.IsInMap(owner) && group.SameSubGroup(owner, target))
                             target.RemoveAurasDueToSpell(GetSpell(), GetGUID());
                     }
                 }
@@ -156,9 +161,9 @@ namespace Game.Entities
 
         public uint GetSpell(byte slot = 0) { return m_spells[slot]; }
 
-        public uint GetTotemDuration() { return m_duration; }
+        public TimeSpan GetTotemDuration() { return m_duration; }
 
-        public void SetTotemDuration(uint duration) { m_duration = duration; }
+        public void SetTotemDuration(TimeSpan duration) { m_duration = duration; }
 
         public TotemType GetTotemType() { return m_type; }
 
@@ -174,7 +179,7 @@ namespace Game.Entities
         public override void UpdateDamagePhysical(WeaponAttackType attType) { }
 
         TotemType m_type;
-        uint m_duration;
+        TimeSpan m_duration;
     }
 
     public enum TotemType

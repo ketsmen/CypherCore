@@ -31,7 +31,7 @@ namespace Game
                 return;
             }
 
-            if (_player.GetBattleground() && _player.GetBattleground().GetStatus() == BattlegroundStatus.InProgress)
+            if (_player.GetBattleground() != null && _player.GetBattleground().GetStatus() == BattlegroundStatus.InProgress)
             {
                 SendPacket(new TraitConfigCommitFailed(configId, 0, (int)TalentLearnResult.InPvpMatch));
                 return;
@@ -148,7 +148,7 @@ namespace Game
                 while (_player.m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
                 {
                     return (TraitConfigType)(int)traitConfig.Type == TraitConfigType.Combat
-                        && traitConfig.ChrSpecializationID == _player.GetPrimarySpecialization()
+                        && traitConfig.ChrSpecializationID == (int)_player.GetPrimarySpecialization()
                         && traitConfig.LocalIdentifier == index;
                 }) >= 0)
                     ++index;
@@ -219,7 +219,7 @@ namespace Game
                 while (_player.m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
                 {
                     return (TraitConfigType)(int)traitConfig.Type == TraitConfigType.Combat
-                        && traitConfig.ChrSpecializationID == _player.GetPrimarySpecialization()
+                        && traitConfig.ChrSpecializationID == (int)_player.GetPrimarySpecialization()
                         && traitConfig.LocalIdentifier == freeLocalIdentifier;
                 }) >= 0)
                     ++freeLocalIdentifier;

@@ -246,7 +246,7 @@ namespace Game.Loots
                     continue;
 
                 Player player = Global.ObjAccessor.GetPlayer(m_map, playerGuid);
-                if (!player)
+                if (player == null)
                     continue;
 
                 player.RemoveLootRoll(this);
@@ -441,7 +441,7 @@ namespace Game.Loots
                 foreach (ObjectGuid allowedLooter in m_lootItem.GetAllowedLooters())
                 {
                     Player plr = Global.ObjAccessor.GetPlayer(m_map, allowedLooter);
-                    if (!plr || !m_lootItem.HasAllowedLooter(plr.GetGUID()))     // check if player meet the condition to be able to roll this item
+                    if (plr == null || !m_lootItem.HasAllowedLooter(plr.GetGUID()))     // check if player meet the condition to be able to roll this item
                     {
                         m_rollVoteMap[allowedLooter].Vote = RollVote.NotValid;
                         continue;
@@ -650,7 +650,7 @@ namespace Game.Loots
         public Loot(Map map, ObjectGuid owner, LootType type, Group group)
         {
             loot_type = type;
-            _guid = map ? ObjectGuid.Create(HighGuid.LootObject, map.GetId(), 0, map.GenerateLowGuid(HighGuid.LootObject)) : ObjectGuid.Empty;
+            _guid = map != null ? ObjectGuid.Create(HighGuid.LootObject, map.GetId(), 0, map.GenerateLowGuid(HighGuid.LootObject)) : ObjectGuid.Empty;
             _owner = owner;
             _itemContext = ItemContext.None;
             _lootMethod = group != null ? group.GetLootMethod() : LootMethod.FreeForAll;
@@ -728,6 +728,12 @@ namespace Game.Loots
             return allLooted;
         }
 
+        public void LootMoney()
+        {
+            gold = 0;
+            _changed = true;
+        }
+
         public LootItem GetItemInSlot(uint lootListId)
         {
             if (lootListId < items.Count)
@@ -765,7 +771,7 @@ namespace Game.Loots
                 for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
                 {
                     Player player = refe.GetSource();
-                    if (player)   // should actually be looted object instead of lootOwner but looter has to be really close so doesnt really matter
+                    if (player != null)   // should actually be looted object instead of lootOwner but looter has to be really close so doesnt really matter
                         if (player.IsAtGroupRewardDistance(lootOwner))
                             FillNotNormalLootFor(player);
                 }
@@ -854,7 +860,7 @@ namespace Game.Loots
                     continue;
 
                 Player player = Global.ObjAccessor.GetPlayer(map, PlayersLooting[i]);
-                if (player)
+                if (player != null)
                     player.SendNotifyLootItemRemoved(GetGUID(), GetOwnerGUID(), lootListId);
                 else
                     PlayersLooting.RemoveAt(i);
@@ -902,6 +908,9 @@ namespace Game.Loots
                         if (!lootRoll.TryToStart(map, this, lootListId, maxEnchantingSkill))
                             _rolls.Remove(lootListId);
                     }
+
+                    if (!_rolls.Empty())
+                        _changed = true;
                 }
                 else if (_lootMethod == LootMethod.MasterLoot)
                 {
@@ -973,6 +982,7 @@ namespace Game.Loots
             if (is_looted)
                 return null;
 
+            _changed = true;
             return item;
         }
 
@@ -1064,7 +1074,8 @@ namespace Game.Loots
         }
 
         public bool IsLooted() { return gold == 0 && unlootedCount == 0; }
-
+        public bool IsChanged() { return _changed; }
+        
         public void AddLooter(ObjectGuid guid) { PlayersLooting.Add(guid); }
         public void RemoveLooter(ObjectGuid guid) { PlayersLooting.Remove(guid); }
 
@@ -1099,6 +1110,7 @@ namespace Game.Loots
         ObjectGuid _lootMaster;
         List<ObjectGuid> _allowedLooters = new();
         bool _wasOpened;                                                // true if at least one player received the loot content
+        bool _changed;
         uint _dungeonEncounterId;
     }
 

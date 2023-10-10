@@ -92,7 +92,6 @@ namespace Game.DataStorage
         public uint LowResScreenFileDataID;
         public int Flags;
         public uint SpellTextureBlobFileDataID;
-        public uint RolesMask;
         public uint ArmorTypeMask;
         public int CharStartKitUnknown901;
         public int MaleCharacterCreationVisualFallback;
@@ -114,6 +113,7 @@ namespace Game.DataStorage
         public byte ClassColorR;
         public byte ClassColorG;
         public byte ClassColorB;
+        public byte RolesMask;
     }
 
     public sealed class ChrClassesXPowerTypesRecord
@@ -161,6 +161,7 @@ namespace Game.DataStorage
         public int ChrCustItemGeoModifyID;
         public int ChrCustomizationVoiceID;
         public int AnimKitID;
+        public int ParticleColorID;
     }
 
     public sealed class ChrCustomizationOptionRecord
@@ -183,6 +184,7 @@ namespace Game.DataStorage
     public sealed class ChrCustomizationReqRecord
     {
         public uint Id;
+        public long RaceMask;
         public string ReqSource;
         public int Flags;
         public int ClassMask;
@@ -300,11 +302,14 @@ namespace Game.DataStorage
         public byte OrderIndex;
         public sbyte PetTalentType;
         public sbyte Role;
-        public ChrSpecializationFlag Flags;
+        public uint Flags;
         public int SpellIconFileID;
         public sbyte PrimaryStatPriority;
         public int AnimReplacements;
         public uint[] MasterySpellID = new uint[PlayerConst.MaxMasterySpells];
+
+        public ChrSpecializationFlag GetFlags() { return (ChrSpecializationFlag)Flags; }
+        public ChrSpecializationRole GetRole() { return (ChrSpecializationRole)Role; }
 
         public bool IsPetSpecialization()
         {
@@ -327,6 +332,16 @@ namespace Game.DataStorage
         public uint Id;
         public uint SoundID;
         public ushort[] Camera = new ushort[8];
+    }
+
+    public sealed class ConditionalChrModelRecord
+    {
+        public uint Id;
+        public uint ChrModelID;                                      // This is the PK
+        public int ChrCustomizationReqID;
+        public int PlayerConditionID;
+        public int Flags;
+        public int ChrCustomizationCategoryID;
     }
 
     public sealed class ConditionalContentTuningRecord
@@ -467,6 +482,8 @@ namespace Game.DataStorage
         public float[] GeoBox = new float[6];
         public uint Flags;
         public uint FileDataID;
+        public float WalkSpeed;
+        public float RunSpeed;
         public uint BloodID;
         public uint FootprintTextureID;
         public float FootprintTextureLength;
@@ -512,12 +529,12 @@ namespace Game.DataStorage
         public CriteriaType Type;
         public uint Asset;
         public uint ModifierTreeId;
-        public byte StartEvent;
+        public int StartEvent;
         public uint StartAsset;
         public ushort StartTimer;
-        public byte FailEvent;
+        public int FailEvent;
         public uint FailAsset;
-        public byte Flags;
+        public int Flags;
         public ushort EligibilityWorldStateID;
         public byte EligibilityWorldStateValue;
 
@@ -530,7 +547,7 @@ namespace Game.DataStorage
         public string Description;
         public uint Parent;
         public uint Amount;
-        public sbyte Operator;
+        public int Operator;
         public uint CriteriaID;
         public int OrderIndex;
         public CriteriaTreeFlags Flags;

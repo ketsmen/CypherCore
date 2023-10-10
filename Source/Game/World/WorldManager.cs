@@ -270,7 +270,7 @@ namespace Game
             key.Raw = linkInfo.Item2;
 
             WorldSession session = FindSession(key.AccountId);
-            if (!session || session.GetConnectToInstanceKey() != linkInfo.Item2)
+            if (session == null || session.GetConnectToInstanceKey() != linkInfo.Item2)
             {
                 linkInfo.Item1.SendAuthResponseError(BattlenetRpcErrorCode.TimedOut);
                 linkInfo.Item1.CloseSocket();
@@ -725,7 +725,7 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading World locations...");
             Global.ObjectMgr.LoadWorldSafeLocs();                            // must be before LoadAreaTriggerTeleports and LoadGraveyardZones
 
-            Log.outInfo(LogFilter.ServerLoading, "Loading AreaTrigger definitions...");
+            Log.outInfo(LogFilter.ServerLoading, "Loading Area Trigger Teleports definitions...");
             Global.ObjectMgr.LoadAreaTriggerTeleports();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Access Requirements...");
@@ -1550,7 +1550,7 @@ namespace Game
             var wt_do = new LocalizedDo(wt_builder);
             foreach (var session in m_sessions.Values)
             {
-                if (session == null || !session.GetPlayer() || !session.GetPlayer().IsInWorld)
+                if (session == null || session.GetPlayer() == null || !session.GetPlayer().IsInWorld)
                     continue;
 
                 wt_do.Invoke(session.GetPlayer());
@@ -1570,7 +1570,7 @@ namespace Game
 
                 // Player should be in world
                 Player player = session.GetPlayer();
-                if (!player || !player.IsInWorld)
+                if (player == null || !player.IsInWorld)
                     continue;
 
                 wt_do.Invoke(player);
@@ -1583,7 +1583,7 @@ namespace Game
             bool foundPlayerToSend = false;
             foreach (var session in m_sessions.Values)
             {
-                if (session != null && session.GetPlayer() && session.GetPlayer().IsInWorld &&
+                if (session != null && session.GetPlayer() != null && session.GetPlayer().IsInWorld &&
                     session.GetPlayer().GetZoneId() == zone && session != self && (team == 0 || (uint)session.GetPlayer().GetTeam() == team))
                 {
                     session.SendPacket(packet);
@@ -1697,7 +1697,7 @@ namespace Game
                 }
 
                 WorldSession sess = FindSession(account);
-                if (sess)
+                if (sess != null)
                 {
                     if (sess.GetPlayerName() != author)
                         sess.KickPlayer("World::BanAccount Banning account");
@@ -1751,7 +1751,7 @@ namespace Game
             ObjectGuid guid;
 
             // Pick a player to ban if not online
-            if (!pBanned)
+            if (pBanned == null)
             {
                 guid = Global.CharacterCacheStorage.GetCharacterGuidByName(name);
                 if (guid.IsEmpty())
@@ -1776,7 +1776,7 @@ namespace Game
             trans.Append(stmt);
             DB.Characters.CommitTransaction(trans);
 
-            if (pBanned)
+            if (pBanned != null)
                 pBanned.GetSession().KickPlayer("World::BanCharacter Banning character");
 
             return BanReturn.Success;
@@ -1789,7 +1789,7 @@ namespace Game
             ObjectGuid guid;
 
             // Pick a player to ban if not online
-            if (!pBanned)
+            if (pBanned == null)
             {
                 guid = Global.CharacterCacheStorage.GetCharacterGuidByName(name);
                 if (guid.IsEmpty())
@@ -1907,7 +1907,7 @@ namespace Game
             if (messageID <= ServerMessageType.String)
                 packet.StringParam = stringParam;
 
-            if (player)
+            if (player != null)
                 player.SendPacket(packet);
             else
                 SendGlobalMessage(packet);
@@ -2254,7 +2254,7 @@ namespace Game
             DB.Characters.Execute(stmt);
 
             foreach (var session in m_sessions.Values)
-                if (session.GetPlayer())
+                if (session.GetPlayer() != null)
                     session.GetPlayer().SetRandomWinner(false);
 
             m_NextRandomBGReset += Time.Day;
@@ -2438,23 +2438,22 @@ namespace Game
 
         public bool LoadRealmInfo()
         {
-            SQLResult result = DB.Login.Query("SELECT id, name, address, localAddress, localSubnetMask, port, icon, flag, timezone, allowedSecurityLevel, population, gamebuild, Region, Battlegroup FROM realmlist WHERE id = {0}", _realm.Id.Index);
+            SQLResult result = DB.Login.Query("SELECT id, name, address, localAddress, port, icon, flag, timezone, allowedSecurityLevel, population, gamebuild, Region, Battlegroup FROM realmlist WHERE id = {0}", _realm.Id.Index);
             if (result.IsEmpty())
                 return false;
 
             _realm.SetName(result.Read<string>(1));
-            _realm.ExternalAddress = System.Net.IPAddress.Parse(result.Read<string>(2));
-            _realm.LocalAddress = System.Net.IPAddress.Parse(result.Read<string>(3));
-            _realm.LocalSubnetMask = System.Net.IPAddress.Parse(result.Read<string>(4));
-            _realm.Port = result.Read<ushort>(5);
-            _realm.Type = result.Read<byte>(6);
-            _realm.Flags = (RealmFlags)result.Read<byte>(7);
-            _realm.Timezone = result.Read<byte>(8);
-            _realm.AllowedSecurityLevel = (AccountTypes)result.Read<byte>(9);
-            _realm.PopulationLevel = result.Read<float>(10);
-            _realm.Id.Region = result.Read<byte>(12);
-            _realm.Id.Site = result.Read<byte>(13);
-            _realm.Build = result.Read<uint>(11);
+            _realm.Addresses.Add(System.Net.IPAddress.Parse(result.Read<string>(2)));
+            _realm.Addresses.Add(System.Net.IPAddress.Parse(result.Read<string>(3)));
+            _realm.Port = result.Read<ushort>(4);
+            _realm.Type = result.Read<byte>(5);
+            _realm.Flags = (RealmFlags)result.Read<byte>(6);
+            _realm.Timezone = result.Read<byte>(7);
+            _realm.AllowedSecurityLevel = (AccountTypes)result.Read<byte>(8);
+            _realm.PopulationLevel = result.Read<float>(9);
+            _realm.Build = result.Read<uint>(10);
+            _realm.Id.Region = result.Read<byte>(11);
+            _realm.Id.Site = result.Read<byte>(12);
             return true;
         }
 

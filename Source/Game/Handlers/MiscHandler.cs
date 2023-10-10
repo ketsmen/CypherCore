@@ -29,7 +29,7 @@ namespace Game
             AccountData adata = GetAccountData(request.DataType);
 
             UpdateAccountData data = new();
-            data.Player = GetPlayer() ? GetPlayer().GetGUID() : ObjectGuid.Empty;
+            data.Player = GetPlayer() != null ? GetPlayer().GetGUID() : ObjectGuid.Empty;
             data.Time = (uint)adata.Time;
             data.DataType = request.DataType;
 
@@ -111,7 +111,7 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.SetActionBarToggles)]
         void HandleSetActionBarToggles(SetActionBarToggles packet)
         {
-            if (!GetPlayer())                                        // ignore until not logged (check needed because STATUS_AUTHED)
+            if (GetPlayer() == null)                                        // ignore until not logged (check needed because STATUS_AUTHED)
             {
                 if (packet.Mask != 0)
                     Log.outError(LogFilter.Network, "WorldSession.HandleSetActionBarToggles in not logged state with value: {0}, ignored", packet.Mask);
@@ -252,7 +252,7 @@ namespace Game
                 return;
             }
             Battleground bg = player.GetBattleground();
-            if (bg)
+            if (bg != null)
                 bg.HandleAreaTrigger(player, packet.AreaTriggerID, packet.Entered);
 
             OutdoorPvP pvp = player.GetOutdoorPvP();
@@ -349,47 +349,15 @@ namespace Game
                 }
 
                 Group group = player.GetGroup();
-                if (group)
+                if (group != null)
                     if (group.IsLFGGroup() && player.GetMap().IsDungeon())
                         teleported = player.TeleportToBGEntryPoint();
             }
 
             if (!teleported)
             {
-                WorldSafeLocsEntry entranceLocation = null;
-                MapRecord mapEntry = CliDB.MapStorage.LookupByKey(at.target_mapId);
-                if (mapEntry.Instanceable())
-                {
-                    // Check if we can contact the instancescript of the instance for an updated entrance location
-                    uint targetInstanceId = Global.MapMgr.FindInstanceIdForPlayer(at.target_mapId, _player);
-                    if (targetInstanceId != 0)
-                    {
-                        Map map = Global.MapMgr.FindMap(at.target_mapId, targetInstanceId);
-                        if (map != null)
-                        {
-                            InstanceMap instanceMap = map.ToInstanceMap();
-                            if (instanceMap)
-                            {
-                                InstanceScript instanceScript = instanceMap.GetInstanceScript();
-                                if (instanceScript != null)
-                                    entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceScript.GetEntranceLocation());
-                            }
-                        }
-                    }
-
-                    // Finally check with the instancesave for an entrance location if we did not get a valid one from the instancescript
-                    if (entranceLocation == null)
-                    {
-                        Group group = player.GetGroup();
-                        Difficulty difficulty = group ? group.GetDifficultyID(mapEntry) : player.GetDifficultyID(mapEntry);
-                        ObjectGuid instanceOwnerGuid = group ? group.GetRecentInstanceOwner(at.target_mapId) : player.GetGUID();
-                        InstanceLock instanceLock = Global.InstanceLockMgr.FindActiveInstanceLock(instanceOwnerGuid, new MapDb2Entries(mapEntry, Global.DB2Mgr.GetDownscaledMapDifficultyData(at.target_mapId, ref difficulty)));
-                        if (instanceLock != null)
-                            entranceLocation = Global.ObjectMgr.GetWorldSafeLoc(instanceLock.GetData().EntranceWorldSafeLocId);
-                    }
-                }
-
-                if (entranceLocation != null)
+                WorldSafeLocsEntry entranceLocation = player.GetInstanceEntrance(at.target_mapId);
+                if (entranceLocation != null && player.GetMapId() != at.target_mapId)
                     player.TeleportTo(entranceLocation.Loc, TeleportToOptions.NotLeaveTransport);
                 else
                     player.TeleportTo(at.target_mapId, at.target_X, at.target_Y, at.target_Z, at.target_Orientation, TeleportToOptions.NotLeaveTransport);
@@ -465,6 +433,9 @@ namespace Game
         {
             if (_player.PlayerTalkClass.GetInteractionData().SourceGuid == closeInteraction.SourceGuid)
                 _player.PlayerTalkClass.GetInteractionData().Reset();
+
+            if (_player.GetStableMaster() == closeInteraction.SourceGuid)
+                _player.SetStableMaster(ObjectGuid.Empty);
         }
 
         [WorldPacketHandler(ClientOpcodes.ConversationLineStarted)]
@@ -565,7 +536,7 @@ namespace Game
             {
                 Log.outDebug(LogFilter.Network, "Added FarSight {0} to player {1}", GetPlayer().m_activePlayerData.FarsightObject.ToString(), GetPlayer().GetGUID().ToString());
                 WorldObject target = GetPlayer().GetViewpoint();
-                if (target)
+                if (target != null)
                     GetPlayer().SetSeer(target);
                 else
                     Log.outDebug(LogFilter.Network, "Player {0} (GUID: {1}) requests non-existing seer {2}", GetPlayer().GetName(), GetPlayer().GetGUID().ToString(), GetPlayer().m_activePlayerData.FarsightObject.ToString());
@@ -602,7 +573,7 @@ namespace Game
                 return;
 
             Group group = GetPlayer().GetGroup();
-            if (group)
+            if (group != null)
             {
                 if (!group.IsLeader(GetPlayer().GetGUID()))
                     return;
@@ -647,7 +618,7 @@ namespace Game
 
             // cannot reset while in an instance
             Map map = GetPlayer().GetMap();
-            if (map && map.Instanceable())
+            if (map != null && map.Instanceable())
             {
                 Log.outDebug(LogFilter.Network, "WorldSession:HandleSetDungeonDifficulty: player (Name: {0}, {1}) tried to reset the instance while player is inside!",
                     GetPlayer().GetName(), GetPlayer().GetGUID().ToString());
@@ -655,7 +626,7 @@ namespace Game
             }
 
             Group group = GetPlayer().GetGroup();
-            if (group)
+            if (group != null)
             {
                 if (!group.IsLeader(_player.GetGUID()))
                     return;
@@ -713,7 +684,7 @@ namespace Game
 
             // cannot reset while in an instance
             Map map = GetPlayer().GetMap();
-            if (map && map.Instanceable())
+            if (map != null && map.Instanceable())
             {
                 Log.outDebug(LogFilter.Network, "WorldSession:HandleSetRaidDifficulty: player (Name: {0}, {1} tried to reset the instance while inside!",
                     GetPlayer().GetName(), GetPlayer().GetGUID().ToString());
@@ -721,7 +692,7 @@ namespace Game
             }
 
             Group group = GetPlayer().GetGroup();
-            if (group)
+            if (group != null)
             {
                 if (!group.IsLeader(_player.GetGUID()))
                     return;
@@ -761,7 +732,7 @@ namespace Game
         void HandleGuildSetFocusedAchievement(GuildSetFocusedAchievement setFocusedAchievement)
         {
             Guild guild = Global.GuildMgr.GetGuildById(GetPlayer().GetGuildId());
-            if (guild)
+            if (guild != null)
                 guild.GetAchievementMgr().SendAchievementInfo(GetPlayer(), setFocusedAchievement.AchievementID);
         }
 

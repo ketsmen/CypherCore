@@ -84,7 +84,7 @@ namespace Game.Entities
                 return;
 
             Unit owner = Global.ObjAccessor.GetUnit(this, ownerGUID);
-            if (owner)
+            if (owner != null)
             {
                 owner.RemoveGameObject(this, false);
                 Cypher.Assert(GetOwnerGUID().IsEmpty());
@@ -114,7 +114,7 @@ namespace Game.Entities
                 if (m_model != null)
                 {
                     Transport trans = ToTransport();
-                    if (trans)
+                    if (trans != null)
                         trans.SetDelayedAddModelToMap();
                     else
                         GetMap().InsertGameObjectModel(m_model);
@@ -175,7 +175,7 @@ namespace Game.Entities
 
         bool Create(uint entry, Map map, Position pos, Quaternion rotation, uint animProgress, GameObjectState goState, uint artKit, bool dynamic, ulong spawnid)
         {
-            Cypher.Assert(map);
+            Cypher.Assert(map != null);
             SetMap(map);
 
             Relocate(pos);
@@ -322,6 +322,15 @@ namespace Game.Entities
                         m_invisibility.AddValue(InvisibilityType.Trap, 300);
                     }
                     break;
+                case GameObjectTypes.NewFlag:
+                    m_goTypeImpl = new GameObjectType.NewFlag(this);
+                    if (map.Instanceable())
+                        SetActive(true);
+                    break;
+                case GameObjectTypes.NewFlagDrop:
+                    if (map.Instanceable())
+                        SetActive(true);
+                    break;
                 case GameObjectTypes.PhaseableMo:
                     RemoveFlag((GameObjectFlags)0xF00);
                     SetFlag((GameObjectFlags)((m_goInfo.PhaseableMO.AreaNameSet & 0xF) << 8));
@@ -332,6 +341,8 @@ namespace Game.Entities
                     m_goValue.CapturePoint.LastTeamCapture = TeamId.Neutral;
                     m_goValue.CapturePoint.State = BattlegroundCapturePointState.Neutral;
                     UpdateCapturePoint();
+                    if (map.Instanceable())
+                        SetActive(true);
                     break;
                 default:
                     SetGoAnimProgress(animProgress);
@@ -357,6 +368,9 @@ namespace Game.Entities
             }
 
             LastUsedScriptID = GetGoInfo().ScriptId;
+
+            m_stringIds[0] = goInfo.StringId;
+
             AIM_Initialize();
 
             if (spawnid != 0)
@@ -425,7 +439,7 @@ namespace Game.Entities
 
                     m_perPlayerState.Remove(guid);
 
-                    if (seer)
+                    if (seer != null)
                     {
                         if (despawned)
                         {
@@ -461,7 +475,7 @@ namespace Game.Entities
                             Unit owner = GetOwner();
                             if (goInfo.Trap.charges == 2)
                                 m_cooldownTime = GameTime.GetGameTimeMS() + 10 * Time.InMilliseconds;   // Hardcoded tooltip value
-                            else if (owner)
+                            else if (owner != null)
                             {
                                 if (owner.IsInCombat())
                                     m_cooldownTime = GameTime.GetGameTimeMS() + goInfo.Trap.startDelay * Time.InMilliseconds;
@@ -595,17 +609,9 @@ namespace Game.Entities
 
                             // Type 0 despawns after being triggered, type 1 does not.
                             // @todo This is activation radius. Casting radius must be selected from spell 
-                            float radius;
-                            if (goInfo.Trap.radius == 0f)
-                            {
-                                // Battlegroundgameobjects have data2 == 0 && data5 == 3
-                                if (goInfo.Trap.cooldown != 3)
-                                    break;
-
-                                radius = 3.0f;
-                            }
-                            else
-                                radius = goInfo.Trap.radius / 2.0f;
+                            float radius = goInfo.Trap.radius / 2.0f; // this division seems to date back to when the field was called diameter, don't think it is still relevant.
+                            if (radius == 0f)
+                                break;
 
                             Unit target;
                             // @todo this hack with search required until GO casting not implemented
@@ -626,7 +632,7 @@ namespace Game.Entities
                                 target = searcher.GetTarget();
                             }
 
-                            if (target)
+                            if (target != null)
                                 SetLootState(LootState.Activated, target);
                         }
                         else if (goInfo.type == GameObjectTypes.CapturePoint)
@@ -709,17 +715,18 @@ namespace Game.Entities
                         case GameObjectTypes.Chest:
                             loot?.Update();
 
-                            foreach (var (_, loot) in m_personalLoot)
-                                loot.Update();
-
                             // Non-consumable chest was partially looted and restock time passed, restock all loot now
-                            if (GetGoInfo().Chest.consumable == 0 && GetGoInfo().Chest.chestRestockTime != 0 && GameTime.GetGameTime() >= m_restockTime)
+                            if (GetGoInfo().Chest.consumable == 0 && m_restockTime != 0 && GameTime.GetGameTime() >= m_restockTime)
                             {
                                 m_restockTime = 0;
                                 m_lootState = LootState.Ready;
                                 ClearLoot();
                                 UpdateDynamicFlagsForNearbyPlayers();
                             }
+
+                            foreach (var (_, loot) in m_personalLoot)
+                                loot.Update();
+
                             break;
                         case GameObjectTypes.Trap:
                         {
@@ -731,7 +738,7 @@ namespace Game.Entities
                                 CastSpell(null, goInfo.Trap.spell);
                                 SetLootState(LootState.JustDeactivated);
                             }
-                            else if (target)
+                            else if (target != null)
                             {
                                 // Some traps do not have a spell but should be triggered
                                 CastSpellExtraArgs args = new();
@@ -746,18 +753,6 @@ namespace Game.Entities
                                     SetLootState(LootState.JustDeactivated);
                                 else if (goInfo.Trap.charges == 0)
                                     SetLootState(LootState.Ready);
-
-                                // Battleground gameobjects have data2 == 0 && data5 == 3
-                                if (goInfo.Trap.radius == 0 && goInfo.Trap.cooldown == 3)
-                                {
-                                    Player player = target.ToPlayer();
-                                    if (player)
-                                    {
-                                        Battleground bg = player.GetBattleground();
-                                        if (bg)
-                                            bg.HandleTriggerBuff(GetGUID());
-                                    }
-                                }
                             }
                             break;
                         }
@@ -770,7 +765,7 @@ namespace Game.Entities
                 {
                     // If nearby linked trap exists, despawn it
                     GameObject linkedTrap = GetLinkedTrap();
-                    if (linkedTrap)
+                    if (linkedTrap != null)
                         linkedTrap.DespawnOrUnsummon();
 
                     //if Gameobject should cast spell, then this, but some GOs (type = 10) should be destroyed
@@ -823,6 +818,13 @@ namespace Game.Entities
                     else if (!GetOwnerGUID().IsEmpty() || GetSpellId() != 0)
                     {
                         SetRespawnTime(0);
+
+                        if (GetGoType() == GameObjectTypes.NewFlagDrop)
+                        {
+                            GameObject go = GetMap().GetGameObject(GetOwnerGUID());
+                            go?.HandleCustomTypeCommand(new GameObjectType.SetNewFlagState(FlagState.InBase, null));
+                        }
+
                         Delete();
                         return;
                     }
@@ -1150,6 +1152,8 @@ namespace Game.Entities
 
             m_goData = data;
 
+            m_stringIds[1] = data.StringId;
+
             if (addToMap && !GetMap().AddToMap(this))
                 return false;
 
@@ -1292,6 +1296,9 @@ namespace Game.Entities
             if (GetDisplayId() == 0 && GetGoInfo().IsDisplayMandatory())
                 return true;
 
+            if (m_goTypeImpl != null)
+                return m_goTypeImpl.IsNeverVisibleFor(seer, allowServersideObjects);
+
             return false;
         }
 
@@ -1377,7 +1384,7 @@ namespace Game.Entities
                         || LootStorage.Gameobject.HaveQuestLootForPlayer(GetGoInfo().Chest.chestPushLoot, target))
                     {
                         Battleground bg = target.GetBattleground();
-                        if (bg)
+                        if (bg != null)
                             return bg.CanActivateGO((int)GetEntry(), (uint)bg.GetPlayerTeam(target.GetGUID()));
                         return true;
                     }
@@ -1412,7 +1419,7 @@ namespace Game.Entities
                 return;
 
             GameObject trapGO = GetLinkedTrap();
-            if (trapGO)
+            if (trapGO != null)
                 trapGO.CastSpell(target, trapSpell.Id);
         }
 
@@ -1453,7 +1460,7 @@ namespace Game.Entities
 
         public void ActivateObject(GameObjectActions action, int param, WorldObject spellCaster = null, uint spellId = 0, int effectIndex = -1)
         {
-            Unit unitCaster = spellCaster ? spellCaster.ToUnit() : null;
+            Unit unitCaster = spellCaster != null ? spellCaster.ToUnit() : null;
 
             switch (action)
             {
@@ -1467,7 +1474,7 @@ namespace Game.Entities
                     SendCustomAnim((uint)(action - GameObjectActions.AnimateCustom0));
                     break;
                 case GameObjectActions.Disturb: // What's the difference with Open?
-                    if (unitCaster)
+                    if (unitCaster != null)
                         Use(unitCaster);
                     break;
                 case GameObjectActions.Unlock:
@@ -1477,11 +1484,11 @@ namespace Game.Entities
                     SetFlag(GameObjectFlags.Locked);
                     break;
                 case GameObjectActions.Open:
-                    if (unitCaster)
+                    if (unitCaster != null)
                         Use(unitCaster);
                     break;
                 case GameObjectActions.OpenAndUnlock:
-                    if (unitCaster)
+                    if (unitCaster != null)
                         UseDoorOrButton(0, false, unitCaster);
                     RemoveFlag(GameObjectFlags.Locked);
                     break;
@@ -1492,7 +1499,7 @@ namespace Game.Entities
                     // No use cases, implementation unknown
                     break;
                 case GameObjectActions.Destroy:
-                    if (unitCaster)
+                    if (unitCaster != null)
                         UseDoorOrButton(0, true, unitCaster);
                     break;
                 case GameObjectActions.Rebuild:
@@ -1554,7 +1561,7 @@ namespace Game.Entities
                     SetAnimKitId((ushort)param, false);
                     break;
                 case GameObjectActions.OpenAndPlayAnimKit:
-                    if (unitCaster)
+                    if (unitCaster != null)
                         UseDoorOrButton(0, false, unitCaster);
                     SetAnimKitId((ushort)param, false);
                     break;
@@ -1569,7 +1576,7 @@ namespace Game.Entities
                     SetAnimKitId(0, false);
                     break;
                 case GameObjectActions.OpenAndStopAnimKit:
-                    if (unitCaster)
+                    if (unitCaster != null)
                         UseDoorOrButton(0, false, unitCaster);
                     SetAnimKitId(0, false);
                     break;
@@ -1677,7 +1684,7 @@ namespace Game.Entities
                 case GameObjectTypes.Chest:                         //3
                 {
                     Player player = user.ToPlayer();
-                    if (!player)
+                    if (player == null)
                         return;
 
                     Battleground bg = player.GetBattleground();
@@ -1915,12 +1922,12 @@ namespace Game.Entities
                         }
 
                         Group group = player.GetGroup();
-                        if (group)
+                        if (group != null)
                         {
                             for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
                             {
                                 Player member = refe.GetSource();
-                                if (member)
+                                if (member != null)
                                     if (member.IsAtGroupRewardDistance(this))
                                         member.KillCreditGO(info.entry, GetGUID());
                             }
@@ -2037,14 +2044,14 @@ namespace Game.Entities
 
                             // If fishing skill is high enough, or if fishing on a pool, send correct loot.
                             // Fishing pools have no skill requirement as of patch 3.3.0 (undocumented change).
-                            if (chance >= roll || fishingPool)
+                            if (chance >= roll || fishingPool != null)
                             {
                                 // @todo I do not understand this hack. Need some explanation.
                                 // prevent removing GO at spell cancel
                                 RemoveFromOwner();
                                 SetOwnerGUID(player.GetGUID());
 
-                                if (fishingPool)
+                                if (fishingPool != null)
                                 {
                                     fishingPool.Use(player);
                                     SetLootState(LootState.JustDeactivated);
@@ -2241,7 +2248,7 @@ namespace Game.Entities
                     {
                         // in Battlegroundcheck
                         Battleground bg = player.GetBattleground();
-                        if (!bg)
+                        if (bg == null)
                             return;
 
                         if (player.GetVehicle() != null)
@@ -2289,7 +2296,7 @@ namespace Game.Entities
                     {
                         // in Battlegroundcheck
                         Battleground bg = player.GetBattleground();
-                        if (!bg)
+                        if (bg == null)
                             return;
 
                         if (player.GetVehicle() != null)
@@ -2310,11 +2317,11 @@ namespace Game.Entities
                             {
                                 case 179785:                        // Silverwing Flag
                                 case 179786:                        // Warsong Flag
-                                    if (bg.GetTypeID(true) == BattlegroundTypeId.WS)
+                                    if (bg.GetTypeID() == BattlegroundTypeId.WS)
                                         bg.EventPlayerClickedOnFlag(player, this);
                                     break;
                                 case 184142:                        // Netherstorm Flag
-                                    if (bg.GetTypeID(true) == BattlegroundTypeId.EY)
+                                    if (bg.GetTypeID() == BattlegroundTypeId.EY)
                                         bg.EventPlayerClickedOnFlag(player, this);
                                     break;
                             }
@@ -2354,11 +2361,73 @@ namespace Game.Entities
                     if (info == null)
                         return;
 
-                    if (!user.IsPlayer())
+                    Player player = user.ToPlayer();
+                    if (player == null)
+                        return;
+
+                    if (!player.CanUseBattlegroundObject(this))
+                        return;
+
+                    GameObjectType.NewFlag newFlag = (GameObjectType.NewFlag)m_goTypeImpl;
+                    if (newFlag == null)
+                        return;
+
+                    if (newFlag.GetState() != FlagState.InBase)
                         return;
 
                     spellId = info.NewFlag.pickupSpell;
+                    spellCaster = null;
                     break;
+                }
+                case GameObjectTypes.NewFlagDrop:
+                {
+                    GameObjectTemplate info = GetGoInfo();
+                    if (info == null)
+                        return;
+
+                    if (!user.IsPlayer())
+                        return;
+
+                    if (!user.IsAlive())
+                        return;
+
+                    GameObject owner = GetMap().GetGameObject(GetOwnerGUID());
+                    if (owner != null)
+                    {
+                        if (owner.GetGoType() == GameObjectTypes.NewFlag)
+                        {
+                            GameObjectType.NewFlag newFlag = (GameObjectType.NewFlag)owner.m_goTypeImpl;
+                            if (newFlag == null)
+                                return;
+
+                            if (newFlag.GetState() != FlagState.Dropped)
+                                return;
+
+                            // friendly with enemy flag means you're taking it
+                            bool defenderInteract = !owner.IsFriendlyTo(user);
+                            if (defenderInteract && owner.GetGoInfo().NewFlag.ReturnonDefenderInteract != 0)
+                            {
+                                Delete();
+                                owner.HandleCustomTypeCommand(new GameObjectType.SetNewFlagState(FlagState.InBase, user.ToPlayer()));
+                                return;
+                            }
+                            else
+                            {
+                                // we let the owner cast the spell for now
+                                // so that caster guid is set correctly
+                                SpellCastResult result = owner.CastSpell(user, owner.GetGoInfo().NewFlag.pickupSpell, new CastSpellExtraArgs(TriggerCastFlags.FullMask));
+                                if (result == SpellCastResult.SpellCastOk)
+                                {
+                                    Delete();
+                                    owner.HandleCustomTypeCommand(new GameObjectType.SetNewFlagState(FlagState.Taken, user.ToPlayer()));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    Delete();
+                    return;
                 }
                 case GameObjectTypes.ItemForge:
                 {
@@ -2383,7 +2452,7 @@ namespace Game.Entities
 
                             Aura artifactAura = player.GetAura(PlayerConst.ArtifactsAllWeaponsGeneralWeaponEquippedPassive);
                             Item item = artifactAura != null ? player.GetItemByGuid(artifactAura.GetCastItemGUID()) : null;
-                            if (!item)
+                            if (item == null)
                             {
                                 player.SendPacket(new DisplayGameError(GameError.MustEquipArtifact));
                                 return;
@@ -2398,7 +2467,7 @@ namespace Game.Entities
                         case 2: // Heart Forge
                         {
                             Item item = player.GetItemByEntry(PlayerConst.ItemIdHeartOfAzeroth, ItemSearchLocation.Everywhere);
-                            if (!item)
+                            if (item == null)
                                 return;
 
                             GameObjectInteraction openHeartForge = new();
@@ -2415,7 +2484,7 @@ namespace Game.Entities
                 case GameObjectTypes.UILink:
                 {
                     Player player = user.ToPlayer();
-                    if (!player)
+                    if (player == null)
                         return;
 
                     GameObjectInteraction gameObjectUILink = new();
@@ -2518,13 +2587,20 @@ namespace Game.Entities
             }
 
             Player player1 = user.ToPlayer();
-            if (player1)
+            if (player1 != null)
                 Global.OutdoorPvPMgr.HandleCustomSpell(player1, spellId, this);
 
             if (spellCaster != null)
                 spellCaster.CastSpell(user, spellId, triggered);
             else
-                CastSpell(user, spellId);
+            {
+                SpellCastResult castResult = CastSpell(user, spellId);
+                if (castResult == SpellCastResult.Success)
+                {
+                    if (GetGoType() == GameObjectTypes.NewFlag)
+                        HandleCustomTypeCommand(new GameObjectType.SetNewFlagState(FlagState.Taken, user.ToPlayer()));
+                }
+            }
         }
 
         public void SendCustomAnim(uint anim)
@@ -2574,6 +2650,27 @@ namespace Game.Entities
             return GetGoInfo().ScriptId;
         }
 
+        public bool HasStringId(string id)
+        {
+            return m_stringIds.Contains(id);
+        }
+
+        public void SetScriptStringId(string id)
+        {
+            if (!id.IsEmpty())
+            {
+                m_scriptStringId = id;
+                m_stringIds[2] = m_scriptStringId;
+            }
+            else
+            {
+                m_scriptStringId = null;
+                m_stringIds[2] = null;
+            }
+        }
+
+        public string[] GetStringIds() { return m_stringIds; }
+        
         public override string GetName(Locale locale = Locale.enUS)
         {
             if (locale != Locale.enUS)
@@ -2697,7 +2794,7 @@ namespace Game.Entities
 
         public SpellInfo GetSpellForLock(Player player)
         {
-            if (!player)
+            if (player == null)
                 return null;
 
             uint lockId = GetGoInfo().GetLockId();
@@ -2808,7 +2905,7 @@ namespace Game.Entities
                     break;
                 case GameObjectDestructibleState.Damaged:
                 {
-                    if (GetGoInfo().DestructibleBuilding.DamagedEvent != 0)
+                    if (GetGoInfo().DestructibleBuilding.DamagedEvent != 0 && attackerOrHealer != null)
                         GameEvents.Trigger(GetGoInfo().DestructibleBuilding.DamagedEvent, attackerOrHealer, this);
                     GetAI().Damaged(attackerOrHealer, m_goInfo.DestructibleBuilding.DamagedEvent);
 
@@ -2835,12 +2932,12 @@ namespace Game.Entities
                 }
                 case GameObjectDestructibleState.Destroyed:
                 {
-                    if (GetGoInfo().DestructibleBuilding.DestroyedEvent != 0)
+                    if (GetGoInfo().DestructibleBuilding.DestroyedEvent != 0 && attackerOrHealer != null)
                         GameEvents.Trigger(GetGoInfo().DestructibleBuilding.DestroyedEvent, attackerOrHealer, this);
                     GetAI().Destroyed(attackerOrHealer, m_goInfo.DestructibleBuilding.DestroyedEvent);
 
                     Player player = attackerOrHealer != null ? attackerOrHealer.GetCharmerOrOwnerPlayerOrPlayerItself() : null;
-                    if (player)
+                    if (player != null)
                     {
                         Battleground bg = player.GetBattleground();
                         if (bg != null)
@@ -2867,7 +2964,7 @@ namespace Game.Entities
                 }
                 case GameObjectDestructibleState.Rebuilding:
                 {
-                    if (GetGoInfo().DestructibleBuilding.RebuildingEvent != 0)
+                    if (GetGoInfo().DestructibleBuilding.RebuildingEvent != 0 && attackerOrHealer != null)
                         GameEvents.Trigger(GetGoInfo().DestructibleBuilding.RebuildingEvent, attackerOrHealer, this);
                     RemoveFlag(GameObjectFlags.Damaged | GameObjectFlags.Destroyed);
 
@@ -2893,11 +2990,11 @@ namespace Game.Entities
         public void SetLootState(LootState state, Unit unit = null)
         {
             m_lootState = state;
-            m_lootStateUnitGUID = unit ? unit.GetGUID() : ObjectGuid.Empty;
+            m_lootStateUnitGUID = unit != null ? unit.GetGUID() : ObjectGuid.Empty;
             GetAI().OnLootStateChanged((uint)state, unit);
 
             // Start restock timer if the chest is partially looted or not looted at all
-            if (GetGoType() == GameObjectTypes.Chest && state == LootState.Activated && GetGoInfo().Chest.chestRestockTime > 0 && m_restockTime == 0)
+            if (GetGoType() == GameObjectTypes.Chest && state == LootState.Activated && GetGoInfo().Chest.chestRestockTime > 0 && m_restockTime == 0 && loot != null && loot.IsChanged())
                 m_restockTime = GameTime.GetGameTime() + GetGoInfo().Chest.chestRestockTime;
 
             // only set collision for doors on SetGoState
@@ -3016,7 +3113,7 @@ namespace Game.Entities
             setStateLocal.State = (byte)state;
             viewer.SendPacket(setStateLocal);
         }
-        
+
         public void SetDisplayId(uint displayid)
         {
             SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.DisplayID), displayid);
@@ -3107,7 +3204,7 @@ namespace Game.Entities
 
             return m_personalLoot.LookupByKey(player.GetGUID());
         }
-        
+
         public void SetLinkedTrap(GameObject linkedTrap) { m_linkedTrap = linkedTrap.GetGUID(); }
 
         public GameObject GetLinkedTrap()
@@ -3340,7 +3437,7 @@ namespace Game.Entities
                     battleground = bg;
             }
 
-            if (!battleground)
+            if (battleground == null)
                 return;
 
             // Cancel current timer
@@ -3489,6 +3586,42 @@ namespace Game.Entities
                 || m_goValue.CapturePoint.State == BattlegroundCapturePointState.HordeCaptured;
         }
 
+        FlagState GetFlagState()
+        {
+            if (GetGoType() != GameObjectTypes.NewFlag)
+                return 0;
+
+            GameObjectType.NewFlag newFlag = m_goTypeImpl as GameObjectType.NewFlag;
+            if (newFlag == null)
+                return 0;
+
+            return newFlag.GetState();
+        }
+
+        ObjectGuid GetFlagCarrierGUID()
+        {
+            if (GetGoType() != GameObjectTypes.NewFlag)
+                return ObjectGuid.Empty;
+
+            GameObjectType.NewFlag newFlag = m_goTypeImpl as GameObjectType.NewFlag;
+            if (newFlag == null)
+                return ObjectGuid.Empty;
+
+            return newFlag.GetCarrierGUID();
+        }
+
+        long GetFlagTakenFromBaseTime()
+        {
+            if (GetGoType() != GameObjectTypes.NewFlag)
+                return 0;
+
+            GameObjectType.NewFlag newFlag = m_goTypeImpl as GameObjectType.NewFlag;
+            if (newFlag == null)
+                return 0;
+
+            return newFlag.GetTakenFromBaseTime();
+        }
+
         public bool MeetsInteractCondition(Player user)
         {
             if (m_goInfo.GetConditionID1() == 0)
@@ -3501,7 +3634,7 @@ namespace Game.Entities
 
             return true;
         }
-        
+
         PerPlayerState GetOrCreatePerPlayerStates(ObjectGuid guid)
         {
             if (m_perPlayerState == null)
@@ -3512,7 +3645,7 @@ namespace Game.Entities
 
             return m_perPlayerState[guid];
         }
-        
+
         public override ushort GetAIAnimKitId() { return _animKitId; }
 
         public uint GetWorldEffectID() { return _worldEffectID; }
@@ -3620,9 +3753,9 @@ namespace Game.Entities
 
         List<ObjectGuid> GetTapList() { return m_tapList; }
         void SetTapList(List<ObjectGuid> tapList) { m_tapList = tapList; }
-        
+
         bool HasLootRecipient() { return !m_tapList.Empty(); }
-        
+
         public override uint GetLevelForTarget(WorldObject target)
         {
             Unit owner = GetOwner();
@@ -3686,7 +3819,7 @@ namespace Game.Entities
             AddToObjectUpdateIfNeeded();
         }
 
-        void HandleCustomTypeCommand(GameObjectTypeBase.CustomCommand command)
+        public void HandleCustomTypeCommand(GameObjectTypeBase.CustomCommand command)
         {
             if (m_goTypeImpl != null)
                 command.Execute(m_goTypeImpl);
@@ -3707,6 +3840,8 @@ namespace Game.Entities
         public GameObjectFieldData m_gameObjectData;
         GameObjectTypeBase m_goTypeImpl;
         protected GameObjectValue m_goValue; // TODO: replace with m_goTypeImpl
+        string[] m_stringIds = new string[3];
+        string m_scriptStringId;
         protected GameObjectTemplate m_goInfo;
         protected GameObjectTemplateAddon m_goTemplateAddon;
         GameObjectData m_goData;
@@ -3795,7 +3930,7 @@ namespace Game.Entities
     }
 
     // Base class for GameObject type specific implementations
-    class GameObjectTypeBase
+    public class GameObjectTypeBase
     {
         protected GameObject _owner;
 
@@ -3807,6 +3942,7 @@ namespace Game.Entities
         public virtual void Update(uint diff) { }
         public virtual void OnStateChanged(GameObjectState oldState, GameObjectState newState) { }
         public virtual void OnRelocated() { }
+        public virtual bool IsNeverVisibleFor(WorldObject seer, bool allowServersideObjects) { return false; }
 
         public class CustomCommand
         {
@@ -4025,7 +4161,7 @@ namespace Game.Entities
                         }
 
                         if (eventId != 0)
-                            GameEvents.Trigger(eventId, _owner, null);
+                            GameEvents.Trigger(eventId, _owner, _owner);
 
                         if (_autoCycleBetweenStopFrames)
                         {
@@ -4255,6 +4391,83 @@ namespace Game.Entities
                 Transport transport = (Transport)type;
                 if (transport != null)
                     transport.SetAutoCycleBetweenStopFrames(_on);
+            }
+        }
+
+        class NewFlag : GameObjectTypeBase
+        {
+            FlagState _state;
+            long _respawnTime;
+            ObjectGuid _carrierGUID;
+            long _takenFromBaseTime;
+
+            public NewFlag(GameObject owner) : base(owner)
+            {
+                _state = FlagState.InBase;
+            }
+
+            public void SetState(FlagState newState, Player player)
+            {
+                if (_state == newState)
+                    return;
+
+                FlagState oldState = _state;
+                _state = newState;
+
+                if (player != null && newState == FlagState.Taken)
+                    _carrierGUID = player.GetGUID();
+                else
+                    _carrierGUID = ObjectGuid.Empty;
+
+                if (newState == FlagState.Taken && oldState == FlagState.InBase)
+                    _takenFromBaseTime = GameTime.GetGameTime();
+                else if (newState == FlagState.InBase || newState == FlagState.Respawning)
+                    _takenFromBaseTime = 0;
+
+                _owner.UpdateObjectVisibility();
+
+                if (newState == FlagState.Respawning)
+                    _respawnTime = GameTime.GetGameTimeMS() + _owner.GetGoInfo().NewFlag.RespawnTime;
+                else
+                    _respawnTime = 0;
+
+                ZoneScript zoneScript = _owner.GetZoneScript();
+                if (zoneScript != null)
+                    zoneScript.OnFlagStateChange(_owner, oldState, _state, player);
+            }
+
+            public override void Update(uint diff)
+            {
+                if (_state == FlagState.Respawning && GameTime.GetGameTimeMS() >= _respawnTime)
+                    SetState(FlagState.InBase, null);
+            }
+
+            public override bool IsNeverVisibleFor(WorldObject seer, bool allowServersideObjects)
+            {
+                return _state != FlagState.InBase;
+            }
+
+            public FlagState GetState() { return _state; }
+            public ObjectGuid GetCarrierGUID() { return _carrierGUID; }
+            public long GetTakenFromBaseTime() { return _takenFromBaseTime; }
+        }
+
+        class SetNewFlagState : GameObjectTypeBase.CustomCommand
+        {
+            FlagState _state;
+            Player _player;
+
+            public SetNewFlagState(FlagState state, Player player)
+            {
+                _state = state;
+                _player = player;
+            }
+
+            public override void Execute(GameObjectTypeBase type)
+            {
+                NewFlag newFlag = type as NewFlag;
+                if (newFlag != null)
+                    newFlag.SetState(_state, _player);
             }
         }
     }

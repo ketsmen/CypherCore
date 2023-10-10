@@ -8,6 +8,7 @@ using Game.BattleFields;
 using Game.BattleGrounds;
 using Game.BattlePets;
 using Game.DataStorage;
+using Game.Miscellaneous;
 using Game.Movement;
 using Game.Spells;
 using System;
@@ -111,7 +112,7 @@ namespace Game.Entities
                             {
                                 if (msg)
                                 {
-                                    if (player)
+                                    if (player != null)
                                         player.SendSysMessage("Craft spell {0} not have create item entry.", spellInfo.Id);
                                     else
                                         Log.outError(LogFilter.Spells, "Craft spell {0} not have create item entry.", spellInfo.Id);
@@ -125,7 +126,7 @@ namespace Game.Entities
                         {
                             if (msg)
                             {
-                                if (player)
+                                if (player != null)
                                     player.SendSysMessage("Craft spell {0} create not-exist in DB item (Entry: {1}) and then...", spellInfo.Id, spellEffectInfo.ItemType);
                                 else
                                     Log.outError(LogFilter.Spells, "Craft spell {0} create not-exist in DB item (Entry: {1}) and then...", spellInfo.Id, spellEffectInfo.ItemType);
@@ -459,15 +460,15 @@ namespace Game.Entities
             if (((uint)procEntry.AttributesMask & 0x0000001) != 0)
             {
                 Player actor = eventInfo.GetActor().ToPlayer();
-                if (actor)
-                    if (eventInfo.GetActionTarget() && !actor.IsHonorOrXPTarget(eventInfo.GetActionTarget()))
+                if (actor != null)
+                    if (eventInfo.GetActionTarget() != null && !actor.IsHonorOrXPTarget(eventInfo.GetActionTarget()))
                         return false;
             }
 
             // check power requirement
             if (procEntry.AttributesMask.HasAnyFlag(ProcAttributes.ReqPowerCost))
             {
-                if (!eventInfo.GetProcSpell())
+                if (eventInfo.GetProcSpell() == null)
                     return false;
 
                 var costs = eventInfo.GetProcSpell().GetPowerCost();
@@ -1387,6 +1388,8 @@ namespace Game.Entities
                             Log.outError(LogFilter.Sql, "`spell_proc` table entry for spellId {0} has wrong `SpellPhaseMask` set: {1}", spellInfo.Id, procEntry.SpellPhaseMask);
                         if (procEntry.SpellPhaseMask != 0 && !procEntry.ProcFlags.HasFlag(ProcFlags.ReqSpellPhaseMask))
                             Log.outError(LogFilter.Sql, "`spell_proc` table entry for spellId {0} has `SpellPhaseMask` value defined, but it won't be used for defined `ProcFlags` value", spellInfo.Id);
+                        if (procEntry.SpellPhaseMask == 0 && !procEntry.ProcFlags.HasFlag(ProcFlags.ReqSpellPhaseMask) && procEntry.ProcFlags.HasFlag(ProcFlags2.CastSuccessful))
+                            procEntry.SpellPhaseMask = ProcFlagsSpellPhase.Cast; // set default phase for PROC_FLAG_2_CAST_SUCCESSFUL
                         if (Convert.ToBoolean(procEntry.HitMask & ~ProcFlagsHit.MaskAll))
                             Log.outError(LogFilter.Sql, "`spell_proc` table entry for spellId {0} has wrong `HitMask` set: {1}", spellInfo.Id, procEntry.HitMask);
                         if (procEntry.HitMask != 0 && !(procEntry.ProcFlags.HasFlag(ProcFlags.TakenHitMask) || (procEntry.ProcFlags.HasFlag(ProcFlags.DoneHitMask) && (procEntry.SpellPhaseMask == 0 || Convert.ToBoolean(procEntry.SpellPhaseMask & (ProcFlagsSpellPhase.Hit | ProcFlagsSpellPhase.Finish))))))
@@ -1404,7 +1407,8 @@ namespace Game.Entities
                                     continue;
 
                                 if (spellEffectInfo.ApplyAuraName == AuraType.AddPctModifier || spellEffectInfo.ApplyAuraName == AuraType.AddFlatModifier
-                                    || spellEffectInfo.ApplyAuraName == AuraType.AddPctModifierBySpellLabel || spellEffectInfo.ApplyAuraName == AuraType.AddFlatModifierBySpellLabel)
+                                    || spellEffectInfo.ApplyAuraName == AuraType.AddPctModifierBySpellLabel || spellEffectInfo.ApplyAuraName == AuraType.AddFlatModifierBySpellLabel
+                                    || spellEffectInfo.ApplyAuraName == AuraType.IgnoreSpellCooldown)
                                 {
                                     found = true;
                                     break;
@@ -1517,6 +1521,9 @@ namespace Game.Entities
                 procEntry.SpellTypeMask = procSpellTypeMask;
                 procEntry.SpellPhaseMask = ProcFlagsSpellPhase.Hit;
                 procEntry.HitMask = ProcFlagsHit.None; // uses default proc @see SpellMgr::CanSpellTriggerProcOnEvent
+
+                if (!procEntry.ProcFlags.HasFlag(ProcFlags.ReqSpellPhaseMask) && procEntry.ProcFlags.HasFlag(ProcFlags2.CastSuccessful))
+                    procEntry.SpellPhaseMask = ProcFlagsSpellPhase.Cast; // set default phase for PROC_FLAG_2_CAST_SUCCESSFUL
 
                 bool triggersSpell = false;
                 foreach (var spellEffectInfo in spellInfo.GetEffects())
@@ -1874,30 +1881,30 @@ namespace Game.Entities
             foreach (var spellEntry in mSpellInfoMap.Values)
             {
                 if (spellEntry.Difficulty != Difficulty.None)
+                    continue;
+
+                foreach (var spellEffectInfo in spellEntry.GetEffects())
                 {
-                    foreach (var spellEffectInfo in spellEntry.GetEffects())
+                    if (spellEffectInfo.Effect == SpellEffectName.Summon || spellEffectInfo.Effect == SpellEffectName.SummonPet)
                     {
-                        if (spellEffectInfo.Effect == SpellEffectName.Summon || spellEffectInfo.Effect == SpellEffectName.SummonPet)
+                        int creature_id = spellEffectInfo.MiscValue;
+                        CreatureTemplate cInfo = Global.ObjectMgr.GetCreatureTemplate((uint)creature_id);
+                        if (cInfo == null)
+                            continue;
+
+                        // get default pet spells from creature_template
+                        uint petSpellsId = cInfo.Entry;
+                        if (mPetDefaultSpellsMap.LookupByKey(cInfo.Entry) != null)
+                            continue;
+
+                        PetDefaultSpellsEntry petDefSpells = new();
+                        for (byte j = 0; j < SharedConst.MaxCreatureSpellDataSlots; ++j)
+                            petDefSpells.spellid[j] = cInfo.Spells[j];
+
+                        if (LoadPetDefaultSpells_helper(cInfo, petDefSpells))
                         {
-                            int creature_id = spellEffectInfo.MiscValue;
-                            CreatureTemplate cInfo = Global.ObjectMgr.GetCreatureTemplate((uint)creature_id);
-                            if (cInfo == null)
-                                continue;
-
-                            // get default pet spells from creature_template
-                            uint petSpellsId = cInfo.Entry;
-                            if (mPetDefaultSpellsMap.LookupByKey(cInfo.Entry) != null)
-                                continue;
-
-                            PetDefaultSpellsEntry petDefSpells = new();
-                            for (byte j = 0; j < SharedConst.MaxCreatureSpellDataSlots; ++j)
-                                petDefSpells.spellid[j] = cInfo.Spells[j];
-
-                            if (LoadPetDefaultSpells_helper(cInfo, petDefSpells))
-                            {
-                                mPetDefaultSpellsMap[petSpellsId] = petDefSpells;
-                                ++countCreature;
-                            }
+                            mPetDefaultSpellsMap[petSpellsId] = petDefSpells;
+                            ++countCreature;
                         }
                     }
                 }
@@ -1987,7 +1994,7 @@ namespace Game.Entities
                 spellArea.questEndStatus = result.Read<uint>(4);
                 spellArea.questEnd = result.Read<uint>(5);
                 spellArea.auraSpell = result.Read<int>(6);
-                spellArea.raceMask = result.Read<ulong>(7);
+                spellArea.raceMask = new RaceMask<ulong>(result.Read<ulong>(7));
                 spellArea.gender = (Gender)result.Read<uint>(8);
                 spellArea.flags = (SpellAreaFlag)result.Read<byte>(9);
 
@@ -2016,7 +2023,7 @@ namespace Game.Entities
                             continue;
                         if (spellArea.auraSpell != bound.auraSpell)
                             continue;
-                        if ((spellArea.raceMask & bound.raceMask) == 0)
+                        if ((spellArea.raceMask & bound.raceMask).IsEmpty())
                             continue;
                         if (spellArea.gender != bound.gender)
                             continue;
@@ -2107,7 +2114,7 @@ namespace Game.Entities
                     }
                 }
 
-                if (spellArea.raceMask != 0 && (spellArea.raceMask & SharedConst.RaceMaskAllPlayable) == 0)
+                if (!spellArea.raceMask.IsEmpty() && (spellArea.raceMask & RaceMask.AllPlayable).IsEmpty())
                 {
                     Log.outError(LogFilter.Sql, "Spell {0} listed in `spell_area` have wrong race mask ({1}) requirement", spell, spellArea.raceMask);
                     continue;
@@ -2200,6 +2207,18 @@ namespace Game.Entities
 
                 if (effect.Effect == (int)SpellEffectName.Language)
                     Global.LanguageMgr.LoadSpellEffectLanguage(effect);
+
+                switch ((AuraType)effect.EffectAura)
+                {
+                    case AuraType.AddFlatModifier:
+                    case AuraType.AddPctModifier:
+                    case AuraType.AddPctModifierBySpellLabel:
+                    case AuraType.AddFlatModifierBySpellLabel:
+                        Cypher.Assert(effect.EffectMiscValue[0] < (int)SpellModOp.Max, $"MAX_SPELLMOD must be at least {effect.EffectMiscValue[0] + 1}");
+                        break;
+                    default:
+                        break;
+                }
             }
 
             foreach (SpellAuraOptionsRecord auraOptions in CliDB.SpellAuraOptionsStorage.Values)
@@ -3205,7 +3224,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards100); // 100yards instead of 50000?!
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards100); // 100yards instead of 50000?!
                 });
             });
 
@@ -3401,7 +3420,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10);
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10);
                 });
             });
 
@@ -3512,7 +3531,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards200);
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards200);
                     spellEffectInfo.TargetA = new SpellImplicitTargetInfo(Targets.UnitSrcAreaEntry);
                 });
             });
@@ -3586,7 +3605,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10);
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10);
                 });
             });
 
@@ -3674,7 +3693,7 @@ namespace Game.Entities
                 // use max radius from 4.3.4
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards25);
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards25);
                 });
             });
             // ENDOF VIOLET HOLD
@@ -3687,7 +3706,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards50000);   // 50000yd
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards50000);   // 50000yd
                 });
             });
 
@@ -4006,11 +4025,11 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards200); // 200yd
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards200); // 200yd
                 });
                 ApplySpellEffectFix(spellInfo, 1, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards200); // 200yd
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards200); // 200yd
                 });
             });
 
@@ -4055,7 +4074,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards25); // 25yd
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards25); // 25yd
                 });
             });
 
@@ -4071,18 +4090,8 @@ namespace Game.Entities
                 spellInfo.RangeEntry = CliDB.SpellRangeStorage.LookupByKey(5); // 40yd
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10); // 10yd
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10); // 10yd
             spellEffectInfo.MiscValue = 190;
-                });
-            });
-
-            // Broken Frostmourne
-            ApplySpellFix(new[] { 72405 }, spellInfo =>
-            {
-                spellInfo.AttributesEx |= SpellAttr1.NoThreat;
-                ApplySpellEffectFix(spellInfo, 1, spellEffectInfo =>
-                {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards20); // 20yd
                 });
             });
             // ENDOF ICECROWN CITADEL SPELLS
@@ -4095,7 +4104,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 1, spellEffectInfo =>
                 {
-                    spellEffectInfo.RadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards12);
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards12);
                 });
             });
 
@@ -4175,7 +4184,7 @@ namespace Game.Entities
                 // Little hack, Increase the radius so it can hit the Cave In Stalkers in the platform.
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.MaxRadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards45);
+                    spellEffectInfo.TargetBRadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards45);
                 });
             });
 
@@ -4280,7 +4289,7 @@ namespace Game.Entities
             {
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
-                    spellEffectInfo.MaxRadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards15);
+                    spellEffectInfo.TargetBRadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards15);
                 });
             });
 
@@ -4379,6 +4388,12 @@ namespace Game.Entities
             ApplySpellFix(new[] { 269748 }, spellInfo =>
             {
                 spellInfo.AttributesEx &= ~SpellAttr1.IsChannelled;
+            });
+
+            // Burning Rush
+            ApplySpellFix(new[] {111400 }, spellInfo =>
+            {
+                spellInfo.AttributesEx4 |= SpellAttr4.AuraIsBuff;
             });
 
             foreach (var spellInfo in mSpellInfoMap.Values)
@@ -4627,10 +4642,12 @@ namespace Game.Entities
                 case AuraType.ModWeaponCritPercent:
                 case AuraType.ModBlockPercent:
                 case AuraType.ModRoot2:
+                case AuraType.IgnoreSpellCooldown:
                     return true;
             }
             return false;
         }
+
         bool IsAlwaysTriggeredAura(AuraType type)
         {
             switch (type)
@@ -4650,6 +4667,7 @@ namespace Game.Entities
             }
             return false;
         }
+
         ProcFlagsSpellType GetSpellTypeMask(AuraType type)
         {
             switch (type)
@@ -4913,7 +4931,7 @@ namespace Game.Entities
         public uint questStart;                                     // quest start (quest must be active or rewarded for spell apply)
         public uint questEnd;                                       // quest end (quest must not be rewarded for spell apply)
         public int auraSpell;                                       // spell aura must be applied for spell apply)if possitive) and it must not be applied in other case
-        public ulong raceMask;                                      // can be applied only to races
+        public RaceMask<ulong> raceMask;                            // can be applied only to races
         public Gender gender;                                       // can be applied only to gender
         public uint questStartStatus;                               // QuestStatus that quest_start must have in order to keep the spell
         public uint questEndStatus;                                 // QuestStatus that the quest_end must have in order to keep the spell (if the quest_end's status is different than this, the spell will be dropped)
@@ -4926,8 +4944,8 @@ namespace Game.Entities
                 if (player == null || gender != player.GetNativeGender())
                     return false;
 
-            if (raceMask != 0)                                // not in expected race
-                if (player == null || !Convert.ToBoolean(raceMask & (ulong)SharedConst.GetMaskForRace(player.GetRace())))
+            if (!raceMask.IsEmpty())                                // not in expected race
+                if (player == null || !raceMask.HasRace(player.GetRace()))
                     return false;
 
             if (areaId != 0)                                  // not in expected zone
@@ -4946,10 +4964,10 @@ namespace Game.Entities
                 if (player == null || (auraSpell > 0 && !player.HasAura((uint)auraSpell)) || (auraSpell < 0 && player.HasAura((uint)-auraSpell)))
                     return false;
 
-            if (player)
+            if (player != null)
             {
                 Battleground bg = player.GetBattleground();
-                if (bg)
+                if (bg != null)
                     return bg.IsSpellAllowed(spellId, player);
             }
 
@@ -4958,7 +4976,7 @@ namespace Game.Entities
             {
                 case 91604: // No fly Zone - Wintergrasp
                 {
-                    if (!player)
+                    if (player == null)
                         return false;
 
                     BattleField Bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());
@@ -4969,7 +4987,7 @@ namespace Game.Entities
                 case 56618: // Horde Controls Factory Phase Shift
                 case 56617: // Alliance Controls Factory Phase Shift
                 {
-                    if (!player)
+                    if (player == null)
                         return false;
 
                     BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());
@@ -4989,7 +5007,7 @@ namespace Game.Entities
                 case 57940: // Essence of Wintergrasp - Northrend
                 case 58045: // Essence of Wintergrasp - Wintergrasp
                 {
-                    if (!player)
+                    if (player == null)
                         return false;
 
                     BattleField battlefieldWG = Global.BattleFieldMgr.GetBattlefieldByBattleId(player.GetMap(), 1);
@@ -4999,7 +5017,7 @@ namespace Game.Entities
                 }
                 case 74411: // Battleground- Dampening
                 {
-                    if (!player)
+                    if (player == null)
                         return false;
 
                     BattleField bf = Global.BattleFieldMgr.GetBattlefieldToZoneId(player.GetMap(), player.GetZoneId());

@@ -77,7 +77,7 @@ namespace Game.Entities
                         if (item.HasItemFlag(ItemFieldFlags.Child))
                         {
                             Item parent = GetItemByGuid(item.GetCreator());
-                            if (parent)
+                            if (parent != null)
                             {
                                 parent.SetChildItem(item.GetGUID());
                                 item.CopyArtifactDataFromParent(parent);
@@ -756,7 +756,7 @@ namespace Game.Entities
 
                             SetQuestSlot(slot, questId);
                             SetQuestSlotEndTime(slot, endTime);
-                            SetQuestSlotAcceptTime(slot, acceptTime);
+                            questStatusData.AcceptTime = acceptTime;
 
                             if (questStatusData.Status == QuestStatus.Complete)
                                 SetQuestSlotState(slot, QuestSlotStateMask.Complete);
@@ -1137,7 +1137,7 @@ namespace Game.Entities
             int activeConfig = m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
             {
                 return traitConfig.Type == (int)TraitConfigType.Combat
-                    && traitConfig.ChrSpecializationID == GetPrimarySpecialization()
+                    && traitConfig.ChrSpecializationID == (int)GetPrimarySpecialization()
                     && (traitConfig.CombatConfigFlags & (int)TraitCombatConfigFlags.ActiveForSpec) != 0;
             });
 
@@ -1468,7 +1468,7 @@ namespace Game.Entities
             if (!result.IsEmpty())
             {
                 Group group = Global.GroupMgr.GetGroupByDbStoreId(result.Read<uint>(0));
-                if (group)
+                if (group != null)
                 {
                     if (group.IsLeader(GetGUID()))
                         SetPlayerFlag(PlayerFlags.GroupLeader);
@@ -1485,7 +1485,7 @@ namespace Game.Entities
                 }
             }
 
-            if (!GetGroup() || !GetGroup().IsLeader(GetGUID()))
+            if (GetGroup() == null || !GetGroup().IsLeader(GetGUID()))
                 RemovePlayerFlag(PlayerFlags.GroupLeader);
         }
         void _LoadInstanceTimeRestrictions(SQLResult result)
@@ -1606,14 +1606,15 @@ namespace Game.Entities
                 return;
 
             // Expecting only one row
-            //        0           1     2      3      4      5      6          7          8        9
-            // SELECT instanceId, team, joinX, joinY, joinZ, joinO, joinMapId, taxiStart, taxiEnd, mountSpell FROM character_Battleground_data WHERE guid = ?
+            //         0           1     2      3      4      5      6          7          8        9           10
+            // SELECT instanceId, team, joinX, joinY, joinZ, joinO, joinMapId, taxiStart, taxiEnd, mountSpell, queueTypeId FROM character_Battleground_data WHERE guid = ?
             m_bgData.bgInstanceID = result.Read<uint>(0);
             m_bgData.bgTeam = result.Read<ushort>(1);
             m_bgData.joinPos = new WorldLocation(result.Read<ushort>(6), result.Read<float>(2), result.Read<float>(3), result.Read<float>(4), result.Read<float>(5));
             m_bgData.taxiPath[0] = result.Read<uint>(7);
             m_bgData.taxiPath[1] = result.Read<uint>(8);
             m_bgData.mountSpell = result.Read<uint>(9);
+            m_bgData.queueId = BattlegroundQueueTypeId.FromPacked(result.Read<ulong>(10));
         }
         void _LoadPetStable(uint summonedPetNumber, SQLResult result)
         {
@@ -1624,41 +1625,48 @@ namespace Game.Entities
 
             //         0      1        2      3    4           5     6     7        8          9       10      11        12              13       14              15
             // SELECT id, entry, modelid, level, exp, Reactstate, slot, name, renamed, curhealth, curmana, abdata, savetime, CreatedBySpell, PetType, specialization FROM character_pet WHERE owner = ?
-            if (!result.IsEmpty())
-            {
-                do
-                {
-                    PetStable.PetInfo petInfo = new();
-                    petInfo.PetNumber = result.Read<uint>(0);
-                    petInfo.CreatureId = result.Read<uint>(1);
-                    petInfo.DisplayId = result.Read<uint>(2);
-                    petInfo.Level = result.Read<byte>(3);
-                    petInfo.Experience = result.Read<uint>(4);
-                    petInfo.ReactState = (ReactStates)result.Read<byte>(5);
-                    PetSaveMode slot = (PetSaveMode)result.Read<short>(6);
-                    petInfo.Name = result.Read<string>(7);
-                    petInfo.WasRenamed = result.Read<bool>(8);
-                    petInfo.Health = result.Read<uint>(9);
-                    petInfo.Mana = result.Read<uint>(10);
-                    petInfo.ActionBar = result.Read<string>(11);
-                    petInfo.LastSaveTime = result.Read<uint>(12);
-                    petInfo.CreatedBySpellId = result.Read<uint>(13);
-                    petInfo.Type = (PetType)result.Read<byte>(14);
-                    petInfo.SpecializationId = result.Read<ushort>(15);
-                    if (slot >= PetSaveMode.FirstActiveSlot && slot < PetSaveMode.LastActiveSlot)
-                        m_petStable.ActivePets[(int)slot] = petInfo;
-                    else if (slot >= PetSaveMode.FirstStableSlot && slot < PetSaveMode.LastStableSlot)
-                        m_petStable.StabledPets[slot - PetSaveMode.FirstStableSlot] = petInfo;
-                    else if (slot == PetSaveMode.NotInSlot)
-                        m_petStable.UnslottedPets.Add(petInfo);
 
-                } while (result.NextRow());
-            }
+            do
+            {
+                PetStable.PetInfo petInfo = new();
+                petInfo.PetNumber = result.Read<uint>(0);
+                petInfo.CreatureId = result.Read<uint>(1);
+                petInfo.DisplayId = result.Read<uint>(2);
+                petInfo.Level = result.Read<byte>(3);
+                petInfo.Experience = result.Read<uint>(4);
+                petInfo.ReactState = (ReactStates)result.Read<byte>(5);
+                PetSaveMode slot = (PetSaveMode)result.Read<short>(6);
+                petInfo.Name = result.Read<string>(7);
+                petInfo.WasRenamed = result.Read<bool>(8);
+                petInfo.Health = result.Read<uint>(9);
+                petInfo.Mana = result.Read<uint>(10);
+                petInfo.ActionBar = result.Read<string>(11);
+                petInfo.LastSaveTime = result.Read<uint>(12);
+                petInfo.CreatedBySpellId = result.Read<uint>(13);
+                petInfo.Type = (PetType)result.Read<byte>(14);
+                petInfo.SpecializationId = result.Read<ushort>(15);
+                if (slot >= PetSaveMode.FirstActiveSlot && slot < PetSaveMode.LastActiveSlot)
+                {
+                    m_petStable.ActivePets[(int)slot] = petInfo;
+
+                    if (m_petStable.ActivePets[(int)slot].Type == PetType.Hunter)
+                        AddPetToUpdateFields(m_petStable.ActivePets[(int)slot], slot, PetStableFlags.Active);
+                }
+                else if (slot >= PetSaveMode.FirstStableSlot && slot < PetSaveMode.LastStableSlot)
+                {
+                    m_petStable.StabledPets[slot - PetSaveMode.FirstStableSlot] = petInfo;
+
+                    if (m_petStable.StabledPets[slot - PetSaveMode.FirstStableSlot].Type == PetType.Hunter)
+                        AddPetToUpdateFields(m_petStable.StabledPets[slot - PetSaveMode.FirstStableSlot], slot, PetStableFlags.Inactive);
+                }
+                else if (slot == PetSaveMode.NotInSlot)
+                    m_petStable.UnslottedPets.Add(petInfo);
+
+            } while (result.NextRow());
 
             if (Pet.GetLoadPetInfo(m_petStable, 0, summonedPetNumber, null).Item1 != null)
                 m_temporaryUnsummonedPetNumber = summonedPetNumber;
         }
-
 
         void _SaveInventory(SQLTransaction trans)
         {
@@ -1769,7 +1777,7 @@ namespace Game.Entities
                     case ItemUpdateState.Changed:
                         stmt = CharacterDatabase.GetPreparedStatement(CharStatements.REP_INVENTORY_ITEM);
                         stmt.AddValue(0, GetGUID().GetCounter());
-                        stmt.AddValue(1, container ? container.GetGUID().GetCounter() : 0);
+                        stmt.AddValue(1, container != null ? container.GetGUID().GetCounter() : 0);
                         stmt.AddValue(2, item.GetSlot());
                         stmt.AddValue(3, item.GetGUID().GetCounter());
                         trans.Append(stmt);
@@ -2121,8 +2129,8 @@ namespace Game.Entities
                         stmt.AddValue(1, save.Key);
                         stmt.AddValue(2, (byte)data.Status);
                         stmt.AddValue(3, data.Explored);
-                        stmt.AddValue(4, (long)GetQuestSlotAcceptTime(data.Slot));
-                        stmt.AddValue(5, (long)GetQuestSlotEndTime(data.Slot));
+                        stmt.AddValue(4, data.AcceptTime);
+                        stmt.AddValue(5, GetQuestSlotEndTime(data.Slot));
                         trans.Append(stmt);
 
                         // Save objectives
@@ -2769,6 +2777,7 @@ namespace Game.Entities
             stmt.AddValue(8, m_bgData.taxiPath[0]);
             stmt.AddValue(9, m_bgData.taxiPath[1]);
             stmt.AddValue(10, m_bgData.mountSpell);
+            stmt.AddValue(11, m_bgData.queueId.GetPacked());
             trans.Append(stmt);
         }
 
@@ -3024,16 +3033,18 @@ namespace Game.Entities
                 {
                     map = currentBg.GetBgMap();
 
-                    BattlegroundQueueTypeId bgQueueTypeId = currentBg.GetQueueId();
-                    AddBattlegroundQueueId(bgQueueTypeId);
+                    BattlegroundPlayer bgPlayer = currentBg.GetBattlegroundPlayerData(GetGUID());
+                    if (bgPlayer != null)
+                    {
+                        AddBattlegroundQueueId(bgPlayer.queueTypeId);
+                        m_bgData.bgTypeID = (BattlegroundTypeId)bgPlayer.queueTypeId.BattlemasterListId;
 
-                    m_bgData.bgTypeID = currentBg.GetTypeID();
+                        //join player to Battlegroundgroup
+                        currentBg.EventPlayerLoggedIn(this);
 
-                    //join player to Battlegroundgroup
-                    currentBg.EventPlayerLoggedIn(this);
-
-                    SetInviteForBattlegroundQueueType(bgQueueTypeId, currentBg.GetInstanceID());
-                    SetMercenaryForBattlegroundQueueType(bgQueueTypeId, currentBg.IsPlayerMercenaryInBattleground(GetGUID()));
+                        SetInviteForBattlegroundQueueType(bgPlayer.queueTypeId, currentBg.GetInstanceID());
+                        SetMercenaryForBattlegroundQueueType(bgPlayer.queueTypeId, currentBg.IsPlayerMercenaryInBattleground(GetGUID()));
+                    }
                 }
                 // Bg was not found - go to Entry Point
                 else
@@ -3079,7 +3090,7 @@ namespace Game.Entities
                             mapId = transportOnMap.GetExpectedMapId();
                             instanceId = 0;
                             transportMap = Global.MapMgr.CreateMap(mapId, this);
-                            if (transportMap)
+                            if (transportMap != null)
                                 transport = transportMap.GetTransport(transGUID);
                         }
                         else
@@ -3087,7 +3098,7 @@ namespace Game.Entities
                     }
                 }
                 
-                if (transport)
+                if (transport != null)
                 {
                     float x = trans_x;
                     float y = trans_y;
@@ -3190,13 +3201,13 @@ namespace Game.Entities
 
             // NOW player must have valid map
             // load the player's map here if it's not already loaded
-            if (!map)
+            if (map == null)
                 map = Global.MapMgr.CreateMap(mapId, this);
 
             AreaTriggerStruct areaTrigger = null;
             bool check = false;
 
-            if (!map)
+            if (map == null)
             {
                 areaTrigger = Global.ObjectMgr.GetGoBackTrigger(mapId);
                 check = true;
@@ -3230,11 +3241,11 @@ namespace Game.Entities
                 }
             }
 
-            if (!map)
+            if (map == null)
             {
                 RelocateToHomebind();
                 map = Global.MapMgr.CreateMap(mapId, this);
-                if (!map)
+                if (map == null)
                 {
                     Log.outError(LogFilter.Player, "Player {0} {1} Map: {2}, {3}. Invalid default map coordinates or instance couldn't be created.", GetName(), guid.ToString(), mapId, GetPosition());
                     return false;
@@ -3249,7 +3260,7 @@ namespace Game.Entities
                 m_InstanceValid = false;
 
             if (player_at_bg)
-                map.ToBattlegroundMap().GetBG().AddPlayer(this);
+                map.ToBattlegroundMap().GetBG().AddPlayer(this, m_bgData.queueId);
 
             // randomize first save time in range [CONFIG_INTERVAL_SAVE] around [CONFIG_INTERVAL_SAVE]
             // this must help in case next save after mass player load after server startup
@@ -3314,7 +3325,7 @@ namespace Game.Entities
             SetNumRespecs(numRespecs);
             SetPrimarySpecialization(primarySpecialization);
             SetActiveTalentGroup(activeTalentGroup);
-            ChrSpecializationRecord primarySpec = CliDB.ChrSpecializationStorage.LookupByKey(GetPrimarySpecialization());
+            ChrSpecializationRecord primarySpec = GetPrimarySpecializationEntry();
             if (primarySpec == null || primarySpec.ClassID != (byte)GetClass() || GetActiveTalentGroup() >= PlayerConst.MaxSpecializations)
                 ResetTalentSpecialization();
 
@@ -3669,7 +3680,7 @@ namespace Game.Entities
                 //save, but in tavern/city
                 stmt.AddValue(index++, GetTalentResetCost());
                 stmt.AddValue(index++, GetTalentResetTime());
-                stmt.AddValue(index++, GetPrimarySpecialization());
+                stmt.AddValue(index++, (uint)GetPrimarySpecialization());
                 stmt.AddValue(index++, (ushort)m_ExtraFlags);
                 stmt.AddValue(index++, 0); // summonedPetNumber
                 stmt.AddValue(index++, (ushort)atLoginFlags);
@@ -3799,7 +3810,7 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetTalentResetCost());
                 stmt.AddValue(index++, GetTalentResetTime());
                 stmt.AddValue(index++, GetNumRespecs());
-                stmt.AddValue(index++, GetPrimarySpecialization());
+                stmt.AddValue(index++, (uint)GetPrimarySpecialization());
                 stmt.AddValue(index++, (ushort)m_ExtraFlags);
                 PetStable petStable = GetPetStable();
                 if (petStable != null)
@@ -3949,7 +3960,7 @@ namespace Game.Entities
 
             // save pet (hunter pet level and experience and all type pets health/mana).
             Pet pet = GetPet();
-            if (pet)
+            if (pet != null)
                 pet.SavePetToDB(PetSaveMode.AsCurrent);
         }
         void DeleteSpellFromAllPlayers(uint spellId)
@@ -4049,7 +4060,7 @@ namespace Game.Entities
             if (guildId != 0)
             {
                 Guild guild = Global.GuildMgr.GetGuildById(guildId);
-                if (guild)
+                if (guild != null)
                     guild.DeleteMember(trans, playerGuid, false, false, true);
             }
 
@@ -4064,7 +4075,7 @@ namespace Game.Entities
             if (!resultGroup.IsEmpty())
             {
                 Group group = Global.GroupMgr.GetGroupByDbStoreId(resultGroup.Read<uint>(0));
-                if (group)
+                if (group != null)
                     RemoveFromGroup(group, playerGuid);
             }
 
@@ -4204,7 +4215,7 @@ namespace Game.Entities
                         do
                         {
                             Player playerFriend = Global.ObjAccessor.FindPlayer(ObjectGuid.Create(HighGuid.Player, resultFriends.Read<ulong>(0)));
-                            if (playerFriend)
+                            if (playerFriend != null)
                             {
                                 playerFriend.GetSocial().RemoveFromSocialList(playerGuid, SocialFlag.All);
                                 Global.SocialMgr.SendFriendStatus(playerFriend, FriendsResult.Removed, playerGuid);

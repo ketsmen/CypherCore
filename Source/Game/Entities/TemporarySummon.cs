@@ -4,9 +4,11 @@
 using Framework.Constants;
 using Framework.Dynamic;
 using Game.DataStorage;
+using Game.Maps;
+using Game.Spells;
 using System;
 using System.Collections.Generic;
-using Game.Maps;
+using System.Linq;
 
 namespace Game.Entities
 {
@@ -60,6 +62,7 @@ namespace Game.Entities
                 return;
             }
 
+            TimeSpan msDiff = TimeSpan.FromMilliseconds(diff);
             switch (m_type)
             {
                 case TempSummonType.ManualDespawn:
@@ -67,26 +70,26 @@ namespace Game.Entities
                     break;
                 case TempSummonType.TimedDespawn:
                 {
-                    if (m_timer <= diff)
+                    if (m_timer <= msDiff)
                     {
                         UnSummon();
                         return;
                     }
 
-                    m_timer -= diff;
+                    m_timer -= msDiff;
                     break;
                 }
                 case TempSummonType.TimedDespawnOutOfCombat:
                 {
                     if (!IsInCombat())
                     {
-                        if (m_timer <= diff)
+                        if (m_timer <= msDiff)
                         {
                             UnSummon();
                             return;
                         }
 
-                        m_timer -= diff;
+                        m_timer -= msDiff;
                     }
                     else if (m_timer != m_lifetime)
                         m_timer = m_lifetime;
@@ -98,13 +101,13 @@ namespace Game.Entities
                 {
                     if (m_deathState == DeathState.Corpse)
                     {
-                        if (m_timer <= diff)
+                        if (m_timer <= msDiff)
                         {
                             UnSummon();
                             return;
                         }
 
-                        m_timer -= diff;
+                        m_timer -= msDiff;
                     }
                     break;
                 }
@@ -129,13 +132,13 @@ namespace Game.Entities
 
                     if (!IsInCombat())
                     {
-                        if (m_timer <= diff)
+                        if (m_timer <= msDiff)
                         {
                             UnSummon();
                             return;
                         }
                         else
-                            m_timer -= diff;
+                            m_timer -= msDiff;
                     }
                     else if (m_timer != m_lifetime)
                         m_timer = m_lifetime;
@@ -145,13 +148,13 @@ namespace Game.Entities
                 {
                     if (!IsInCombat() && IsAlive())
                     {
-                        if (m_timer <= diff)
+                        if (m_timer <= msDiff)
                         {
                             UnSummon();
                             return;
                         }
                         else
-                            m_timer -= diff;
+                            m_timer -= msDiff;
                     }
                     else if (m_timer != m_lifetime)
                         m_timer = m_lifetime;
@@ -164,7 +167,7 @@ namespace Game.Entities
             }
         }
 
-        public virtual void InitStats(WorldObject summoner, uint duration)
+        public virtual void InitStats(WorldObject summoner, TimeSpan duration)
         {
             Cypher.Assert(!IsPet());
 
@@ -172,7 +175,7 @@ namespace Game.Entities
             m_lifetime = duration;
 
             if (m_type == TempSummonType.ManualDespawn)
-                m_type = (duration == 0) ? TempSummonType.DeadDespawn : TempSummonType.TimedDespawn;
+                m_type = (duration <= TimeSpan.Zero) ? TempSummonType.DeadDespawn : TempSummonType.TimedDespawn;
 
             if (summoner != null && summoner.IsPlayer())
             {
@@ -198,7 +201,10 @@ namespace Game.Entities
             if (unitSummoner != null)
             {
                 int slot = m_Properties.Slot;
-                if (slot > 0)
+                if (slot == (int)SummonSlot.Any)
+                    slot = FindUsableTotemSlot(unitSummoner);
+
+                if (slot != 0)
                 {
                     if (!unitSummoner.m_SummonSlot[slot].IsEmpty() && unitSummoner.m_SummonSlot[slot] != GetGUID())
                     {
@@ -334,16 +340,13 @@ namespace Game.Entities
             if (!IsInWorld)
                 return;
 
-            if (m_Properties != null)
+            if (m_Properties != null && m_Properties.Slot != 0)
             {
-                int slot = m_Properties.Slot;
-                if (slot > 0)
-                {
-                    Unit owner = GetSummonerUnit();
-                    if (owner != null)
-                        if (owner.m_SummonSlot[slot] == GetGUID())
-                            owner.m_SummonSlot[slot].Clear();
-                }
+                Unit owner = GetSummonerUnit();
+                if (owner != null)
+                    foreach (ObjectGuid summonSlot in owner.m_SummonSlot)
+                        if (summonSlot == GetGUID())
+                            summonSlot.Clear();
             }
 
             if (!GetOwnerGUID().IsEmpty())
@@ -352,6 +355,62 @@ namespace Game.Entities
             base.RemoveFromWorld();
         }
 
+        public int FindUsableTotemSlot(Unit summoner)
+        {
+            var list = summoner.m_SummonSlot[new Range((int)SummonSlot.Totem, SharedConst.MaxTotemSlot)].ToList();
+
+            // first try exact guid match
+            var totemSlot = list.FindIndex(otherTotemGuid => otherTotemGuid == GetGUID());
+
+            // then a slot that shares totem category with this new summon
+            if (totemSlot == -1)
+                totemSlot = list.FindIndex(IsSharingTotemSlotWith);
+
+            // any empty slot...?
+            if (totemSlot == -1)
+                totemSlot = list.FindIndex(otherTotemGuid => otherTotemGuid.IsEmpty());
+
+            // if no usable slot was found, try used slot by a summon with the same creature id
+            // we must not despawn unrelated summons
+            if (totemSlot == -1)
+                totemSlot = list.FindIndex(otherTotemGuid => GetEntry() == otherTotemGuid.GetEntry());
+
+            // if no slot was found, this summon gets no slot and will not be stored in m_SummonSlot
+            if (totemSlot == -1)
+                return 0;
+
+            return totemSlot;
+        }
+
+        bool IsSharingTotemSlotWith(ObjectGuid objectGuid)
+        {
+            Creature otherSummon = GetMap().GetCreature(objectGuid);
+            if (otherSummon == null)
+                return false;
+
+            SpellInfo mySummonSpell = Global.SpellMgr.GetSpellInfo(m_unitData.CreatedBySpell, Difficulty.None);
+            if (mySummonSpell == null)
+                return false;
+
+            SpellInfo otherSummonSpell = Global.SpellMgr.GetSpellInfo(otherSummon.m_unitData.CreatedBySpell, Difficulty.None);
+            if (otherSummonSpell == null)
+                return false;
+
+            foreach (var myTotemCategory in mySummonSpell.TotemCategory)
+                if (myTotemCategory != 0)
+                    foreach (var otherTotemCategory in otherSummonSpell.TotemCategory)
+                        if (otherTotemCategory != 0 && Global.DB2Mgr.IsTotemCategoryCompatibleWith(myTotemCategory, otherTotemCategory, false))
+                            return true;
+
+            foreach (int myTotemId in mySummonSpell.Totem)
+                if (myTotemId != 0)
+                    foreach (int otherTotemId in otherSummonSpell.Totem)
+                        if (otherTotemId != 0 && myTotemId == otherTotemId)
+                            return true;
+
+            return false;
+        }
+        
         public override string GetDebugInfo()
         {
             return $"{base.GetDebugInfo()}\nTempSummonType : {GetSummonType()} Summoner: {GetSummonerGUID()} Timer: {GetTimer()}";
@@ -363,18 +422,28 @@ namespace Game.Entities
 
         TempSummonType GetSummonType() { return m_type; }
 
-        public uint GetTimer() { return m_timer; }
+        public TimeSpan GetTimer() { return m_timer; }
+
+        public void RefreshTimer() { m_timer = m_lifetime; }
+
+        public void ModifyTimer(TimeSpan mod)
+        {
+            m_timer += mod;
+            m_lifetime += mod;
+        }
 
         public uint? GetCreatureIdVisibleToSummoner() { return m_creatureIdVisibleToSummoner; }
+
         public uint? GetDisplayIdVisibleToSummoner() { return m_displayIdVisibleToSummoner; }
         
         public bool CanFollowOwner() { return m_canFollowOwner; }
+
         public void SetCanFollowOwner(bool can) { m_canFollowOwner = can; }
 
         public SummonPropertiesRecord m_Properties;
         TempSummonType m_type;
-        uint m_timer;
-        uint m_lifetime;
+        TimeSpan m_timer;
+        TimeSpan m_lifetime;
         ObjectGuid m_summonerGUID;
         uint? m_creatureIdVisibleToSummoner;
         uint? m_displayIdVisibleToSummoner;
@@ -387,14 +456,14 @@ namespace Game.Entities
             : base(properties, owner, isWorldObject)
         {
             m_owner = owner;
-            Cypher.Assert(m_owner);
+            Cypher.Assert(m_owner != null);
             UnitTypeMask |= UnitTypeMask.Minion;
             m_followAngle = SharedConst.PetFollowAngle;
             /// @todo: Find correct way
             InitCharmInfo();
         }
 
-        public override void InitStats(WorldObject summoner, uint duration)
+        public override void InitStats(WorldObject summoner, TimeSpan duration)
         {
             base.InitStats(summoner, duration);
 
@@ -444,7 +513,7 @@ namespace Game.Entities
 
         public override string GetDebugInfo()
         {
-            return $"{base.GetDebugInfo()}\nOwner: {(GetOwner() ? GetOwner().GetGUID() : "")}";
+            return $"{base.GetDebugInfo()}\nOwner: {(GetOwner() != null ? GetOwner().GetGUID() : "")}";
         }
 
         public override Unit GetOwner() { return m_owner; }
@@ -488,11 +557,11 @@ namespace Game.Entities
             }
         }
 
-        public override void InitStats(WorldObject summoner, uint duration)
+        public override void InitStats(WorldObject summoner, TimeSpan duration)
         {
             base.InitStats(summoner, duration);
 
-            InitStatsForLevel(GetOwner().GetLevel());
+            InitStatsForLevel(GetLevel()); // level is already initialized in TempSummon::InitStats, so use that
 
             if (GetOwner().IsTypeId(TypeId.Player) && HasUnitTypeMask(UnitTypeMask.ControlableGuardian))
                 GetCharmInfo().InitCharmCreateSpells();
@@ -964,7 +1033,7 @@ namespace Game.Entities
             else
                 val = 2 * GetStat(Stats.Strength) - 20.0f;
 
-            Player owner = GetOwner() ? GetOwner().ToPlayer() : null;
+            Player owner = GetOwner() != null ? GetOwner().ToPlayer() : null;
             if (owner != null)
             {
                 if (IsHunterPet())                      //hunter pets benefit from owner's attack power
@@ -1062,7 +1131,7 @@ namespace Game.Entities
             SetUpdateFieldStatValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.MaxDamage), maxdamage);
         }
 
-        void SetBonusDamage(int damage)
+        public void SetBonusDamage(int damage)
         {
             m_bonusSpellDamage = damage;
             Player playerOwner = GetOwner().ToPlayer();
@@ -1085,7 +1154,7 @@ namespace Game.Entities
             UnitTypeMask |= UnitTypeMask.Puppet;
         }
 
-        public override void InitStats(WorldObject summoner, uint duration)
+        public override void InitStats(WorldObject summoner, TimeSpan duration)
         {
             base.InitStats(summoner, duration);
 
@@ -1135,7 +1204,7 @@ namespace Game.Entities
         public uint entry;        // Entry of summoned creature
         public Position pos;        // Position, where should be creature spawned
         public TempSummonType type; // Summon type, see TempSummonType for available types
-        public uint time;         // Despawn time, usable only with certain temp summon types
+        public TimeSpan time;         // Despawn time, usable only with certain temp summon types
     }
 
     enum PetEntry

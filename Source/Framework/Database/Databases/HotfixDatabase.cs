@@ -242,11 +242,11 @@ namespace Framework.Database
             // ChrClasses.db2
             PrepareStatement(HotfixStatements.SEL_CHR_CLASSES, "SELECT Name, Filename, NameMale, NameFemale, PetNameToken, Description, RoleInfoString, DisabledString, " +
                 "HyphenatedNameMale, HyphenatedNameFemale, ID, CreateScreenFileDataID, SelectScreenFileDataID, IconFileDataID, LowResScreenFileDataID, Flags, " +
-                "SpellTextureBlobFileDataID, RolesMask, ArmorTypeMask, CharStartKitUnknown901, MaleCharacterCreationVisualFallback, " +
+                "SpellTextureBlobFileDataID, ArmorTypeMask, CharStartKitUnknown901, MaleCharacterCreationVisualFallback, " +
                 "MaleCharacterCreationIdleVisualFallback, FemaleCharacterCreationVisualFallback, FemaleCharacterCreationIdleVisualFallback, " +
                 "CharacterCreationIdleGroundVisualFallback, CharacterCreationGroundVisualFallback, AlteredFormCharacterCreationIdleVisualFallback, " +
                 "CharacterCreationAnimLoopWaitTimeMsFallback, CinematicSequenceID, DefaultSpec, PrimaryStatPriority, DisplayPower, " +
-                "RangedAttackPowerPerAgility, AttackPowerPerAgility, AttackPowerPerStrength, SpellClassSet, ClassColorR, ClassColorG, ClassColorB" +
+                "RangedAttackPowerPerAgility, AttackPowerPerAgility, AttackPowerPerStrength, SpellClassSet, ClassColorR, ClassColorG, ClassColorB, RolesMask" +
                 " FROM chr_classes WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CHR_CLASSES_LOCALE, "SELECT ID, Name_lang, NameMale_lang, NameFemale_lang, Description_lang, RoleInfoString_lang, " +
                 "DisabledString_lang, HyphenatedNameMale_lang, HyphenatedNameFemale_lang FROM chr_classes_locale WHERE (`VerifiedBuild` > 0) = ?" +
@@ -270,7 +270,7 @@ namespace Framework.Database
             // ChrCustomizationElement.db2
             PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_ELEMENT, "SELECT ID, ChrCustomizationChoiceID, RelatedChrCustomizationChoiceID, " +
                 "ChrCustomizationGeosetID, ChrCustomizationSkinnedModelID, ChrCustomizationMaterialID, ChrCustomizationBoneSetID, " +
-                "ChrCustomizationCondModelID, ChrCustomizationDisplayInfoID, ChrCustItemGeoModifyID, ChrCustomizationVoiceID, AnimKitID" +
+                "ChrCustomizationCondModelID, ChrCustomizationDisplayInfoID, ChrCustItemGeoModifyID, ChrCustomizationVoiceID, AnimKitID, ParticleColorID" +
                 " FROM chr_customization_element WHERE (`VerifiedBuild` > 0) = ?");
 
             // ChrCustomizationOption.db2
@@ -281,7 +281,7 @@ namespace Framework.Database
                 " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // ChrCustomizationReq.db2
-            PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_REQ, "SELECT ID, ReqSource, Flags, ClassMask, AchievementID, QuestID, OverrideArchive, " +
+            PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_REQ, "SELECT ID, RaceMask, ReqSource, Flags, ClassMask, AchievementID, QuestID, OverrideArchive, " +
                 "ItemModifiedAppearanceID FROM chr_customization_req WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_REQ_LOCALE, "SELECT ID, ReqSource_lang FROM chr_customization_req_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
@@ -331,6 +331,10 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_CINEMATIC_SEQUENCES, "SELECT ID, SoundID, Camera1, Camera2, Camera3, Camera4, Camera5, Camera6, Camera7, Camera8" +
                 " FROM cinematic_sequences WHERE (`VerifiedBuild` > 0) = ?");
 
+            // ConditionalChrModel.db2
+            PrepareStatement(HotfixStatements.SEL_CONDITIONAL_CHR_MODEL, "SELECT ID, ChrModelID, ChrCustomizationReqID, PlayerConditionID, Flags, " +
+                "ChrCustomizationCategoryID FROM conditional_chr_model WHERE (`VerifiedBuild` > 0) = ?");
+
             // ConditionalContentTuning.db2
             PrepareStatement(HotfixStatements.SEL_CONDITIONAL_CONTENT_TUNING, "SELECT ID, OrderIndex, RedirectContentTuningID, RedirectFlag, ParentContentTuningID" +
                 " FROM conditional_content_tuning WHERE (`VerifiedBuild` > 0) = ?");
@@ -372,12 +376,12 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_CREATURE_FAMILY_LOCALE, "SELECT ID, Name_lang FROM creature_family_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // CreatureModelData.db2
-            PrepareStatement(HotfixStatements.SEL_CREATURE_MODEL_DATA, "SELECT ID, GeoBox1, GeoBox2, GeoBox3, GeoBox4, GeoBox5, GeoBox6, Flags, FileDataID, BloodID, " +
-                "FootprintTextureID, FootprintTextureLength, FootprintTextureWidth, FootprintParticleScale, FoleyMaterialID, FootstepCameraEffectID, " +
-                "DeathThudCameraEffectID, SoundID, SizeClass, CollisionWidth, CollisionHeight, WorldEffectScale, CreatureGeosetDataID, HoverHeight, " +
-                "AttachedEffectScale, ModelScale, MissileCollisionRadius, MissileCollisionPush, MissileCollisionRaise, MountHeight, OverrideLootEffectScale, " +
-                "OverrideNameScale, OverrideSelectionRadius, TamedPetBaseScale, Unknown820_1, Unknown820_2, Unknown820_31, Unknown820_32" +
-                " FROM creature_model_data WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_CREATURE_MODEL_DATA, "SELECT ID, GeoBox1, GeoBox2, GeoBox3, GeoBox4, GeoBox5, GeoBox6, Flags, FileDataID, WalkSpeed, " +
+                "RunSpeed, BloodID, FootprintTextureID, FootprintTextureLength, FootprintTextureWidth, FootprintParticleScale, FoleyMaterialID, " +
+                "FootstepCameraEffectID, DeathThudCameraEffectID, SoundID, SizeClass, CollisionWidth, CollisionHeight, WorldEffectScale, " +
+                "CreatureGeosetDataID, HoverHeight, AttachedEffectScale, ModelScale, MissileCollisionRadius, MissileCollisionPush, MissileCollisionRaise, " +
+                "MountHeight, OverrideLootEffectScale, OverrideNameScale, OverrideSelectionRadius, TamedPetBaseScale, Unknown820_1, Unknown820_2, " +
+                "Unknown820_31, Unknown820_32 FROM creature_model_data WHERE (`VerifiedBuild` > 0) = ?");
 
             // CreatureType.db2
             PrepareStatement(HotfixStatements.SEL_CREATURE_TYPE, "SELECT ID, Name, Flags FROM creature_type WHERE (`VerifiedBuild` > 0) = ?");
@@ -496,7 +500,8 @@ namespace Framework.Database
 
             // GameobjectDisplayInfo.db2
             PrepareStatement(HotfixStatements.SEL_GAMEOBJECT_DISPLAY_INFO, "SELECT ID, GeoBoxMinX, GeoBoxMinY, GeoBoxMinZ, GeoBoxMaxX, GeoBoxMaxY, GeoBoxMaxZ, " +
-                "FileDataID, ObjectEffectPackageID, OverrideLootEffectScale, OverrideNameScale FROM gameobject_display_info WHERE (`VerifiedBuild` > 0) = ?");
+                "FileDataID, ObjectEffectPackageID, OverrideLootEffectScale, OverrideNameScale, AlternateDisplayType, ClientCreatureDisplayInfoID, " +
+                "ClientItemID FROM gameobject_display_info WHERE (`VerifiedBuild` > 0) = ?");
 
             // Gameobjects.db2
             PrepareStatement(HotfixStatements.SEL_GAMEOBJECTS, "SELECT Name, PosX, PosY, PosZ, Rot1, Rot2, Rot3, Rot4, ID, OwnerID, DisplayID, Scale, TypeID, " +
@@ -1496,7 +1501,8 @@ namespace Framework.Database
 
             // UiMap.db2
             PrepareStatement(HotfixStatements.SEL_UI_MAP, "SELECT Name, ID, ParentUiMapID, Flags, `System`, Type, BountySetID, BountyDisplayLocation, " +
-                "VisibilityPlayerConditionID, HelpTextPosition, BkgAtlasID, AlternateUiMapGroup, ContentTuningID FROM ui_map WHERE (`VerifiedBuild` > 0) = ?");
+                "VisibilityPlayerConditionID2, VisibilityPlayerConditionID, HelpTextPosition, BkgAtlasID, AlternateUiMapGroup, ContentTuningID FROM ui_map" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_UI_MAP_LOCALE, "SELECT ID, Name_lang FROM ui_map_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // UiMapAssignment.db2
@@ -1724,6 +1730,8 @@ namespace Framework.Database
         SEL_CINEMATIC_CAMERA,
 
         SEL_CINEMATIC_SEQUENCES,
+
+        SEL_CONDITIONAL_CHR_MODEL,
 
         SEL_CONDITIONAL_CONTENT_TUNING,
 

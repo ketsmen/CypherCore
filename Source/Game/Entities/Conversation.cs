@@ -132,6 +132,7 @@ namespace Game.Entities
                 lineField.UiCameraID = line.UiCameraID;
                 lineField.ActorIndex = line.ActorIdx;
                 lineField.Flags = line.Flags;
+                lineField.ChatType = line.ChatType;
 
                 ConversationLineRecord convoLine = CliDB.ConversationLineStorage.LookupByKey(line.Id); // never null for conversationTemplate->Lines
 
@@ -213,6 +214,61 @@ namespace Game.Entities
         public TimeSpan GetLastLineEndTime(Locale locale)
         {
             return _lastLineEndTimes[(int)locale];
+        }
+
+        public int GetLineDuration(Locale locale, int lineId)
+        {
+            var convoLine = CliDB.ConversationLineStorage.LookupByKey(lineId);
+            if (convoLine == null)
+            {
+                Log.outError(LogFilter.Conversation, $"Conversation::GetLineDuration: Tried to get duration for invalid ConversationLine id {lineId}.");
+                return 0;
+            }
+
+            int textDuration = Global.DB2Mgr.GetBroadcastTextDuration((int)convoLine.BroadcastTextID, locale);
+            if (textDuration == 0)
+                return 0;
+
+            return textDuration + convoLine.AdditionalDuration;
+        }
+
+        public TimeSpan GetLineEndTime(Locale locale, int lineId)
+        {
+            TimeSpan lineStartTime = GetLineStartTime(locale, lineId);
+            if (lineStartTime == TimeSpan.Zero)
+            {
+                Log.outError(LogFilter.Conversation, $"Conversation::GetLineEndTime: Unable to get line start time for locale {locale}, lineid {lineId} (Conversation ID: {GetEntry()}).");
+                return TimeSpan.Zero;
+            }
+            return lineStartTime + TimeSpan.FromMilliseconds(GetLineDuration(locale, lineId));
+        }
+
+        public Locale GetPrivateObjectOwnerLocale()
+        {
+            Locale privateOwnerLocale = Locale.enUS;
+            Player owner = Global.ObjAccessor.GetPlayer(this, GetPrivateObjectOwner());
+            if (owner != null)
+                privateOwnerLocale = owner.GetSession().GetSessionDbLocaleIndex();
+            return privateOwnerLocale;
+        }
+
+        public Unit GetActorUnit(int actorIdx)
+        {
+            if (m_conversationData.Actors.Size() <= actorIdx)
+            {
+                Log.outError(LogFilter.Conversation, $"Conversation::GetActorUnit: Tried to access invalid actor idx {actorIdx} (Conversation ID: {GetEntry()}).");
+                return null;
+            }
+            return Global.ObjAccessor.GetUnit(this, m_conversationData.Actors[actorIdx].ActorGUID);
+        }
+
+        public Creature GetActorCreature(int actorIdx)
+        {
+            Unit actor = GetActorUnit(actorIdx);
+            if (actor == null)
+                return null;
+
+            return actor.ToCreature();
         }
 
         public uint GetScriptId()
@@ -372,7 +428,7 @@ namespace Game.Entities
                     break;
             }
 
-            if (bestFit)
+            if (bestFit != null)
                 _conversation.AddActor(_actor.Id, _actor.Index, bestFit.GetGUID());
         }
 

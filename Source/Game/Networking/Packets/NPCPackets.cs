@@ -368,6 +368,7 @@ namespace Game.Networking.Packets
         public uint ContentTuningID;
         public int QuestType;
         public bool Repeatable;
+        public bool Important;
         public string QuestTitle;
         public uint QuestFlags;
         public uint QuestFlagsEx;
@@ -381,6 +382,7 @@ namespace Game.Networking.Packets
             data.WriteUInt32(QuestFlagsEx);
 
             data.WriteBit(Repeatable);
+            data.WriteBit(Important);
             data.WriteBits(QuestTitle.GetByteCount(), 9);
             data.FlushBits();
 
@@ -394,12 +396,12 @@ namespace Game.Networking.Packets
         {
             data.WriteUInt64(Price);
             data.WriteInt32(MuID);
+            data.WriteInt32(Type);
             data.WriteInt32(Durability);
             data.WriteInt32(StackCount);
             data.WriteInt32(Quantity);
             data.WriteInt32(ExtendedCostID);
             data.WriteInt32(PlayerConditionFailed);
-            data.WriteBits(Type, 3);
             data.WriteBit(Locked);
             data.WriteBit(DoNotFilterOnVendor);
             data.WriteBit(Refundable);

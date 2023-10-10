@@ -147,7 +147,7 @@ namespace Game.Entities
             if (!IsAlive())
                 return false;
 
-            if (HasUnitFlag(UnitFlags.NonAttackable | UnitFlags.Uninteractible))
+            if (HasUnitFlag(UnitFlags.NonAttackable) || IsUninteractible())
                 return false;
 
             if (IsTypeId(TypeId.Player) && ToPlayer().IsGameMaster())
@@ -263,7 +263,7 @@ namespace Game.Entities
                 if (creature.IsInEvadeMode())
                     return false;
 
-                if (!creature.CanMelee())
+                if (creature.CanMelee())
                     meleeAttack = false;
             }
 
@@ -372,7 +372,7 @@ namespace Game.Entities
         {
             SendMessageToSet(new SAttackStop(this, victim), true);
 
-            if (victim)
+            if (victim != null) 
                 Log.outInfo(LogFilter.Unit, "{0} {1} stopped attacking {2} {3}", (IsTypeId(TypeId.Player) ? "Player" : "Creature"), GetGUID().ToString(),
                     (victim.IsTypeId(TypeId.Player) ? "player" : "creature"), victim.GetGUID().ToString());
             else
@@ -448,13 +448,13 @@ namespace Game.Entities
             if (mgr.HasPvPCombat())
                 return mgr.GetPvPCombatRefs().First().Value.GetOther(this);
 
-            if (owner && (owner.GetCombatManager().HasPvPCombat()))
+            if (owner != null && (owner.GetCombatManager().HasPvPCombat()))
                 return owner.GetCombatManager().GetPvPCombatRefs().First().Value.GetOther(owner);
 
             if (mgr.HasPvECombat())
                 return mgr.GetPvECombatRefs().First().Value.GetOther(this);
 
-            if (owner && (owner.GetCombatManager().HasPvECombat()))
+            if (owner != null && (owner.GetCombatManager().HasPvECombat()))
                 return owner.GetCombatManager().GetPvECombatRefs().First().Value.GetOther(owner);
 
             return null;
@@ -506,6 +506,13 @@ namespace Game.Entities
             if (HasUnitState(UnitState.CannotAutoattack) && !extra)
                 return;
 
+            if (HasUnitState(UnitState.Casting))
+            {
+                Spell channeledSpell = GetCurrentSpell(CurrentSpellTypes.Channeled);
+                if (channeledSpell == null || !channeledSpell.GetSpellInfo().HasAttribute(SpellAttr5.AllowActionsDuringChannel))
+                    return;
+            }
+
             if (HasAuraType(AuraType.DisableAttackingExceptAbilities))
                 return;
 
@@ -534,15 +541,11 @@ namespace Game.Entities
                 victim = GetMeleeHitRedirectTarget(victim);
 
                 var meleeAttackOverrides = GetAuraEffectsByType(AuraType.OverrideAutoattackWithMeleeSpell);
-                AuraEffect meleeAttackAuraEffect = null;
                 uint meleeAttackSpellId = 0;
                 if (attType == WeaponAttackType.BaseAttack)
                 {
                     if (!meleeAttackOverrides.Empty())
-                    {
-                        meleeAttackAuraEffect = meleeAttackOverrides.First();
-                        meleeAttackSpellId = meleeAttackAuraEffect.GetSpellEffectInfo().TriggerSpell;
-                    }
+                        meleeAttackSpellId = meleeAttackOverrides.First().GetSpellEffectInfo().TriggerSpell;
                 }
                 else
                 {
@@ -552,13 +555,10 @@ namespace Game.Entities
                     });
 
                     if (auraEffect != null)
-                    {
-                        meleeAttackAuraEffect = auraEffect;
-                        meleeAttackSpellId = (uint)meleeAttackAuraEffect.GetSpellEffectInfo().MiscValue;
-                    }
+                        meleeAttackSpellId = (uint)auraEffect.GetSpellEffectInfo().MiscValue;                    
                 }
 
-                if (meleeAttackAuraEffect == null)
+                if (meleeAttackSpellId == 0)
                 {
                     CalcDamageInfo damageInfo;
                     CalculateMeleeDamage(victim, out damageInfo, attType);
@@ -586,7 +586,7 @@ namespace Game.Entities
                 }
                 else
                 {
-                    CastSpell(victim, meleeAttackSpellId, new CastSpellExtraArgs(meleeAttackAuraEffect));
+                    CastSpell(victim, meleeAttackSpellId, true);
 
                     HitInfo hitInfo = HitInfo.AffectsVictim | HitInfo.NoAnimation;
                     if (attType == WeaponAttackType.OffAttack)
@@ -676,7 +676,7 @@ namespace Game.Entities
 
             Player myPlayerOwner = GetCharmerOrOwnerPlayerOrPlayerItself();
             Player targetPlayerOwner = target.GetCharmerOrOwnerPlayerOrPlayerItself();
-            if (myPlayerOwner && targetPlayerOwner && !(myPlayerOwner.duel != null && myPlayerOwner.duel.Opponent == targetPlayerOwner))
+            if (myPlayerOwner != null && targetPlayerOwner != null && !(myPlayerOwner.duel != null && myPlayerOwner.duel.Opponent == targetPlayerOwner))
             {
                 myPlayerOwner.UpdatePvP(true);
                 myPlayerOwner.SetContestedPvP(targetPlayerOwner);
@@ -684,7 +684,17 @@ namespace Game.Entities
             }
         }
 
-        bool IsThreatened()
+        public bool CannotTurn() { return HasUnitFlag2(UnitFlags2.CannotTurn); }
+
+        public void SetCannotTurn(bool apply)
+        {
+            if (apply)
+                SetUnitFlag2(UnitFlags2.CannotTurn);
+            else
+                RemoveUnitFlag2(UnitFlags2.CannotTurn);
+        }
+
+        public bool IsThreatened()
         {
             return !m_threatManager.IsThreatListEmpty();
         }
@@ -710,7 +720,7 @@ namespace Game.Entities
                 isRewardAllowed = isRewardAllowed && !creature.GetTapList().Empty();
 
             List<Player> tappers = new();
-            if (isRewardAllowed && creature)
+            if (isRewardAllowed && creature != null)
             {
                 foreach (ObjectGuid tapperGuid in creature.GetTapList())
                 {
@@ -719,12 +729,12 @@ namespace Game.Entities
                         tappers.Add(tapper);
                 }
 
-                if (!creature.CanHaveLoot())
+                if (creature.CanHaveLoot())
                     isRewardAllowed = false;
             }
 
             // Exploit fix
-            if (creature && creature.IsPet() && creature.GetOwnerGUID().IsPlayer())
+            if (creature != null && creature.IsPet() && creature.GetOwnerGUID().IsPlayer())
                 isRewardAllowed = false;
 
             // Reward player, his pets, and group/raid members
@@ -740,13 +750,13 @@ namespace Game.Entities
                         if (groups.Add(tapperGroup))
                         {
                             PartyKillLog partyKillLog = new();
-                            partyKillLog.Player = player && tapperGroup.IsMember(player.GetGUID()) ? player.GetGUID() : tapper.GetGUID();
+                            partyKillLog.Player = player != null && tapperGroup.IsMember(player.GetGUID()) ? player.GetGUID() : tapper.GetGUID();
                             partyKillLog.Victim = victim.GetGUID();
                             partyKillLog.Write();
 
                             tapperGroup.BroadcastPacket(partyKillLog, tapperGroup.GetMemberGroup(tapper.GetGUID()) != 0);
 
-                            if (creature)
+                            if (creature != null)
                                 tapperGroup.UpdateLooterGuid(creature, true);
                         }
                     }
@@ -760,7 +770,7 @@ namespace Game.Entities
                 }
 
                 // Generate loot before updating looter
-                if (creature)
+                if (creature != null)
                 {
                     DungeonEncounterRecord dungeonEncounter = null;
                     InstanceScript instance = creature.GetInstanceScript();
@@ -778,7 +788,7 @@ namespace Game.Entities
                         else if (!tappers.Empty())
                         {
                             Group group = !groups.Empty() ? groups.First() : null;
-                            Player looter = group ? Global.ObjAccessor.GetPlayer(creature, group.GetLooterGuid()) : tappers[0];
+                            Player looter = group != null ? Global.ObjAccessor.GetPlayer(creature, group.GetLooterGuid()) : tappers[0];
 
                             Loot loot = new(creature.GetMap(), creature.GetGUID(), LootType.Corpse, dungeonEncounter != null ? group : null);
 
@@ -789,7 +799,7 @@ namespace Game.Entities
                             if (creature.GetLootMode() > 0)
                                 loot.GenerateMoneyLoot(creature.GetCreatureDifficulty().GoldMin, creature.GetCreatureDifficulty().GoldMax);
 
-                            if (group)
+                            if (group != null)
                                 loot.NotifyLootList(creature.GetMap());
 
                             creature.m_personalLoot[looter.GetGUID()] = loot;   // trash mob loot is personal, generated with round robin rules
@@ -910,10 +920,10 @@ namespace Game.Entities
             {
                 Log.outDebug(LogFilter.Unit, "DealDamageNotPlayer");
 
-                if (!creature.IsPet())
+                if (creature.IsPet())
                 {
                     // must be after setDeathState which resets dynamic flags
-                    if (!creature.IsFullyLooted())
+                    if (creature.IsFullyLooted())
                         creature.SetDynamicFlag(UnitDynFlags.Lootable);
                     else
                         creature.AllLootRemovedFromCorpse();
@@ -932,7 +942,10 @@ namespace Game.Entities
                 // Call creature just died function
                 CreatureAI ai = creature.GetAI();
                 if (ai != null)
+                {
+                    ai.OnHealthDepleted(attacker, true);
                     ai.JustDied(attacker);
+                }
 
                 TempSummon summon = creature.ToTempSummon();
                 if (summon != null)
@@ -965,10 +978,10 @@ namespace Game.Entities
             if (player != null && player.InBattleground())
             {
                 Battleground bg = player.GetBattleground();
-                if (bg)
+                if (bg != null)
                 {
                     Player playerVictim = victim.ToPlayer();
-                    if (playerVictim)
+                    if (playerVictim != null)
                         bg.HandleKillPlayer(playerVictim, player);
                     else
                         bg.HandleKillUnit(victim.ToCreature(), player);
@@ -1090,8 +1103,8 @@ namespace Game.Entities
             uint damage = 0;
             damage += CalculateDamage(damageInfo.AttackType, false, true);
             // Add melee damage bonus
-            damage = MeleeDamageBonusDone(damageInfo.Target, damage, damageInfo.AttackType, DamageEffectType.Direct, null, null, (SpellSchoolMask)damageInfo.DamageSchoolMask);
-            damage = damageInfo.Target.MeleeDamageBonusTaken(this, damage, damageInfo.AttackType, DamageEffectType.Direct, null, (SpellSchoolMask)damageInfo.DamageSchoolMask);
+            damage = (uint)MeleeDamageBonusDone(damageInfo.Target, (int)damage, damageInfo.AttackType, DamageEffectType.Direct, null, default, (SpellSchoolMask)damageInfo.DamageSchoolMask);
+            damage = (uint)damageInfo.Target.MeleeDamageBonusTaken(this, (int)damage, damageInfo.AttackType, DamageEffectType.Direct, null, (SpellSchoolMask)damageInfo.DamageSchoolMask);
 
             // Script Hook For CalculateMeleeDamage -- Allow scripts to change the Damage pre class mitigation calculations
             Global.ScriptMgr.ModifyMeleeDamage(damageInfo.Target, damageInfo.Attacker, ref damage);
@@ -1405,7 +1418,7 @@ namespace Game.Entities
                 return GetBaseAttackTime(attType) / 1000.0f;
 
             Item weapon = ToPlayer().GetWeaponForAttack(attType, true);
-            if (!weapon)
+            if (weapon == null)
                 return 2.0f;
 
             if (!normalized)
@@ -1471,7 +1484,7 @@ namespace Game.Entities
 
         public bool IsWithinMeleeRangeAt(Position pos, Unit obj)
         {
-            if (!obj || !IsInMap(obj) || !InSamePhase(obj))
+            if (obj == null || !IsInMap(obj) || !InSamePhase(obj))
                 return false;
 
             float dx = pos.GetPositionX() - obj.GetPositionX();

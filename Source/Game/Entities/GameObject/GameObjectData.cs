@@ -5,6 +5,7 @@ using Framework.Collections;
 using Framework.Constants;
 using Game.Maps;
 using Game.Networking.Packets;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -46,184 +47,187 @@ namespace Game.Entities
         [FieldOffset(64)]
         public uint ScriptId;
 
-        [FieldOffset(68)]
+        [FieldOffset(72)]
+        public string StringId;
+
+        [FieldOffset(80)]
         public door Door;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public button Button;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public questgiver QuestGiver;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public chest Chest;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public binder Binder;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public generic Generic;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public trap Trap;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public chair Chair;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public spellFocus SpellFocus;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public text Text;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public goober Goober;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public transport Transport;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public areadamage AreaDamage;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public camera Camera;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public moTransport MoTransport;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public duelflag DuelFlag;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public fishingnode FishingNode;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public ritual Ritual;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public mailbox MailBox;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public guardpost GuardPost;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public spellcaster SpellCaster;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public meetingstone MeetingStone;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public flagstand FlagStand;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public fishinghole FishingHole;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public flagdrop FlagDrop;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public controlzone ControlZone;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public auraGenerator AuraGenerator;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public dungeonDifficulty DungeonDifficulty;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public barberChair BarberChair;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public destructiblebuilding DestructibleBuilding;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public guildbank GuildBank;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public trapDoor TrapDoor;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public newflag NewFlag;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public newflagdrop NewFlagDrop;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public garrisonbuilding GarrisonBuilding;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public garrisonplot GarrisonPlot;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public clientcreature ClientCreature;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public clientitem ClientItem;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public capturepoint CapturePoint;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public phaseablemo PhaseableMO;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public garrisonmonument GarrisonMonument;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public garrisonshipment GarrisonShipment;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public garrisonmonumentplaque GarrisonMonumentPlaque;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public itemforge ItemForge;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public uilink UILink;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public keystonereceptacle KeystoneReceptacle;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public gatheringnode GatheringNode;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public challengemodereward ChallengeModeReward;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public multi Multi;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public siegeableMulti SiegeableMulti;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public siegeableMO SiegeableMO;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public pvpReward PvpReward;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public playerchoicechest PlayerChoiceChest;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public legendaryforge LegendaryForge;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public garrtalenttree GarrTalentTree;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public weeklyrewardchest WeeklyRewardChest;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public clientmodel ClientModel;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public craftingTable CraftingTable;
 
-        [FieldOffset(68)]
+        [FieldOffset(80)]
         public raw Raw;
 
-        [FieldOffset(208)]
+        [FieldOffset(224)]
         public QueryGameObjectResponse QueryData;
 
         // helpers
@@ -531,23 +535,78 @@ namespace Game.Entities
             }
         }
 
-        public uint GetEventScriptId()
+        public List<uint> GetEventScriptSet()
         {
+            List<uint> eventSet = new();
             switch (type)
             {
-                case GameObjectTypes.Goober:
-                    return Goober.eventID;
                 case GameObjectTypes.Chest:
-                    return Chest.triggeredEvent;
+                    eventSet.Add(Chest.triggeredEvent);
+                    break;
                 case GameObjectTypes.Chair:
-                    return Chest.triggeredEvent;
+                    eventSet.Add(Chair.triggeredEvent);
+                    break;
+                case GameObjectTypes.Goober:
+                    eventSet.Add(Goober.eventID);
+                    break;
+                case GameObjectTypes.Transport:
+                    eventSet.Add(Transport.Reached1stfloor);
+                    eventSet.Add(Transport.Reached2ndfloor);
+                    eventSet.Add(Transport.Reached3rdfloor);
+                    eventSet.Add(Transport.Reached4thfloor);
+                    eventSet.Add(Transport.Reached5thfloor);
+                    eventSet.Add(Transport.Reached6thfloor);
+                    eventSet.Add(Transport.Reached7thfloor);
+                    eventSet.Add(Transport.Reached8thfloor);
+                    eventSet.Add(Transport.Reached9thfloor);
+                    eventSet.Add(Transport.Reached10thfloor);
+                    break;
                 case GameObjectTypes.Camera:
-                    return Camera.eventID;
+                    eventSet.Add(Camera.eventID);
+                    break;
+                case GameObjectTypes.MapObjTransport:
+                    eventSet.Add(MoTransport.startEventID);
+                    eventSet.Add(MoTransport.stopEventID);
+                    break;
+                case GameObjectTypes.FlagDrop:
+                    eventSet.Add(FlagDrop.eventID);
+                    break;
+                case GameObjectTypes.ControlZone:
+                    eventSet.Add(ControlZone.CaptureEventHorde);
+                    eventSet.Add(ControlZone.CaptureEventAlliance);
+                    eventSet.Add(ControlZone.ContestedEventHorde);
+                    eventSet.Add(ControlZone.ContestedEventAlliance);
+                    eventSet.Add(ControlZone.ProgressEventHorde);
+                    eventSet.Add(ControlZone.ProgressEventAlliance);
+                    eventSet.Add(ControlZone.NeutralEventHorde);
+                    eventSet.Add(ControlZone.NeutralEventAlliance);
+                    break;
+                case GameObjectTypes.DestructibleBuilding:
+                    eventSet.Add(DestructibleBuilding.IntactEvent);
+                    eventSet.Add(DestructibleBuilding.DamagedEvent);
+                    eventSet.Add(DestructibleBuilding.DestroyedEvent);
+                    eventSet.Add(DestructibleBuilding.RebuildingEvent);
+                    eventSet.Add(DestructibleBuilding.DamageEvent);
+                    break;
+                case GameObjectTypes.CapturePoint:
+                    eventSet.Add(CapturePoint.ContestedEventHorde);
+                    eventSet.Add(CapturePoint.CaptureEventHorde);
+                    eventSet.Add(CapturePoint.DefendedEventHorde);
+                    eventSet.Add(CapturePoint.ContestedEventAlliance);
+                    eventSet.Add(CapturePoint.CaptureEventAlliance);
+                    eventSet.Add(CapturePoint.DefendedEventAlliance);
+                    break;
                 case GameObjectTypes.GatheringNode:
-                    return GatheringNode.triggeredEvent;
+                    eventSet.Add(GatheringNode.triggeredEvent);
+                    break;
                 default:
-                    return 0;
+                    break;
             }
+
+            // Erase invalid value added from unused GameEvents data fields
+            eventSet.Remove(0);
+
+            return eventSet;
         }
 
         public uint GetTrivialSkillHigh() => type switch
@@ -1044,6 +1103,7 @@ namespace Game.Entities
         public struct duelflag
         {
             public uint InteractRadiusOverride;                  // 0 Interact Radius Override (in hundredths), int, Min value: 0, Max value: 2147483647, Default value: 0
+            public uint Willthisduelgountilaplayerdies;          // 1 Will this duel go until a player dies?, enum { false, true, }; Default: false
         }
 
         public struct fishingnode

@@ -105,13 +105,13 @@ namespace Game.Entities
                 if (!IsInCombat())
                 {
                     Pet pet = ToPlayer().GetPet();
-                    if (pet)
+                    if (pet != null)
                         pet.SetSpeedRate(mtype, m_speed_rate[(int)mtype]);
                 }
             }
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer(); // unit controlled by a player.
-            if (playerMover)
+            if (playerMover != null)
             {
                 // Send notification to self
                 MoveSetSpeed selfpacket = new(moveTypeToOpcode[(int)mtype, 1]);
@@ -248,22 +248,22 @@ namespace Game.Entities
         public void KnockbackFrom(Position origin, float speedXY, float speedZ, SpellEffectExtraData spellEffectExtraData = null)
         {
             Player player = ToPlayer();
-            if (!player)
+            if (player == null)
             {
                 Unit charmer = GetCharmer();
-                if (charmer)
+                if (charmer != null)
                 {
                     player = charmer.ToPlayer();
-                    if (player && player.GetUnitBeingMoved() != this)
+                    if (player != null && player.GetUnitBeingMoved() != this)
                         player = null;
                 }
             }
 
-            if (!player)
+            if (player == null)
                 GetMotionMaster().MoveKnockbackFrom(origin, speedXY, speedZ, spellEffectExtraData);
             else
             {
-                float o = GetPosition() == origin ? GetOrientation() + MathF.PI : origin.GetRelativeAngle(this);
+                float o = GetPosition() == origin ? GetOrientation() + MathF.PI : origin.GetAbsoluteAngle(this);
                 if (speedXY < 0)
                 {
                     speedXY = -speedXY;
@@ -298,7 +298,7 @@ namespace Game.Entities
                 RemoveUnitMovementFlag(MovementFlag.DisableCollision);
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(disable ? ServerOpcodes.MoveSplineEnableCollision : ServerOpcodes.MoveEnableCollision);
                 packet.MoverGUID = GetGUID();
@@ -333,7 +333,7 @@ namespace Game.Entities
                 RemoveUnitMovementFlag2(MovementFlag2.CanSwimToFlyTrans);
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveEnableTransitionBetweenSwimAndFly : ServerOpcodes.MoveDisableTransitionBetweenSwimAndFly);
                 packet.MoverGUID = GetGUID();
@@ -360,7 +360,7 @@ namespace Game.Entities
                 RemoveUnitMovementFlag2(MovementFlag2.CanTurnWhileFalling);
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveSetCanTurnWhileFalling : ServerOpcodes.MoveUnsetCanTurnWhileFalling);
                 packet.MoverGUID = GetGUID();
@@ -386,7 +386,7 @@ namespace Game.Entities
                 RemoveUnitMovementFlag2(MovementFlag2.CanDoubleJump);
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveEnableDoubleJump : ServerOpcodes.MoveDisableDoubleJump);
                 packet.MoverGUID = GetGUID();
@@ -543,7 +543,7 @@ namespace Game.Entities
                     if (normalization != 0)
                     {
                         Creature creature1 = ToCreature();
-                        if (creature1)
+                        if (creature1 != null)
                         {
                             ulong immuneMask = creature1.GetCreatureTemplate().MechanicImmuneMask;
                             if (Convert.ToBoolean(immuneMask & (1 << ((int)Mechanics.Snare - 1))) || Convert.ToBoolean(immuneMask & (1 << ((int)Mechanics.Daze - 1))))
@@ -683,7 +683,7 @@ namespace Game.Entities
         
         public bool IsWithinBoundaryRadius(Unit obj)
         {
-            if (!obj || !IsInMap(obj) || !InSamePhase(obj))
+            if (obj == null || !IsInMap(obj) || !InSamePhase(obj))
                 return false;
 
             float objBoundaryRadius = Math.Max(obj.GetBoundingRadius(), SharedConst.MinMeleeReach);
@@ -706,7 +706,7 @@ namespace Game.Entities
 
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(disable ? ServerOpcodes.MoveDisableGravity : ServerOpcodes.MoveEnableGravity);
                 packet.MoverGUID = GetGUID();
@@ -892,7 +892,7 @@ namespace Game.Entities
                 // Set _lastLiquid before casting liquid spell to avoid infinite loops
                 _lastLiquid = curLiquid;
 
-                if (curLiquid != null && curLiquid.SpellID != 0 && (!player || !player.IsGameMaster()))
+                if (curLiquid != null && curLiquid.SpellID != 0 && (player == null || !player.IsGameMaster()))
                     CastSpell(this, curLiquid.SpellID, true);
             }
 
@@ -967,7 +967,7 @@ namespace Game.Entities
                 ToPlayer().SetFallInformation(0, GetPositionZ());
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveSetCanFly : ServerOpcodes.MoveUnsetCanFly);
                 packet.MoverGUID = GetGUID();
@@ -1000,7 +1000,7 @@ namespace Game.Entities
 
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveSetWaterWalk : ServerOpcodes.MoveSetLandWalk);
                 packet.MoverGUID = GetGUID();
@@ -1033,7 +1033,7 @@ namespace Game.Entities
 
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveSetFeatherFall : ServerOpcodes.MoveSetNormalFall);
                 packet.MoverGUID = GetGUID();
@@ -1081,7 +1081,7 @@ namespace Game.Entities
             }
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(enable ? ServerOpcodes.MoveSetHovering : ServerOpcodes.MoveUnsetHovering);
                 packet.MoverGUID = GetGUID();
@@ -1114,7 +1114,7 @@ namespace Game.Entities
 
         public bool IsWithinCombatRange(Unit obj, float dist2compare)
         {
-            if (!obj || !IsInMap(obj) || !InSamePhase(obj))
+            if (obj == null || !IsInMap(obj) || !InSamePhase(obj))
                 return false;
 
             float dx = GetPositionX() - obj.GetPositionX();
@@ -1321,7 +1321,7 @@ namespace Game.Entities
             }
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();// unit controlled by a player.
-            if (playerMover)
+            if (playerMover != null)
             {
                 MoveSetFlag packet = new(apply ? ServerOpcodes.MoveRoot : ServerOpcodes.MoveUnroot);
                 packet.MoverGUID = GetGUID();
@@ -1369,7 +1369,7 @@ namespace Game.Entities
             // block / allow control to real player in control (eg charmer)
             if (IsPlayer())
             {
-                if (m_playerMovingMe)
+                if (m_playerMovingMe != null)
                     m_playerMovingMe.SetClientControl(this, !apply);
             }
         }
@@ -1394,7 +1394,7 @@ namespace Game.Entities
             // block / allow control to real player in control (eg charmer)
             if (IsPlayer())
             {
-                if (m_playerMovingMe)
+                if (m_playerMovingMe != null)
                     m_playerMovingMe.SetClientControl(this, !apply);
             }
         }
@@ -1430,23 +1430,8 @@ namespace Game.Entities
                     }
                 }
 
-                // unsummon pet
-                Pet pet = player.GetPet();
-                if (pet != null)
-                {
-                    Battleground bg = ToPlayer().GetBattleground();
-                    // don't unsummon pet in arena but SetFlag UNIT_FLAG_STUNNED to disable pet's interface
-                    if (bg && bg.IsArena())
-                        pet.SetUnitFlag(UnitFlags.Stunned);
-                    else
-                        player.UnsummonPetTemporaryIfAny();
-                }
-
-                // if we have charmed npc, stun him also (everywhere)
-                Unit charm = player.GetCharmed();
-                if (charm)
-                    if (charm.GetTypeId() == TypeId.Unit)
-                        charm.SetUnitFlag(UnitFlags.Stunned);
+                // disable pet controls
+                player.DisablePetControlsOnMount(ReactStates.Passive, CommandStates.Follow);
 
                 player.SendMovementSetCollisionHeight(player.GetCollisionHeight(), UpdateCollisionHeightReason.Mount);
             }
@@ -1483,20 +1468,8 @@ namespace Game.Entities
             Player player = ToPlayer();
             if (player != null)
             {
-                Pet pPet = player.GetPet();
-                if (pPet != null)
-                {
-                    if (pPet.HasUnitFlag(UnitFlags.Stunned) && !pPet.HasUnitState(UnitState.Stunned))
-                        pPet.RemoveUnitFlag(UnitFlags.Stunned);
-                }
-                else
-                    player.ResummonPetTemporaryUnSummonedIfAny();
-
-                // if we have charmed npc, remove stun also
-                Unit charm = player.GetCharmed();
-                if (charm)
-                    if (charm.GetTypeId() == TypeId.Unit && charm.HasUnitFlag(UnitFlags.Stunned) && !charm.HasUnitState(UnitState.Stunned))
-                        charm.RemoveUnitFlag(UnitFlags.Stunned);
+                player.EnablePetControlsOnDismount();
+                player.ResummonPetTemporaryUnSummonedIfAny();
             }
         }
 
@@ -1536,7 +1509,7 @@ namespace Game.Entities
         void SendSetVehicleRecId(uint vehicleId)
         {
             Player player = ToPlayer();
-            if (player)
+            if (player != null)
             {
                 MoveSetVehicleRecID moveSetVehicleRec = new();
                 moveSetVehicleRec.MoverGUID = GetGUID();
@@ -1700,11 +1673,7 @@ namespace Game.Entities
 
         Player GetPlayerBeingMoved()
         {
-            Unit mover = GetUnitBeingMoved();
-            if (mover)
-                return mover.ToPlayer();
-
-            return null;
+            return GetUnitBeingMoved()?.ToPlayer();
         }
 
         public Player GetPlayerMovingMe() { return m_playerMovingMe; }
@@ -1828,7 +1797,7 @@ namespace Game.Entities
             if (_positionUpdateInfo.Turned)
                 RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.Turning);
 
-            if (_positionUpdateInfo.Relocated && !GetVehicle())
+            if (_positionUpdateInfo.Relocated && GetVehicle() == null)
                 RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.Moving);
         }
 
@@ -1863,7 +1832,7 @@ namespace Game.Entities
 
             // should this really be the unit _being_ moved? not the unit doing the moving?
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
-            if (playerMover)
+            if (playerMover != null)
             {
                 float x, y, z, o;
                 pos.GetPosition(out x, out y, out z, out o);

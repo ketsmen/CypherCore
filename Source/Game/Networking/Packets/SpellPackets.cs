@@ -1294,28 +1294,28 @@ namespace Game.Networking.Packets
         {
             Player playerAttacker = attacker.ToPlayer();
             Creature creatureAttacker = attacker.ToCreature();
-            if (playerAttacker)
+            if (playerAttacker != null)
             {
                 Player playerTarget = target.ToPlayer();
                 Creature creatureTarget = target.ToCreature();
-                if (playerTarget)
+                if (playerTarget != null)
                     return GenerateDataPlayerToPlayer(playerAttacker, playerTarget);
-                else if (creatureTarget)
+                else if (creatureTarget != null)
                 {
                     if (creatureTarget.HasScalableLevels())
                         return GenerateDataPlayerToCreature(playerAttacker, creatureTarget);
                 }
             }
-            else if (creatureAttacker)
+            else if (creatureAttacker != null)
             {
                 Player playerTarget = target.ToPlayer();
                 Creature creatureTarget = target.ToCreature();
-                if (playerTarget)
+                if (playerTarget != null)
                 {
                     if (creatureAttacker.HasScalableLevels())
                         return GenerateDataCreatureToPlayer(creatureAttacker, playerTarget);
                 }
-                else if (creatureTarget)
+                else if (creatureTarget != null)
                 {
                     if (creatureAttacker.HasScalableLevels() || creatureTarget.HasScalableLevels())
                         return GenerateDataCreatureToCreature(creatureAttacker, creatureTarget);
@@ -1368,6 +1368,43 @@ namespace Game.Networking.Packets
         {
             NoLevelScaling = 0x1,
             NoItemLevelScaling = 0x2
+        }
+    }
+
+    struct CombatWorldTextViewerInfo
+    {
+        public ObjectGuid ViewerGUID;
+        public byte? ColorType;
+        public byte? ScaleType;
+
+        public void Write(WorldPacket data)
+        {
+            data.WritePackedGuid(ViewerGUID);
+            data.WriteBit(ColorType.HasValue);
+            data.WriteBit(ScaleType.HasValue);
+            data.FlushBits();
+
+            if (ColorType.HasValue)
+                data.WriteUInt8(ColorType.Value);
+
+            if (ScaleType.HasValue)
+                data.WriteUInt8(ScaleType.Value);
+        }
+    }
+
+    public struct SpellSupportInfo
+    {
+        public ObjectGuid CasterGUID;
+        public int SpellID;
+        public int Amount;
+        public float Percentage;
+
+        public void Write(WorldPacket data)
+        {
+            data.WritePackedGuid(CasterGUID);
+            data.WriteInt32(SpellID);
+            data.WriteInt32(Amount);
+            data.WriteFloat(Percentage);
         }
     }
 
@@ -1716,11 +1753,9 @@ namespace Game.Networking.Packets
 
         public void Write(WorldPacket data)
         {
-            data.WriteBits((byte)Reason, 4);
+            data.WriteUInt8((byte)Reason);
             if (Reason == SpellMissInfo.Reflect)
-                data.WriteBits(ReflectStatus, 4);
-
-            data.FlushBits();
+                data.WriteUInt8((byte)ReflectStatus);
         }
 
         public SpellMissInfo Reason;
@@ -1768,18 +1803,6 @@ namespace Game.Networking.Packets
         }
     }
 
-    public struct SpellAmmo
-    {
-        public int DisplayID;
-        public sbyte InventoryType;
-
-        public void Write(WorldPacket data)
-        {
-            data.WriteInt32(DisplayID);
-            data.WriteInt8(InventoryType);
-        }
-    }
-
     public struct CreatureImmunities
     {
         public uint School;
@@ -1824,7 +1847,7 @@ namespace Game.Networking.Packets
 
             MissileTrajectory.Write(data);
 
-            data.WriteInt32(Ammo.DisplayID);
+            data.WriteInt32(AmmoDisplayID);
             data.WriteUInt8(DestLocSpellCastIndex);
 
             Immunities.Write(data);
@@ -1839,9 +1862,6 @@ namespace Game.Networking.Packets
             data.WriteBits(TargetPoints.Count, 16);
             data.FlushBits();
 
-            foreach (SpellMissStatus missStatus in MissStatus)
-                missStatus.Write(data);
-
             Target.Write(data);
 
             foreach (ObjectGuid hitTarget in HitTargets)
@@ -1852,6 +1872,9 @@ namespace Game.Networking.Packets
 
             foreach (SpellHitStatus hitStatus in HitStatus)
                 hitStatus.Write(data);
+
+            foreach (SpellMissStatus missStatus in MissStatus)
+                missStatus.Write(data);
 
             foreach (SpellPowerData power in RemainingPower)
                 power.Write(data);
@@ -1880,7 +1903,7 @@ namespace Game.Networking.Packets
         public List<SpellPowerData> RemainingPower = new();
         public RuneData RemainingRunes;
         public MissileTrajectoryResult MissileTrajectory;
-        public SpellAmmo Ammo;
+        public int AmmoDisplayID;
         public byte DestLocSpellCastIndex;
         public List<TargetLocation> TargetPoints = new();
         public CreatureImmunities Immunities;

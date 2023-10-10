@@ -6,6 +6,7 @@ using Framework.Database;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Guilds;
+using Game.Miscellaneous;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -141,7 +142,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadRankFromDB(result.GetFields());
 
                         ++count;
@@ -178,7 +179,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadMemberFromDB(result.GetFields());
 
                         ++count;
@@ -211,7 +212,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadBankRightFromDB(result.GetFields());
 
                         ++count;
@@ -243,7 +244,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadEventLogFromDB(result.GetFields());
 
                         ++count;
@@ -276,7 +277,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadBankEventLogFromDB(result.GetFields());
 
                         ++count;
@@ -306,7 +307,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadGuildNewsLogFromDB(result.GetFields());
 
                         ++count;
@@ -338,7 +339,7 @@ namespace Game
                     {
                         uint guildId = result.Read<uint>(0);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadBankTabFromDB(result.GetFields());
 
                         ++count;
@@ -369,7 +370,7 @@ namespace Game
                     {
                         ulong guildId = result.Read<ulong>(51);
                         Guild guild = GetGuildById(guildId);
-                        if (guild)
+                        if (guild != null)
                             guild.LoadBankItemFromDB(result.GetFields());
 
                         ++count;
@@ -436,7 +437,7 @@ namespace Game
 
                 reward.ItemID = result.Read<uint>(0);
                 reward.MinGuildRep = result.Read<byte>(1);
-                reward.RaceMask = result.Read<ulong>(2);
+                reward.RaceMask = new RaceMask<ulong>(result.Read<ulong>(2));
                 reward.Cost = result.Read<ulong>(3);
 
                 if (Global.ObjectMgr.GetItemTemplate(reward.ItemID) == null)
@@ -497,7 +498,7 @@ namespace Game
     {
         public uint ItemID;
         public byte MinGuildRep;
-        public ulong RaceMask;
+        public RaceMask<ulong> RaceMask;
         public ulong Cost;
         public List<uint> AchievementsRequired = new();
     }

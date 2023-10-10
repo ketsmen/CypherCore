@@ -60,12 +60,9 @@ namespace Game.Entities
             for (byte i = 0; i < (int)WeaponAttackType.Max; ++i)
                 m_weaponDamage[i] = new float[] { 1.0f, 2.0f };
 
-            if (IsTypeId(TypeId.Player))
-            {
-                ModMeleeHitChance = 7.5f;
-                ModRangedHitChance = 7.5f;
-                ModSpellHitChance = 15.0f;
-            }
+            ModMeleeHitChance = 0.0f;
+            ModRangedHitChance = 0.0f;
+            ModSpellHitChance = 0.0f;
             BaseSpellCritChance = 5;
 
             for (byte i = 0; i < (int)UnitMoveType.Max; ++i)
@@ -229,7 +226,7 @@ namespace Game.Entities
             {
                 if (pair.Value != null && pair.Value.IsExpired())
                     RemoveOwnedAura(pair, AuraRemoveMode.Expire);
-                else if (pair.Value.GetSpellInfo().IsChanneled() && pair.Value.GetCasterGUID() != GetGUID() && !Global.ObjAccessor.GetWorldObject(this, pair.Value.GetCasterGUID()))
+                else if (pair.Value.GetSpellInfo().IsChanneled() && pair.Value.GetCasterGUID() != GetGUID() && Global.ObjAccessor.GetWorldObject(this, pair.Value.GetCasterGUID()) == null)
                     RemoveOwnedAura(pair, AuraRemoveMode.Cancel); // remove channeled auras when caster is not on the same map
             }
 
@@ -383,7 +380,7 @@ namespace Game.Entities
 
         public virtual void Whisper(string text, Language language, Player target, bool isBossWhisper = false)
         {
-            if (!target)
+            if (target == null)
                 return;
 
             Locale locale = target.GetSession().GetSessionDbLocaleIndex();
@@ -423,7 +420,7 @@ namespace Game.Entities
 
         public virtual void Whisper(uint textId, Player target, bool isBossWhisper = false)
         {
-            if (!target)
+            if (target == null)
                 return;
 
             BroadcastTextRecord bct = CliDB.BroadcastTextStorage.LookupByKey(textId);
@@ -521,6 +518,12 @@ namespace Game.Entities
 
             if (IsInWorld)
                 RemoveFromWorld();
+            else
+            {
+                // cleanup that must happen even if not in world
+                if (IsVehicle())
+                    RemoveVehicleKit(true);
+            }
 
             // A unit may be in removelist and not in world, but it is still in grid
             // and may have some references during delete
@@ -555,12 +558,12 @@ namespace Game.Entities
         {
             Unit vehicleRoot = GetVehicleBase();
 
-            if (!vehicleRoot)
+            if (vehicleRoot == null)
                 return null;
 
             for (; ; )
             {
-                if (!vehicleRoot.GetVehicleBase())
+                if (vehicleRoot.GetVehicleBase() == null)
                     return vehicleRoot;
 
                 vehicleRoot = vehicleRoot.GetVehicleBase();
@@ -586,17 +589,38 @@ namespace Game.Entities
             return GetTransport();
         }
 
-        public void AtStartOfEncounter()
+        public void AtStartOfEncounter(EncounterType type)
         {
             RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfEncounter);
+
+            switch (type)
+            {
+                case EncounterType.DungeonEncounter:
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfDungeonEncounter);
+                    break;
+                case EncounterType.MythicPlusRun:
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfMythicPlusRun);
+                    break;
+                default:
+                    break;
+            }
 
             if (IsAlive())
                 Unit.ProcSkillsAndAuras(this, null, new ProcFlagsInit(ProcFlags.EncounterStart), new ProcFlagsInit(), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, null, null, null);
         }
 
-        public void AtEndOfEncounter()
+        public void AtEndOfEncounter(EncounterType type)
         {
             RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfEncounter);
+
+            switch (type)
+            {
+                case EncounterType.DungeonEncounter:
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfDungeonEncounter);
+                    break;
+                default:
+                    break;
+            }
 
             GetSpellHistory().ResetCooldowns(pair =>
             {
@@ -940,10 +964,10 @@ namespace Game.Entities
             Cell.VisitAllObjects(this, searcher, dist);
 
             // remove current target
-            if (GetVictim())
+            if (GetVictim() != null)
                 targets.Remove(GetVictim());
 
-            if (exclude)
+            if (exclude != null)
                 targets.Remove(exclude);
 
             // remove not LoS targets
@@ -1013,7 +1037,7 @@ namespace Game.Entities
                 }
             }
 
-            Cypher.Assert(!m_vehicle);
+            Cypher.Assert(m_vehicle == null);
             vehicle.AddVehiclePassenger(this, seatId);
         }
 
@@ -1089,7 +1113,7 @@ namespace Game.Entities
             Player player = ToPlayer();
 
             // If the player is on mounted duel and exits the mount, he should immediatly lose the duel
-            if (player && player.duel != null && player.duel.IsMounted)
+            if (player != null && player.duel != null && player.duel.IsMounted)
                 player.DuelComplete(DuelCompleteType.Fled);
 
             SetControlled(false, UnitState.Root);      // SMSG_MOVE_FORCE_UNROOT, ~MOVEMENTFLAG_ROOT
@@ -1209,21 +1233,26 @@ namespace Game.Entities
             SendMessageToSet(cancelSpellVisualKit, true);
         }
 
-        public void CancelSpellMissiles(uint spellId, bool reverseMissile = false)
+        public void CancelSpellMissiles(uint spellId, bool reverseMissile = false, bool abortSpell = false)
         {
             bool hasMissile = false;
-            foreach (var pair in m_Events.GetEvents())
+            if (abortSpell)
             {
-                Spell spell = Spell.ExtractSpellFromEvent(pair.Value);
-                if (spell != null)
+                foreach (var pair in m_Events.GetEvents())
                 {
-                    if (spell.GetSpellInfo().Id == spellId)
+                    Spell spell = Spell.ExtractSpellFromEvent(pair.Value);
+                    if (spell != null)
                     {
-                        pair.Value.ScheduleAbort();
-                        hasMissile = true;
+                        if (spell.GetSpellInfo().Id == spellId)
+                        {
+                            pair.Value.ScheduleAbort();
+                            hasMissile = true;
+                        }
                     }
                 }
             }
+            else
+                hasMissile = true;
 
             if (hasMissile)
             {
@@ -1431,7 +1460,7 @@ namespace Game.Entities
                             if (displayInfo != null)
                             {
                                 ChrCustomizationReqRecord choiceReq = CliDB.ChrCustomizationReqStorage.LookupByKey(formModelData.Choices[i].ChrCustomizationReqID);
-                                if (choiceReq == null || thisPlayer.GetSession().MeetsChrCustomizationReq(choiceReq, GetClass(), false, thisPlayer.m_playerData.Customizations))
+                                if (choiceReq == null || thisPlayer.GetSession().MeetsChrCustomizationReq(choiceReq, GetRace(), GetClass(), false, thisPlayer.m_playerData.Customizations))
                                     displayIds.Add(displayInfo.DisplayID);
                             }
                         }
@@ -1699,7 +1728,7 @@ namespace Game.Entities
                             displayPower = cEntry.DisplayPower;
 
                         Vehicle vehicle = GetVehicleKit();
-                        if (vehicle)
+                        if (vehicle != null)
                         {
                             PowerDisplayRecord powerDisplay = CliDB.PowerDisplayStorage.LookupByKey(vehicle.GetVehicleInfo().PowerDisplayID[0]);
                             if (powerDisplay != null)
@@ -1708,7 +1737,7 @@ namespace Game.Entities
                         else
                         {
                             Pet pet = ToPet();
-                            if (pet)
+                            if (pet != null)
                             {
                                 if (pet.GetPetType() == PetType.Hunter) // Hunter pets have focus
                                     displayPower = PowerType.Focus;
@@ -1866,7 +1895,7 @@ namespace Game.Entities
             Player player = ToPlayer();
             if (player != null)
             {
-                if (player.GetGroup())
+                if (player.GetGroup() != null)
                     player.SetGroupUpdateFlag(GroupUpdateFlags.Level);
 
                 Global.CharacterCacheStorage.UpdateCharacterLevel(ToPlayer().GetGUID(), (byte)lvl);
@@ -1877,6 +1906,7 @@ namespace Game.Entities
 
         public Race GetRace() { return (Race)(byte)m_unitData.Race; }
         public void SetRace(Race race) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.Race), (byte)race); }
+        public ulong GetRaceMask() { return 1UL << ((int)GetRace() - 1); }
         public Class GetClass() { return (Class)(byte)m_unitData.ClassId; }
         public void SetClass(Class classId) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ClassId), (byte)classId); }
         public uint GetClassMask() { return (uint)(1 << ((int)GetClass() - 1)); }
@@ -2222,7 +2252,7 @@ namespace Game.Entities
                 if (owner != null)
                 {
                     Player ownerPlayer = owner.ToPlayer();
-                    if (ownerPlayer)
+                    if (ownerPlayer != null)
                         if (ownerPlayer.IsGroupVisibleFor(seerPlayer))
                             return true;
                 }
@@ -2249,7 +2279,7 @@ namespace Game.Entities
                 if (HasUnitTypeMask(UnitTypeMask.Minion))
                 {
                     Unit owner = GetOwner();
-                    if (owner)
+                    if (owner != null)
                     {
                         SetFaction(owner.GetFaction());
                         return;
@@ -2558,7 +2588,7 @@ namespace Game.Entities
                 // if any script modified damage, we need to also apply the same modification to unscaled damage value
                 if (tmpDamage != damageTaken)
                 {
-                    if (attacker)
+                    if (attacker != null)
                         damageDone = (uint)(tmpDamage * victim.GetHealthMultiplierForTarget(attacker));
                     else
                         damageDone = tmpDamage;
@@ -2656,7 +2686,7 @@ namespace Game.Entities
             bool duel_wasMounted = false;
             if (victim.IsPlayer() && victim.ToPlayer().duel != null && damageTaken >= (health - 1))
             {
-                if (!attacker)
+                if (attacker == null)
                     return 0;
 
                 // prevent kill only if killed in duel and killed by opponent or opponent controlled creature
@@ -2668,13 +2698,17 @@ namespace Game.Entities
             else if (victim.IsCreature() && damageTaken >= health && victim.ToCreature().HasFlag(CreatureStaticFlags.Unkillable))
             {
                 damageTaken = health - 1;
+
+                // If we had damage (aka health was not 1 already) trigger OnHealthDepleted
+                if (damageTaken > 0)
+                    victim.ToCreature().GetAI()?.OnHealthDepleted(attacker, false);
             }
             else if (victim.IsVehicle() && damageTaken >= (health - 1) && victim.GetCharmer() != null && victim.GetCharmer().IsTypeId(TypeId.Player))
             {
                 Player victimRider = victim.GetCharmer().ToPlayer();
                 if (victimRider != null && victimRider.duel != null && victimRider.duel.IsMounted)
                 {
-                    if (!attacker)
+                    if (attacker == null)
                         return 0;
 
                     // prevent kill only if killed in duel and killed by opponent or opponent controlled creature
@@ -2744,24 +2778,23 @@ namespace Game.Entities
                         if (damageTaken >= victim.CountPctFromMaxHealth(100 + absorbAurEff.GetMiscValueB()))
                             continue;
 
-                        // get amount which can be still absorbed by the aura
-                        int currentAbsorb = absorbAurEff.GetAmount();
-                        // aura with infinite absorb amount - let the scripts handle absorbtion amount, set here to 0 for safety
-                        if (currentAbsorb < 0)
-                            currentAbsorb = 0;
-
-                        uint tempAbsorb = (uint)currentAbsorb;
+                        // absorb all damage by default
+                        uint currentAbsorb = damageInfo.GetDamage();
 
                         // This aura type is used both by Spirit of Redemption (death not really prevented, must grant all credit immediately) and Cheat Death (death prevented)
                         // repurpose PreventDefaultAction for this
                         bool deathFullyPrevented = false;
 
-                        absorbAurEff.GetBase().CallScriptEffectAbsorbHandlers(absorbAurEff, aurApp, damageInfo, ref tempAbsorb, ref deathFullyPrevented);
-                        currentAbsorb = (int)tempAbsorb;
+                        absorbAurEff.GetBase().CallScriptEffectAbsorbHandlers(absorbAurEff, aurApp, damageInfo, ref currentAbsorb, ref deathFullyPrevented);
 
                         // absorb must be smaller than the damage itself
-                        currentAbsorb = MathFunctions.RoundToInterval(ref currentAbsorb, 0, (int)damageInfo.GetDamage());
-                        damageInfo.AbsorbDamage((uint)currentAbsorb);
+                        currentAbsorb = Math.Min(currentAbsorb, damageInfo.GetDamage());
+
+                        // if nothing is absorbed (for example because of a scripted cooldown) then skip this aura and proceed with dying
+                        if (currentAbsorb == 0)
+                            continue;
+
+                        damageInfo.AbsorbDamage(currentAbsorb);
 
                         if (deathFullyPrevented)
                             killed = false;
@@ -2776,7 +2809,7 @@ namespace Game.Entities
                             absorbLog.Caster = baseAura.GetCasterGUID();
                             absorbLog.AbsorbedSpellID = spellProto != null ? spellProto.Id : 0;
                             absorbLog.AbsorbSpellID = baseAura.GetId();
-                            absorbLog.Absorbed = currentAbsorb;
+                            absorbLog.Absorbed = (int)currentAbsorb;
                             absorbLog.OriginalDamage = damageInfo.GetOriginalDamage();
                             absorbLog.LogData.Initialize(victim);
                             victim.SendCombatLogMessage(absorbLog);
@@ -2890,7 +2923,7 @@ namespace Game.Entities
                 {
                     Player he = duel_wasMounted ? victim.GetCharmer().ToPlayer() : victim.ToPlayer();
 
-                    Cypher.Assert(he && he.duel != null);
+                    Cypher.Assert(he != null && he.duel != null);
 
                     if (duel_wasMounted) // In this case victim==mount
                         victim.SetHealth(1);
@@ -3013,10 +3046,10 @@ namespace Game.Entities
 
                     uint damage = (uint)dmgShield.GetAmount();
                     Unit caster = dmgShield.GetCaster();
-                    if (caster)
+                    if (caster != null)
                     {
-                        damage = caster.SpellDamageBonusDone(this, spellInfo, damage, DamageEffectType.SpellDirect, dmgShield.GetSpellEffectInfo());
-                        damage = SpellDamageBonusTaken(caster, spellInfo, damage, DamageEffectType.SpellDirect);
+                        damage = (uint)caster.SpellDamageBonusDone(this, spellInfo, (int)damage, DamageEffectType.SpellDirect, dmgShield.GetSpellEffectInfo());
+                        damage = (uint)SpellDamageBonusTaken(caster, spellInfo, (int)damage, DamageEffectType.SpellDirect);
                     }
 
                     DamageInfo damageInfo1 = new(this, victim, damage, spellInfo, spellInfo.GetSchoolMask(), DamageEffectType.SpellDirect, WeaponAttackType.BaseAttack);
@@ -3078,7 +3111,7 @@ namespace Game.Entities
                 packet.Health = (long)GetHealth();
 
                 Player player = GetCharmerOrOwnerPlayerOrPlayerItself();
-                if (player)
+                if (player != null)
                     player.SendPacket(packet);
             }
 
@@ -3211,6 +3244,16 @@ namespace Game.Entities
 
         public virtual void SetImmuneToNPC(bool apply) { SetImmuneToNPC(apply, false); }
 
+        public bool IsUninteractible() { return HasUnitFlag(UnitFlags.Uninteractible); }
+
+        public void SetUninteractible(bool apply)
+        {
+            if (apply)
+                SetUnitFlag(UnitFlags.Uninteractible);
+            else
+                RemoveUnitFlag(UnitFlags.Uninteractible);
+        }
+
         public virtual float GetBlockPercent(uint attackerLevel) { return 30.0f; }
 
         void UpdateReactives(uint p_time)
@@ -3285,7 +3328,7 @@ namespace Game.Entities
                 return null;
             Group group = player.GetGroup();
             // When there is no group check pet presence
-            if (!group)
+            if (group == null)
             {
                 // We are pet now, return owner
                 if (player != this)
@@ -3304,7 +3347,7 @@ namespace Game.Entities
             for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
             {
                 Player target = refe.GetSource();
-                if (target)
+                if (target != null)
                 {
                     // IsHostileTo check duel and controlled by enemy
                     if (target != this && IsWithinDistInMap(target, radius) && target.IsAlive() && !IsHostileTo(target))
@@ -3312,7 +3355,7 @@ namespace Game.Entities
 
                     // Push player's pet to vector
                     Unit pet = target.GetGuardianPet();
-                    if (pet)
+                    if (pet != null)
                         if (pet != this && IsWithinDistInMap(pet, radius) && pet.IsAlive() && !IsHostileTo(pet))
                             nearMembers.Add(pet);
                 }
@@ -3323,47 +3366,6 @@ namespace Game.Entities
 
             int randTarget = RandomHelper.IRand(0, nearMembers.Count - 1);
             return nearMembers[randTarget];
-        }
-
-        public uint GetComboPoints() { return (uint)GetPower(PowerType.ComboPoints); }
-
-        public void AddComboPoints(sbyte count, Spell spell = null)
-        {
-            if (count == 0)
-                return;
-
-            sbyte comboPoints = (sbyte)(spell != null ? spell.m_comboPointGain : GetPower(PowerType.ComboPoints));
-
-            comboPoints += count;
-
-            if (comboPoints > 5)
-                comboPoints = 5;
-            else if (comboPoints < 0)
-                comboPoints = 0;
-
-            if (!spell)
-                SetPower(PowerType.ComboPoints, comboPoints);
-            else
-                spell.m_comboPointGain = comboPoints;
-        }
-
-        void GainSpellComboPoints(sbyte count)
-        {
-            if (count == 0)
-                return;
-
-            sbyte cp = (sbyte)GetPower(PowerType.ComboPoints);
-
-            cp += count;
-            if (cp > 5) cp = 5;
-            else if (cp < 0) cp = 0;
-
-            SetPower(PowerType.ComboPoints, cp);
-        }
-
-        public void ClearComboPoints()
-        {
-            SetPower(PowerType.ComboPoints, 0);
         }
 
         public void ClearAllReactives()
@@ -3482,7 +3484,7 @@ namespace Game.Entities
 
             uint bossLevel = 83;
             float bossResistanceConstant = 510.0f;
-            uint level = caster ? victim.GetLevelForTarget(caster) : victim.GetLevel();
+            uint level = caster != null ? victim.GetLevelForTarget(caster) : victim.GetLevel();
             float resistanceConstant;
 
             if (level == bossLevel)
@@ -3495,7 +3497,7 @@ namespace Game.Entities
 
         public static void CalcAbsorbResist(DamageInfo damageInfo, Spell spell = null)
         {
-            if (!damageInfo.GetVictim() || !damageInfo.GetVictim().IsAlive() || damageInfo.GetDamage() == 0)
+            if (damageInfo.GetVictim() == null || !damageInfo.GetVictim().IsAlive() || damageInfo.GetDamage() == 0)
                 return;
 
             uint resistedDamage = CalcSpellResistedDamage(damageInfo.GetAttacker(), damageInfo.GetVictim(), damageInfo.GetDamage(), damageInfo.GetSchoolMask(), damageInfo.GetSpellInfo());
@@ -3689,7 +3691,7 @@ namespace Game.Entities
 
                     // Damage can be splitted only if aura has an alive caster
                     Unit caster = itr.GetCaster();
-                    if (!caster || (caster == damageInfo.GetVictim()) || !caster.IsInWorld || !caster.IsAlive())
+                    if (caster == null || (caster == damageInfo.GetVictim()) || !caster.IsInWorld || !caster.IsAlive())
                         continue;
 
                     uint splitDamage = MathFunctions.CalculatePct(damageInfo.GetDamage(), itr.GetAmount());
@@ -3787,7 +3789,7 @@ namespace Game.Entities
                 if (currentAbsorb != 0)
                 {
                     SpellHealAbsorbLog absorbLog = new();
-                    absorbLog.Healer = healInfo.GetHealer() ? healInfo.GetHealer().GetGUID() : ObjectGuid.Empty;
+                    absorbLog.Healer = healInfo.GetHealer() != null ? healInfo.GetHealer().GetGUID() : ObjectGuid.Empty;
                     absorbLog.Target = healInfo.GetTarget().GetGUID();
                     absorbLog.AbsorbCaster = absorbAurEff.GetBase().GetCasterGUID();
                     absorbLog.AbsorbedSpellID = (int)(healInfo.GetSpellInfo() != null ? healInfo.GetSpellInfo().Id : 0);
@@ -3873,7 +3875,7 @@ namespace Game.Entities
             return (uint)Math.Max(damage * (1.0f - mitigation), 0.0f);
         }
 
-        public uint MeleeDamageBonusDone(Unit victim, uint damage, WeaponAttackType attType, DamageEffectType damagetype, SpellInfo spellProto = null, SpellEffectInfo spellEffectInfo = null, SpellSchoolMask damageSchoolMask = SpellSchoolMask.Normal)
+        public int MeleeDamageBonusDone(Unit victim, int damage, WeaponAttackType attType, DamageEffectType damagetype, SpellInfo spellProto = null, Mechanics mechanic = default, SpellSchoolMask damageSchoolMask = SpellSchoolMask.Normal, Spell spell = null, AuraEffect aurEff = null)
         {
             if (victim == null || damage == 0)
                 return 0;
@@ -3958,13 +3960,26 @@ namespace Game.Entities
                 return false;
             });
 
+            // bonus against target aura mechanic
+            DoneTotalMod *= GetTotalAuraMultiplier(AuraType.ModDamagePercentDoneByTargetAuraMechanic, aurEff =>
+            {
+                if (victim.HasAuraWithMechanic(1ul << aurEff.GetMiscValue()))
+                    return true;
+                return false;
+            });
+
             // Add SPELL_AURA_MOD_DAMAGE_DONE_FOR_MECHANIC percent bonus
-            if (spellEffectInfo != null && spellEffectInfo.Mechanic != 0)
-                MathFunctions.AddPct(ref DoneTotalMod, GetTotalAuraModifierByMiscValue(AuraType.ModDamageDoneForMechanic, (int)spellEffectInfo.Mechanic));
+            if (mechanic != Mechanics.None)
+                MathFunctions.AddPct(ref DoneTotalMod, GetTotalAuraModifierByMiscValue(AuraType.ModDamageDoneForMechanic, (int)mechanic));
             else if (spellProto != null && spellProto.Mechanic != 0)
                 MathFunctions.AddPct(ref DoneTotalMod, GetTotalAuraModifierByMiscValue(AuraType.ModDamageDoneForMechanic, (int)spellProto.Mechanic));
 
-            float damageF = damage;
+            if (spell != null)
+                spell.CallScriptCalcDamageHandlers(victim, ref damage, ref DoneFlatBenefit, ref DoneTotalMod);
+            else if (aurEff != null)
+                aurEff.GetBase().CallScriptCalcDamageAndHealingHandlers(aurEff, aurEff.GetBase().GetApplicationOfTarget(victim.GetGUID()), victim, ref damage, ref DoneFlatBenefit, ref DoneTotalMod);
+
+            float damageF = (float)(damage + DoneFlatBenefit) * DoneTotalMod;
 
             // apply spellmod to Done damage
             if (spellProto != null)
@@ -3974,13 +3989,11 @@ namespace Game.Entities
                     modOwner.ApplySpellMod(spellProto, damagetype == DamageEffectType.DOT ? SpellModOp.PeriodicHealingAndDamage : SpellModOp.HealingAndDamage, ref damageF);
             }
 
-            damageF = (damageF + DoneFlatBenefit) * DoneTotalMod;
-
             // bonus result can be negative
-            return (uint)Math.Max(damageF, 0.0f);
+            return (int)Math.Max(damageF, 0.0f);
         }
 
-        public uint MeleeDamageBonusTaken(Unit attacker, uint pdamage, WeaponAttackType attType, DamageEffectType damagetype, SpellInfo spellProto = null, SpellSchoolMask damageSchoolMask = SpellSchoolMask.Normal)
+        public int MeleeDamageBonusTaken(Unit attacker, int pdamage, WeaponAttackType attType, DamageEffectType damagetype, SpellInfo spellProto = null, SpellSchoolMask damageSchoolMask = SpellSchoolMask.Normal)
         {
             if (pdamage == 0)
                 return 0;
@@ -4057,7 +4070,7 @@ namespace Game.Entities
 
             // Versatility
             Player modOwner = GetSpellModOwner();
-            if (modOwner)
+            if (modOwner != null)
             {
                 // only 50% of SPELL_AURA_MOD_VERSATILITY for damage reduction
                 float versaBonus = modOwner.GetTotalAuraModifier(AuraType.ModVersatility) / 2.0f;
@@ -4083,7 +4096,7 @@ namespace Game.Entities
             }
 
             float tmpDamage = (float)(pdamage + TakenFlatBenefit) * TakenTotalMod;
-            return (uint)Math.Max(tmpDamage, 0.0f);
+            return (int)Math.Max(tmpDamage, 0.0f);
         }
 
         bool IsBlockCritical()
