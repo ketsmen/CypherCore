@@ -2881,7 +2881,6 @@ namespace Game.Entities
             return creatureList;
         }
 
-
         public List<Unit> GetPlayerListInGrid(float maxSearchRange, bool alive = true)
         {
             List<Unit> playerList = new();
@@ -3126,6 +3125,7 @@ namespace Game.Entities
 
         public virtual uint GetFaction() { return 0; }
         public virtual void SetFaction(uint faction) { }
+        public virtual void SetFaction(FactionTemplates faction) { }
 
         //Position
 

@@ -147,6 +147,7 @@ namespace Game.Scripting
                             case "TransportScript":
                             case "AchievementCriteriaScript":
                             case "PlayerScript":
+                            case "AccountScript":
                             case "GuildScript":
                             case "GroupScript":
                             case "AreaTriggerEntityScript":
@@ -267,7 +268,7 @@ namespace Game.Scripting
         {
             UnitAI.FillAISpellInfo();
         }
-        
+
         public List<SplineChainLink> GetSplineChain(Creature who, ushort chainId)
         {
             return GetSplineChain(who.GetEntry(), chainId);
@@ -762,7 +763,7 @@ namespace Game.Scripting
 
             RunScript<AchievementScript>(p => p.OnCompleted(player, achievement), Global.AchievementMgr.GetAchievementScriptId(achievement.Id));
         }
-        
+
         // AchievementCriteriaScript
         public bool OnCriteriaCheck(uint ScriptId, Player source, Unit target)
         {
@@ -801,9 +802,11 @@ namespace Game.Scripting
         {
             ForEach<PlayerScript>(p => p.OnMoneyChanged(player, amount));
         }
-        public void OnGivePlayerXP(Player player, uint amount, Unit victim)
+        public void OnGivePlayerXP(Player player, ref uint amount, Unit victim)
         {
-            ForEach<PlayerScript>(p => p.OnGiveXP(player, amount, victim));
+            uint tempAmount = amount;
+            ForEach<PlayerScript>(p => tempAmount = p.OnGiveXP(player, tempAmount, victim));
+            amount = tempAmount;
         }
         public void OnPlayerReputationChange(Player player, uint factionID, int standing, bool incremental)
         {
@@ -853,9 +856,9 @@ namespace Game.Scripting
         {
             ForEach<PlayerScript>(p => p.OnSpellCast(player, spell, skipCheck));
         }
-        public void OnPlayerLogin(Player player)
+        public void OnPlayerLogin(Player player, bool firstLogin)
         {
-            ForEach<PlayerScript>(p => p.OnLogin(player));
+            ForEach<PlayerScript>(p => p.OnLogin(player, firstLogin));
         }
         public void OnPlayerLogout(Player player)
         {
@@ -900,6 +903,32 @@ namespace Game.Scripting
         public void OnPlayerChoiceResponse(Player player, uint choiceId, uint responseId)
         {
             ForEach<PlayerScript>(p => p.OnPlayerChoiceResponse(player, choiceId, responseId));
+        }
+
+        // Account
+        public void OnAccountLogin(uint accountId)
+        {
+            ForEach<AccountScript>(script => script.OnAccountLogin(accountId));
+        }
+        public void OnFailedAccountLogin(uint accountId)
+        {
+            ForEach<AccountScript>(script => script.OnFailedAccountLogin(accountId));
+        }
+        public void OnEmailChange(uint accountId)
+        {
+            ForEach<AccountScript>(script => script.OnEmailChange(accountId));
+        }
+        public void OnFailedEmailChange(uint accountId)
+        {
+            ForEach<AccountScript>(script => script.OnFailedEmailChange(accountId));
+        }
+        public void OnPasswordChange(uint accountId)
+        {
+            ForEach<AccountScript>(script => script.OnPasswordChange(accountId));
+        }
+        public void OnFailedPasswordChange(uint accountId)
+        {
+            ForEach<AccountScript>(script => script.OnFailedPasswordChange(accountId));
         }
 
         // GuildScript
@@ -1170,7 +1199,7 @@ namespace Game.Scripting
         uint _ScriptCount;
         public Dictionary<uint, SpellSummary> spellSummaryStorage = new();
         Hashtable ScriptStorage = new();
-        
+
         // creature entry + chain ID
         MultiMap<Tuple<uint, ushort>, SplineChainLink> m_mSplineChainsMap = new(); // spline chains
     }
