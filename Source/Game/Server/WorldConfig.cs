@@ -3,6 +3,7 @@
 
 using Framework.Configuration;
 using Framework.Constants;
+using Game.DataStorage;
 using System;
 using System.Collections.Generic;
 
@@ -85,21 +86,27 @@ namespace Game
             Values[WorldCfg.RateReputationLowLevelKill] = GetDefaultValue("Rate.Reputation.LowLevel.Kill", 1.0f);
             Values[WorldCfg.RateReputationLowLevelQuest] = GetDefaultValue("Rate.Reputation.LowLevel.Quest", 1.0f);
             Values[WorldCfg.RateReputationRecruitAFriendBonus] = GetDefaultValue("Rate.Reputation.RecruitAFriendBonus", 0.1f);
-            Values[WorldCfg.RateCreatureNormalDamage] = GetDefaultValue("Rate.Creature.Normal.Damage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteEliteDamage] = GetDefaultValue("Rate.Creature.Elite.Elite.Damage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteRareeliteDamage] = GetDefaultValue("Rate.Creature.Elite.RAREELITE.Damage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteWorldbossDamage] = GetDefaultValue("Rate.Creature.Elite.WORLDBOSS.Damage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteRareDamage] = GetDefaultValue("Rate.Creature.Elite.RARE.Damage", 1.0f);
-            Values[WorldCfg.RateCreatureNormalHp] = GetDefaultValue("Rate.Creature.Normal.HP", 1.0f);
-            Values[WorldCfg.RateCreatureEliteEliteHp] = GetDefaultValue("Rate.Creature.Elite.Elite.HP", 1.0f);
-            Values[WorldCfg.RateCreatureEliteRareeliteHp] = GetDefaultValue("Rate.Creature.Elite.RAREELITE.HP", 1.0f);
-            Values[WorldCfg.RateCreatureEliteWorldbossHp] = GetDefaultValue("Rate.Creature.Elite.WORLDBOSS.HP", 1.0f);
-            Values[WorldCfg.RateCreatureEliteRareHp] = GetDefaultValue("Rate.Creature.Elite.RARE.HP", 1.0f);
-            Values[WorldCfg.RateCreatureNormalSpelldamage] = GetDefaultValue("Rate.Creature.Normal.SpellDamage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteEliteSpelldamage] = GetDefaultValue("Rate.Creature.Elite.Elite.SpellDamage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteRareeliteSpelldamage] = GetDefaultValue("Rate.Creature.Elite.RAREELITE.SpellDamage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteWorldbossSpelldamage] = GetDefaultValue("Rate.Creature.Elite.WORLDBOSS.SpellDamage", 1.0f);
-            Values[WorldCfg.RateCreatureEliteRareSpelldamage] = GetDefaultValue("Rate.Creature.Elite.RARE.SpellDamage", 1.0f);
+            Values[WorldCfg.RateCreatureHpNormal] = GetDefaultValue("Rate.Creature.HP.Normal", 1.0f);
+            Values[WorldCfg.RateCreatureHpElite] = GetDefaultValue("Rate.Creature.HP.Elite", 1.0f);
+            Values[WorldCfg.RateCreatureHpRareelite] = GetDefaultValue("Rate.Creature.HP.RareElite", 1.0f);
+            Values[WorldCfg.RateCreatureHpObsolete] = GetDefaultValue("Rate.Creature.HP.Obsolete", 1.0f);
+            Values[WorldCfg.RateCreatureHpRare] = GetDefaultValue("Rate.Creature.HP.Rare", 1.0f);
+            Values[WorldCfg.RateCreatureHpTrivial] = GetDefaultValue("Rate.Creature.HP.Trivial", 1.0f);
+            Values[WorldCfg.RateCreatureHpMinusmob] = GetDefaultValue("Rate.Creature.HP.MinusMob", 1.0f);
+            Values[WorldCfg.RateCreatureDamageNormal] = GetDefaultValue("Rate.Creature.Damage.Normal", 1.0f);
+            Values[WorldCfg.RateCreatureDamageElite] = GetDefaultValue("Rate.Creature.Damage.Elite", 1.0f);
+            Values[WorldCfg.RateCreatureDamageRareelite] = GetDefaultValue("Rate.Creature.Damage.RareElite", 1.0f);
+            Values[WorldCfg.RateCreatureDamageObsolete] = GetDefaultValue("Rate.Creature.Damage.Obsolete", 1.0f);
+            Values[WorldCfg.RateCreatureDamageRare] = GetDefaultValue("Rate.Creature.Damage.Rare", 1.0f);
+            Values[WorldCfg.RateCreatureDamageTrivial] = GetDefaultValue("Rate.Creature.Damage.Trivial", 1.0f);
+            Values[WorldCfg.RateCreatureDamageMinusmob] = GetDefaultValue("Rate.Creature.Damage.MinusMob", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageNormal] = GetDefaultValue("Rate.Creature.SpellDamage.Normal", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageElite] = GetDefaultValue("Rate.Creature.SpellDamage.Elite", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageRareelite] = GetDefaultValue("Rate.Creature.SpellDamage.RareElite", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageObsolete] = GetDefaultValue("Rate.Creature.SpellDamage.Obsolete", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageRare] = GetDefaultValue("Rate.Creature.SpellDamage.Rare", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageTrivial] = GetDefaultValue("Rate.Creature.SpellDamage.Trivial", 1.0f);
+            Values[WorldCfg.RateCreatureSpelldamageMinusmob] = GetDefaultValue("Rate.Creature.SpellDamage.MinusMob", 1.0f);
             Values[WorldCfg.RateCreatureAggro] = GetDefaultValue("Rate.Creature.Aggro", 1.0f);
             Values[WorldCfg.RateRestIngame] = GetDefaultValue("Rate.Rest.InGame", 1.0f);
             Values[WorldCfg.RateRestOfflineInTavernOrCity] = GetDefaultValue("Rate.Rest.Offline.InTavernOrCity", 1.0f);
@@ -226,6 +233,7 @@ namespace Game
                 Values[WorldCfg.InstancemapLoadGrids] = false;
             }
 
+            Values[WorldCfg.BattlegroundMapLoadGrids] = GetDefaultValue("BattlegroundMapLoadAllGrids", true);
             Values[WorldCfg.IntervalSave] = GetDefaultValue("PlayerSaveInterval", 15 * Time.Minute * Time.InMilliseconds);
             Values[WorldCfg.IntervalDisconnectTolerance] = GetDefaultValue("DisconnectToleranceInterval", 0);
             Values[WorldCfg.StatsSaveOnlyOnLogout] = GetDefaultValue("PlayerSave.Stats.SaveOnlyOnLogout", true);
@@ -312,12 +320,12 @@ namespace Game
 
             if (reload)
             {
-                int val = (int)GetDefaultValue("RealmZone", RealmZones.Development);
+                int val = (int)GetDefaultValue("RealmZone", RealmManager.HardcodedDevelopmentRealmCategoryId);
                 if (val != (int)Values[WorldCfg.RealmZone])
                     Log.outError(LogFilter.ServerLoading, "RealmZone option can't be changed at worldserver.conf reload, using current value ({0}).", Values[WorldCfg.RealmZone]);
             }
             else
-                Values[WorldCfg.RealmZone] = GetDefaultValue("RealmZone", (int)RealmZones.Development);
+                Values[WorldCfg.RealmZone] = GetDefaultValue("RealmZone", RealmManager.HardcodedDevelopmentRealmCategoryId);
 
             Values[WorldCfg.AllowTwoSideInteractionCalendar] = GetDefaultValue("AllowTwoSide.Interaction.Calendar", false);
             Values[WorldCfg.AllowTwoSideInteractionChannel] = GetDefaultValue("AllowTwoSide.Interaction.Channel", false);
@@ -686,11 +694,13 @@ namespace Game
             Values[WorldCfg.ChatStrictLinkCheckingSeverity] = GetDefaultValue("ChatStrictLinkChecking.Severity", 0);
             Values[WorldCfg.ChatStrictLinkCheckingKick] = GetDefaultValue("ChatStrictLinkChecking.Kick", 0);
 
-            Values[WorldCfg.CorpseDecayNormal] = GetDefaultValue("Corpse.Decay.NORMAL", 60);
-            Values[WorldCfg.CorpseDecayRare] = GetDefaultValue("Corpse.Decay.RARE", 300);
-            Values[WorldCfg.CorpseDecayElite] = GetDefaultValue("Corpse.Decay.ELITE", 300);
-            Values[WorldCfg.CorpseDecayRareelite] = GetDefaultValue("Corpse.Decay.RAREELITE", 300);
-            Values[WorldCfg.CorpseDecayWorldboss] = GetDefaultValue("Corpse.Decay.WORLDBOSS", 3600);
+            Values[WorldCfg.CorpseDecayNormal] = GetDefaultValue("Corpse.Decay.Normal", 60);
+            Values[WorldCfg.CorpseDecayElite] = GetDefaultValue("Corpse.Decay.Elite", 300);
+            Values[WorldCfg.CorpseDecayRareelite] = GetDefaultValue("Corpse.Decay.RareElite", 300);
+            Values[WorldCfg.CorpseDecayObsolete] = GetDefaultValue("Corpse.Decay.Obsolete", 3600);
+            Values[WorldCfg.CorpseDecayRare] = GetDefaultValue("Corpse.Decay.Rare", 300);
+            Values[WorldCfg.CorpseDecayTrivial] = GetDefaultValue("Corpse.Decay.Trivial", 300);
+            Values[WorldCfg.CorpseDecayMinusMob] = GetDefaultValue("Corpse.Decay.MinusMob", 150);
 
             Values[WorldCfg.DeathSicknessLevel] = GetDefaultValue("Death.SicknessLevel", 11);
             Values[WorldCfg.DeathCorpseReclaimDelayPvp] = GetDefaultValue("Death.CorpseReclaimDelay.PvP", true);
@@ -702,9 +712,7 @@ namespace Game
 
             Values[WorldCfg.ThreatRadius] = GetDefaultValue("ThreatRadius", 60.0f);
 
-            // always use declined names in the russian client
-            Values[WorldCfg.DeclinedNamesUsed] = (RealmZones)Values[WorldCfg.RealmZone] == RealmZones.Russian || GetDefaultValue("DeclinedNames", false);
-
+            Values[WorldCfg.DeclinedNamesUsed] = GetDefaultValue("DeclinedNames", false);
             Values[WorldCfg.ListenRangeSay] = GetDefaultValue("ListenRange.Say", 25.0f);
             Values[WorldCfg.ListenRangeTextemote] = GetDefaultValue("ListenRange.TextEmote", 25.0f);
             Values[WorldCfg.ListenRangeYell] = GetDefaultValue("ListenRange.Yell", 300.0f);
@@ -997,6 +1005,9 @@ namespace Game
 
             // Specifies if IP addresses can be logged to the database
             Values[WorldCfg.AllowLogginIpAddressesInDatabase] = GetDefaultValue("AllowLoggingIPAddressesInDatabase", true);
+
+            // Enable AE loot
+            Values[WorldCfg.EnableAeLoot] = GetDefaultValue("Loot.EnableAELoot", true);
 
             // call ScriptMgr if we're reloading the configuration
             if (reload)

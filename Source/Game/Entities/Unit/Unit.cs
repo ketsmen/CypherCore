@@ -108,7 +108,8 @@ namespace Game.Entities
             ASSERT(m_ownedAuras.empty());
             ASSERT(m_removedAuras.empty());
             ASSERT(m_gameObj.empty());
-            ASSERT(m_dynObj.empty());*/
+            ASSERT(m_dynObj.empty());
+            ASSERT(m_areaTrigger.empty());*/
 
             base.Dispose();
         }
@@ -671,7 +672,7 @@ namespace Game.Entities
         public void RemoveAllDynObjects()
         {
             while (!m_dynObj.Empty())
-                m_dynObj.First().Remove();
+                m_dynObj.Last().Remove();
         }
 
         public GameObject GetGameObject(uint spellId)
@@ -813,9 +814,6 @@ namespace Game.Entities
 
         public void RemoveAreaTrigger(uint spellId)
         {
-            if (m_areaTrigger.Empty())
-                return;
-
             for (var i = 0; i < m_areaTrigger.Count; ++i)
             {
                 AreaTrigger areaTrigger = m_areaTrigger[i];
@@ -826,9 +824,6 @@ namespace Game.Entities
 
         public void RemoveAreaTrigger(AuraEffect aurEff)
         {
-            if (m_areaTrigger.Empty())
-                return;
-
             foreach (AreaTrigger areaTrigger in m_areaTrigger)
             {
                 if (areaTrigger.GetAuraEffect() == aurEff)
@@ -842,7 +837,7 @@ namespace Game.Entities
         public void RemoveAllAreaTriggers()
         {
             while (!m_areaTrigger.Empty())
-                m_areaTrigger[0].Remove();
+                m_areaTrigger.Last()?.Remove();
         }
 
         public NPCFlags GetNpcFlags() { return (NPCFlags)m_unitData.NpcFlags[0]; }
@@ -1500,27 +1495,11 @@ namespace Game.Entities
                 }
             }
 
-            uint modelid = 0;
             SpellShapeshiftFormRecord formEntry = CliDB.SpellShapeshiftFormStorage.LookupByKey(form);
-            if (formEntry != null && formEntry.CreatureDisplayID[0] != 0)
-            {
-                // Take the alliance modelid as default
-                if (GetTypeId() != TypeId.Player)
-                    return formEntry.CreatureDisplayID[0];
-                else
-                {
-                    if (Player.TeamForRace(GetRace()) == Team.Alliance)
-                        modelid = formEntry.CreatureDisplayID[0];
-                    else
-                        modelid = formEntry.CreatureDisplayID[1];
+            if (formEntry != null && formEntry.CreatureDisplayID != 0)
+                return formEntry.CreatureDisplayID;
 
-                    // If the player is horde but there are no values for the horde modelid - take the alliance modelid
-                    if (modelid == 0 && Player.TeamForRace(GetRace()) == Team.Horde)
-                        modelid = formEntry.CreatureDisplayID[0];
-                }
-            }
-
-            return modelid;
+            return 0;
         }
 
         public Totem ToTotem() { return IsTotem() ? (this as Totem) : null; }
@@ -1572,6 +1551,7 @@ namespace Game.Entities
                 SetHealth(0);
                 SetPower(GetPowerType(), 0);
                 SetEmoteState(Emote.OneshotNone);
+                SetStandState(UnitStandStateType.Stand);
 
                 // players in instance don't have ZoneScript, but they have InstanceScript
                 ZoneScript zoneScript = GetZoneScript() != null ? GetZoneScript() : GetInstanceScript();
@@ -1929,7 +1909,7 @@ namespace Game.Entities
         public virtual float GetNativeObjectScale() { return 1.0f; }
 
         public float GetDisplayScale() { return m_unitData.DisplayScale; }
-        
+
         public uint GetDisplayId() { return m_unitData.DisplayID; }
 
         public virtual void SetDisplayId(uint displayId, bool setNative = false)
@@ -2082,7 +2062,7 @@ namespace Game.Entities
             udata.BuildPacket(out packet);
             player.SendPacket(packet);
         }
-        public ObjectGuid GetCreatorGUID() { return m_unitData.CreatedBy; }
+        public override ObjectGuid GetCreatorGUID() { return m_unitData.CreatedBy; }
         public void SetCreatorGUID(ObjectGuid creator) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.CreatedBy), creator); }
         public ObjectGuid GetMinionGUID() { return m_unitData.Summon; }
         public void SetMinionGUID(ObjectGuid guid) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.Summon), guid); }
@@ -2108,7 +2088,17 @@ namespace Game.Entities
             return IsCharmed() ? GetCharmerGUID() : GetOwnerGUID();
         }
 
-        Player GetControllingPlayer()
+        public Unit GetDemonCreator()
+        {
+            return Global.ObjAccessor.GetUnit(this, GetDemonCreatorGUID());
+        }
+
+        public Player GetDemonCreatorPlayer()
+        {
+            return Global.ObjAccessor.GetPlayer(this, GetDemonCreatorGUID());
+        }
+
+        public Player GetControllingPlayer()
         {
             ObjectGuid guid = GetCharmerOrOwnerGUID();
             if (!guid.IsEmpty())
@@ -2698,7 +2688,7 @@ namespace Game.Entities
 
                 duel_hasEnded = true;
             }
-            else if (victim.IsCreature() && damageTaken >= health && victim.ToCreature().HasFlag(CreatureStaticFlags.Unkillable))
+            else if (victim.IsCreature() && victim != attacker && damageTaken >= health && victim.ToCreature().HasFlag(CreatureStaticFlags.Unkillable))
             {
                 damageTaken = health - 1;
 
@@ -2729,7 +2719,7 @@ namespace Game.Entities
                 if (killer != null)
                 {
                     // in bg, count dmg if victim is also a player
-                    if (victim.IsPlayer())
+                    if (victim.IsPlayer() && !(spellProto != null && spellProto.HasAttribute(SpellAttr7.DoNotCountForPvpScoreboard)))
                     {
                         Battleground bg = killer.GetBattleground();
                         if (bg != null)
@@ -2869,7 +2859,7 @@ namespace Game.Entities
 
                 if (damagetype != DamageEffectType.NoDamage && damagetype != DamageEffectType.DOT)
                 {
-                    if (victim != attacker && (spellProto == null || !(spellProto.HasAttribute(SpellAttr6.NoPushback) || spellProto.HasAttribute(SpellAttr7.NoPushbackOnDamage) || spellProto.HasAttribute(SpellAttr3.TreatAsPeriodic))))
+                    if (victim != attacker && (spellProto == null || !(spellProto.HasAttribute(SpellAttr6.NoPushback) || spellProto.HasAttribute(SpellAttr7.DontCauseSpellPushback) || spellProto.HasAttribute(SpellAttr3.TreatAsPeriodic))))
                     {
                         Spell spell = victim.GetCurrentSpell(CurrentSpellTypes.Generic);
                         if (spell != null)
@@ -3415,7 +3405,7 @@ namespace Game.Entities
                     discreteResistProbability[i] = Math.Max(0.5f - 2.5f * Math.Abs(0.1f * i - averageResist), 0.0f);
             }
 
-            float roll = (float)RandomHelper.NextDouble();
+            float roll = RandomHelper.NextSingle();
             float probabilitySum = 0.0f;
 
             uint resistance = 0;

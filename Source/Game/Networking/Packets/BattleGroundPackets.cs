@@ -310,15 +310,23 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(WargameArenas);
             _worldPacket.WriteBit(RatedArenas);
             _worldPacket.WriteBit(ArenaSkirmish);
+            _worldPacket.WriteBit(SoloShuffle);
+            _worldPacket.WriteBit(RatedSoloShuffle);
+            _worldPacket.WriteBit(BattlegroundBlitz);
+            _worldPacket.WriteBit(RatedBattlegroundBlitz);
             _worldPacket.FlushBits();
         }
 
+        public bool RatedBattlegrounds;
+        public bool PugBattlegrounds;
+        public bool WargameBattlegrounds;
         public bool WargameArenas;
         public bool RatedArenas;
-        public bool WargameBattlegrounds;
         public bool ArenaSkirmish;
-        public bool PugBattlegrounds;
-        public bool RatedBattlegrounds;
+        public bool SoloShuffle;
+        public bool RatedSoloShuffle;
+        public bool BattlegroundBlitz;
+        public bool RatedBattlegroundBlitz; // solo rbg
     }
 
     class RequestBattlefieldStatus : ClientPacket
@@ -473,7 +481,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt32(MapID);
             _worldPacket.WriteUInt8((byte)State);
             _worldPacket.WriteInt64(StartTime);
-            _worldPacket.WriteInt32(Duration);
+            _worldPacket.WriteInt64(Duration);
             _worldPacket.WriteUInt8(ArenaFaction);
             _worldPacket.WriteUInt32(BattlemasterListID);
             _worldPacket.WriteBit(Registered);
@@ -488,7 +496,7 @@ namespace Game.Networking.Packets
         public uint MapID;
         public PVPMatchState State = PVPMatchState.Inactive;
         public long StartTime;
-        public int Duration;
+        public long Duration;
         public RatedMatchDeserterPenalty DeserterPenalty;
         public byte ArenaFaction;
         public uint BattlemasterListID;
@@ -510,7 +518,7 @@ namespace Game.Networking.Packets
 
         PVPMatchState State;
     }
-    
+
     class PVPMatchComplete : ServerPacket
     {
         public PVPMatchComplete() : base(ServerOpcodes.PvpMatchComplete, ConnectionType.Instance) { }
@@ -518,7 +526,7 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WriteUInt8(Winner);
-            _worldPacket.WriteInt32(Duration);
+            _worldPacket.WriteInt64(Duration);
             _worldPacket.WriteBit(LogData != null);
             _worldPacket.WriteBits(SoloShuffleStatus, 2);
             _worldPacket.FlushBits();
@@ -528,7 +536,7 @@ namespace Game.Networking.Packets
         }
 
         public byte Winner;
-        public int Duration;
+        public long Duration;
         public PVPMatchStatistics LogData;
         public uint SoloShuffleStatus;
     }

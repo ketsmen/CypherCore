@@ -63,6 +63,7 @@ namespace Framework.Constants
         SceneInProgress = 55,        // SceneScriptPackageId    0              0                  true if player is playing a scene with ScriptPackageId equal to given value
         PlayerCondition = 56,        // PlayerConditionId       0              0                  true if player satisfies PlayerCondition
         PrivateObject = 57,          // 0                       0              0                  true if entity is private object
+        StringId = 58,
         Max
     }
 
@@ -102,6 +103,9 @@ namespace Framework.Constants
         TrainerSpell = 31,
         ObjectIdVisibility = 32,
         SpawnGroup = 33,
+
+        MaxDbAllowed,
+        ReferenceCondition = MaxDbAllowed,
         Max
     }
 
@@ -119,7 +123,8 @@ namespace Framework.Constants
     public enum InstanceInfo
     {
         Data = 0,
-        Data64,
-        BossState
+        GuidData,
+        BossState,
+        Data64
     }
 }

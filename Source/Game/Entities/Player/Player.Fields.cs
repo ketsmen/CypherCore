@@ -110,6 +110,7 @@ namespace Game.Entities
         public Spell m_spellModTakingSpell;
         uint m_oldpetspell;
         Dictionary<uint, StoredAuraTeleportLocation> m_storedAuraTeleportLocations = new();
+        SpellCastRequest _pendingSpellCastRequest;
 
         //Mail
         List<Mail> m_mail = new();
@@ -143,7 +144,7 @@ namespace Game.Entities
         uint m_titanGripPenaltySpellId;
         uint m_deathTimer;
         long m_deathExpireTime;
-        byte m_swingErrorMsg;
+        AttackSwingErr? m_swingErrorMsg;
         DateTime m_regenInterruptTimestamp;
         uint m_regenTimerCount;
         uint m_foodEmoteTimerCount;
@@ -237,7 +238,6 @@ namespace Game.Entities
         TimeTracker m_groupUpdateTimer;
 
         ulong m_GuildIdInvited;
-        DeclinedName _declinedname;
         Runes m_runes = new();
         uint m_hostileReferenceCheckTimer;
         uint m_drunkTimer;
@@ -578,7 +578,7 @@ namespace Game.Entities
         public byte bgAfkReportedCount;
         public long bgAfkReportedTimer;
 
-        public uint bgTeam;                          //< What side the player will be added to
+        public Team bgTeam;                          //< What side the player will be added to
 
         public uint mountSpell;
         public uint[] taxiPath = new uint[2];
@@ -673,6 +673,6 @@ namespace Game.Entities
     struct QuestObjectiveStatusData
     {
         public (uint QuestID, QuestStatusData Status) QuestStatusPair;
-        public QuestObjective Objective;
+        public uint ObjectiveId;
     }
 }

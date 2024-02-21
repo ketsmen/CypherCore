@@ -86,20 +86,19 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockSpire.OverlordWyrmt
             if (!Summoned && HealthBelowPct(51))
             {
                 Unit target = SelectTarget(SelectTargetMethod.Random, 0, 100, true);
-                if (target)
+                if (target != null)
                 {
                     Creature warlord = me.SummonCreature(MiscConst.NpcSpirestoneWarlord, MiscConst.SummonLocation1, TempSummonType.TimedDespawn, TimeSpan.FromMinutes(5));
-                    if (warlord)
+                    if (warlord != null)
                         warlord.GetAI().AttackStart(target);
                     Creature berserker = me.SummonCreature(MiscConst.NpcSmolderthornBerserker, MiscConst.SummonLocation2, TempSummonType.TimedDespawn, TimeSpan.FromMinutes(5));
-                    if (berserker)
+                    if (berserker != null)
                         berserker.GetAI().AttackStart(target);
                     Summoned = true;
                 }
             }
 
-            _scheduler.Update(diff, () => DoMeleeAttackIfReady());
+            _scheduler.Update(diff);
         }
     }
 }
-

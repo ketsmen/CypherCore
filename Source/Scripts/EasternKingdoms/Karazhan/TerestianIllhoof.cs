@@ -55,7 +55,7 @@ namespace Scripts.EasternKingdoms.Karazhan.TerestianIllhoof
             _scheduler.Schedule(TimeSpan.FromSeconds(1), task =>
             {
                 Unit target = SelectTarget(SelectTargetMethod.MaxThreat, 0);
-                if (target)
+                if (target != null)
                     DoCast(target, SpellIds.ShadowBolt);
                 task.Repeat(TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(10));
             });
@@ -67,7 +67,7 @@ namespace Scripts.EasternKingdoms.Karazhan.TerestianIllhoof
             _scheduler.Schedule(TimeSpan.FromSeconds(30), task =>
             {
                 Unit target = SelectTarget(SelectTargetMethod.Random, 0, 100.0f, true);
-                if (target)
+                if (target != null)
                 {
                     DoCast(target, SpellIds.Sacrifice, new CastSpellExtraArgs(true));
                     target.CastSpell(target, SpellIds.SummonDemonchains, true);
@@ -124,7 +124,7 @@ namespace Scripts.EasternKingdoms.Karazhan.TerestianIllhoof
 
         public override void UpdateAI(uint diff)
         {
-            _scheduler.Update(diff, () => DoMeleeAttackIfReady());
+            _scheduler.Update(diff);
         }
     }
 
@@ -153,10 +153,7 @@ namespace Scripts.EasternKingdoms.Karazhan.TerestianIllhoof
             if (!UpdateVictim())
                 return;
 
-            _scheduler.Update(diff, () =>
-            {
-                DoMeleeAttackIfReady();
-            });
+            _scheduler.Update(diff);
         }
     }
 
@@ -176,7 +173,7 @@ namespace Scripts.EasternKingdoms.Karazhan.TerestianIllhoof
         public override void JustDied(Unit killer)
         {
             Unit sacrifice = Global.ObjAccessor.GetUnit(me, _sacrificeGUID);
-            if (sacrifice)
+            if (sacrifice != null)
                 sacrifice.RemoveAurasDueToSpell(SpellIds.Sacrifice);
         }
     }
@@ -239,7 +236,7 @@ namespace Scripts.EasternKingdoms.Karazhan.TerestianIllhoof
             if (!UpdateVictim())
                 return;
 
-            _scheduler.Update(diff, () => DoMeleeAttackIfReady());
+            _scheduler.Update(diff);
         }
     }
 }

@@ -31,10 +31,7 @@ namespace Game.Arenas
 
         public override void AddPlayer(Player player, BattlegroundQueueTypeId queueId)
         {
-            bool isInBattleground = IsPlayerInBattleground(player.GetGUID());
             base.AddPlayer(player, queueId);
-            if (!isInBattleground)
-                PlayerScores[player.GetGUID()] = new ArenaScore(player.GetGUID(), player.GetBGTeam());
 
             if (player.GetBGTeam() == Team.Alliance)        // gold
             {
@@ -149,17 +146,17 @@ namespace Game.Arenas
 
                 // In case of arena draw, follow this logic:
                 // winnerArenaTeam => ALLIANCE, loserArenaTeam => HORDE
-                ArenaTeam winnerArenaTeam = Global.ArenaTeamMgr.GetArenaTeamById(GetArenaTeamIdForTeam(winner == 0 ? Team.Alliance : winner));
-                ArenaTeam loserArenaTeam = Global.ArenaTeamMgr.GetArenaTeamById(GetArenaTeamIdForTeam(winner == 0 ? Team.Horde : GetOtherTeam(winner)));
+                ArenaTeam winnerArenaTeam = Global.ArenaTeamMgr.GetArenaTeamById(GetArenaTeamIdForTeam(winner == Team.Other ? Team.Alliance : winner));
+                ArenaTeam loserArenaTeam = Global.ArenaTeamMgr.GetArenaTeamById(GetArenaTeamIdForTeam(winner == Team.Other ? Team.Horde : GetOtherTeam(winner)));
 
                 if (winnerArenaTeam != null && loserArenaTeam != null && winnerArenaTeam != loserArenaTeam)
                 {
                     // In case of arena draw, follow this logic:
                     // winnerMatchmakerRating => ALLIANCE, loserMatchmakerRating => HORDE
                     loserTeamRating = loserArenaTeam.GetRating();
-                    loserMatchmakerRating = GetArenaMatchmakerRating(winner == 0 ? Team.Horde : GetOtherTeam(winner));
+                    loserMatchmakerRating = GetArenaMatchmakerRating(winner == Team.Other ? Team.Horde : GetOtherTeam(winner));
                     winnerTeamRating = winnerArenaTeam.GetRating();
-                    winnerMatchmakerRating = GetArenaMatchmakerRating(winner == 0 ? Team.Alliance : winner);
+                    winnerMatchmakerRating = GetArenaMatchmakerRating(winner == Team.Other ? Team.Alliance : winner);
 
                     if (winner != 0)
                     {
@@ -182,7 +179,7 @@ namespace Game.Arenas
                         _arenaTeamScores[loserTeam].Assign(loserTeamRating, (uint)(loserTeamRating + loserChange), loserMatchmakerRating, GetArenaMatchmakerRating(GetOtherTeam(winner)));
 
                         Log.outDebug(LogFilter.Arena, "Arena match Type: {0} for Team1Id: {1} - Team2Id: {2} ended. WinnerTeamId: {3}. Winner rating: +{4}, Loser rating: {5}",
-                            GetArenaType(), GetArenaTeamIdByIndex(TeamId.Alliance), GetArenaTeamIdByIndex(TeamId.Horde), winnerArenaTeam.GetId(), winnerChange, loserChange);
+                            GetArenaType(), GetArenaTeamIdByIndex(BatttleGroundTeamId.Alliance), GetArenaTeamIdByIndex(BatttleGroundTeamId.Horde), winnerArenaTeam.GetId(), winnerChange, loserChange);
 
                         if (WorldConfig.GetBoolValue(WorldCfg.ArenaLogExtendedInfo))
                         {
@@ -237,6 +234,7 @@ namespace Game.Arenas
                         {
                             // update achievement BEFORE personal rating update
                             uint rating = player.GetArenaPersonalRating(winnerArenaTeam.GetSlot());
+                            player.StartCriteria(CriteriaStartEvent.WinRankedArenaMatchWithTeamSize, 0);
                             player.UpdateCriteria(CriteriaType.WinAnyRankedArena, rating != 0 ? rating : 1);
                             player.UpdateCriteria(CriteriaType.WinArena, GetMapId());
 
@@ -266,7 +264,7 @@ namespace Game.Arenas
                             loserArenaTeam.MemberLost(player, winnerMatchmakerRating, loserMatchmakerChange);
 
                             // Arena lost => reset the win_rated_arena having the "no_lose" condition
-                            player.ResetCriteria(CriteriaFailEvent.LoseRankedArenaMatchWithTeamSize, 0);
+                            player.FailCriteria(CriteriaFailEvent.LoseRankedArenaMatchWithTeamSize, 0);
                         }
                     }
 

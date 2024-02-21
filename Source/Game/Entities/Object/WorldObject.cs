@@ -114,7 +114,7 @@ namespace Game.Entities
 
             var area = CliDB.AreaTableStorage.LookupByKey(m_areaId);
             if (area != null)
-                if (area.ParentAreaID != 0)
+                if (area.ParentAreaID != 0 && area.GetFlags().HasFlag(AreaFlags.IsSubzone))
                     m_zoneId = area.ParentAreaID;
 
             m_outdoors = data.outdoors;
@@ -429,20 +429,20 @@ namespace Game.Entities
             {
                 AreaTrigger areaTrigger = ToAreaTrigger();
                 AreaTriggerCreateProperties createProperties = areaTrigger.GetCreateProperties();
-                AreaTriggerTemplate areaTriggerTemplate = areaTrigger.GetTemplate();
                 AreaTriggerShapeInfo shape = areaTrigger.GetShape();
 
                 data.WriteUInt32(areaTrigger.GetTimeSinceCreated());
 
                 data.WriteVector3(areaTrigger.GetRollPitchYaw());
 
-                bool hasAbsoluteOrientation = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasAbsoluteOrientation);
-                bool hasDynamicShape = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasDynamicShape);
-                bool hasAttached = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasAttached);
-                bool hasFaceMovementDir = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasFaceMovementDir);
-                bool hasFollowsTerrain = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasFollowsTerrain);
-                bool hasUnk1 = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.Unk1);
-                bool hasTargetRollPitchYaw = areaTriggerTemplate != null && areaTriggerTemplate.HasFlag(AreaTriggerFlags.HasTargetRollPitchYaw);
+                bool hasAbsoluteOrientation = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasAbsoluteOrientation);
+                bool hasDynamicShape = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasDynamicShape);
+                bool hasAttached = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasAttached);
+                bool hasFaceMovementDir = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasFaceMovementDir);
+                bool hasFollowsTerrain = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasFollowsTerrain);
+                bool hasUnk1 = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.Unk1);
+                bool hasUnknown1025 = false;
+                bool hasTargetRollPitchYaw = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasTargetRollPitchYaw);
                 bool hasScaleCurveID = createProperties != null && createProperties.ScaleCurveId != 0;
                 bool hasMorphCurveID = createProperties != null && createProperties.MorphCurveId != 0;
                 bool hasFacingCurveID = createProperties != null && createProperties.FacingCurveId != 0;
@@ -452,7 +452,7 @@ namespace Game.Entities
                 bool hasAreaTriggerPolygon = createProperties != null && shape.IsPolygon();
                 bool hasAreaTriggerCylinder = shape.IsCylinder();
                 bool hasDisk = shape.IsDisk();
-                bool hasBoundedPlane = shape.IsBoudedPlane();
+                bool hasBoundedPlane = shape.IsBoundedPlane();
                 bool hasAreaTriggerSpline = areaTrigger.HasSplines();
                 bool hasOrbit = areaTrigger.HasOrbit();
                 bool hasMovementScript = false;
@@ -463,6 +463,7 @@ namespace Game.Entities
                 data.WriteBit(hasFaceMovementDir);
                 data.WriteBit(hasFollowsTerrain);
                 data.WriteBit(hasUnk1);
+                data.WriteBit(hasUnknown1025);
                 data.WriteBit(hasTargetRollPitchYaw);
                 data.WriteBit(hasScaleCurveID);
                 data.WriteBit(hasMorphCurveID);
@@ -525,15 +526,15 @@ namespace Game.Entities
 
                 if (hasAreaTriggerPolygon)
                 {
-                    data.WriteInt32(createProperties.PolygonVertices.Count);
-                    data.WriteInt32(createProperties.PolygonVerticesTarget.Count);
+                    data.WriteInt32(shape.PolygonVertices.Count);
+                    data.WriteInt32(shape.PolygonVerticesTarget.Count);
                     data.WriteFloat(shape.PolygonDatas.Height);
                     data.WriteFloat(shape.PolygonDatas.HeightTarget);
 
-                    foreach (var vertice in createProperties.PolygonVertices)
+                    foreach (var vertice in shape.PolygonVertices)
                         data.WriteVector2(vertice);
 
-                    foreach (var vertice in createProperties.PolygonVerticesTarget)
+                    foreach (var vertice in shape.PolygonVerticesTarget)
                         data.WriteVector2(vertice);
                 }
 
@@ -574,7 +575,7 @@ namespace Game.Entities
                 //    *data << *areaTrigger.GetMovementScript(); // AreaTriggerMovementScriptInfo
 
                 if (hasOrbit)
-                    areaTrigger.GetCircularMovementInfo().Write(data);
+                    areaTrigger.GetOrbit().Write(data);
             }
 
             if (flags.GameObject)
@@ -832,6 +833,15 @@ namespace Game.Entities
             }
         }
 
+        public void SetUpdateFieldValue(ref string value, string newValue)
+        {
+            if (!newValue.Equals(value))
+            {
+                value = newValue;
+                AddToObjectUpdateIfNeeded();
+            }
+        }
+
         public void SetUpdateFieldValue<T>(DynamicUpdateField<T> updateField, int index, T newValue) where T : new()
         {
             if (!newValue.Equals(updateField[index]))
@@ -847,6 +857,12 @@ namespace Game.Entities
             SetUpdateFieldValue(updateField, (T)(updateField.GetValue() | (dynamic)flag));
         }
 
+        public void SetUpdateFieldFlagValue<T>(DynamicUpdateField<T> updateField, int index, T flag) where T : new()
+        {
+            //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
+            InsertDynamicUpdateFieldValue(updateField, index, (T)(updateField[index] | (dynamic)flag));
+        }
+
         public void SetUpdateFieldFlagValue<T>(ref T value, T flag) where T : new()
         {
             //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
@@ -857,6 +873,12 @@ namespace Game.Entities
         {
             //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
             SetUpdateFieldValue(updateField, (T)(updateField.GetValue() & ~(dynamic)flag));
+        }
+
+        public void RemoveUpdateFieldFlagValue<T>(DynamicUpdateField<T> updateField, int index, T flag) where T : new()
+        {
+            //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
+            InsertDynamicUpdateFieldValue(updateField, index, (T)(updateField[index] & ~(dynamic)flag));
         }
 
         public void RemoveUpdateFieldFlagValue<T>(ref T value, T flag) where T : new()
@@ -1714,11 +1736,11 @@ namespace Game.Entities
             return searcher.GetTarget();
         }
 
-        public Player SelectNearestPlayer(float distance)
+        public Player SelectNearestPlayer(float range)
         {
-            var checker = new NearestPlayerInObjectRangeCheck(this, distance);
+            var checker = new NearestPlayerInObjectRangeCheck(this, range);
             var searcher = new PlayerLastSearcher(this, checker);
-            Cell.VisitAllObjects(this, searcher, distance);
+            Cell.VisitWorldObjects(this, searcher, range);
             return searcher.GetTarget();
         }
 
@@ -1917,7 +1939,7 @@ namespace Game.Entities
                 return duration;
 
             // some auras are not affected by duration modifiers
-            if (spellInfo.HasAttribute(SpellAttr7.IgnoreDurationMods))
+            if (spellInfo.HasAttribute(SpellAttr7.NoTargetDurationMod))
                 return duration;
 
             // cut duration only of negative effects
@@ -2004,7 +2026,7 @@ namespace Game.Entities
             if (spellInfo == null || duration < 0)
                 return;
 
-            if (spellInfo.IsChanneled() && !spellInfo.HasAttribute(SpellAttr5.SpellHasteAffectsPeriodic))
+            if (spellInfo.IsChanneled() && !spellInfo.HasAttribute(SpellAttr5.SpellHasteAffectsPeriodic) && !spellInfo.HasAttribute(SpellAttr8.MeleeHasteAffectsPeriodic))
                 return;
 
             // called from caster
@@ -2163,7 +2185,7 @@ namespace Game.Entities
                 reflectchance += victim.GetTotalAuraModifierByMiscMask(AuraType.ReflectSpellsSchool, (int)spellInfo.GetSchoolMask());
 
                 if (reflectchance > 0 && RandomHelper.randChance(reflectchance))
-                    return SpellMissInfo.Reflect;
+                    return spellInfo.HasAttribute(SpellAttr7.ReflectionOnlyDefends) ? SpellMissInfo.Deflect : SpellMissInfo.Reflect;
             }
 
             if (spellInfo.HasAttribute(SpellAttr3.AlwaysHit))
@@ -2594,7 +2616,7 @@ namespace Game.Entities
                 if (!unitTarget.HasUnitFlag(UnitFlags.PlayerControlled) && unitOrOwner.IsImmuneToNPC())
                     return false;
 
-                if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.AttackIgnoreImmuneToPCFlag))
+                if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.AttackIgnoreImmuneToPcFlag))
                 {
                     if (unitOrOwner.HasUnitFlag(UnitFlags.PlayerControlled) && unitTarget.IsImmuneToPC())
                         return false;
@@ -2664,7 +2686,8 @@ namespace Game.Entities
 
             // PvP case - can't attack when attacker or target are in sanctuary
             // however, 13850 client doesn't allow to attack when one of the unit's has sanctuary flag and is pvp
-            if (unitTarget != null && unitTarget.HasUnitFlag(UnitFlags.PlayerControlled) && unitOrOwner != null && unitOrOwner.HasUnitFlag(UnitFlags.PlayerControlled) && (unitTarget.IsInSanctuary() || unitOrOwner.IsInSanctuary()))
+            if (unitTarget != null && unitTarget.HasUnitFlag(UnitFlags.PlayerControlled) && unitOrOwner != null && unitOrOwner.HasUnitFlag(UnitFlags.PlayerControlled)
+                && (unitTarget.IsInSanctuary() || unitOrOwner.IsInSanctuary()) && (bySpell == null || bySpell.HasAttribute(SpellAttr8.IgnoreSanctuary)))
                 return false;
 
             // additional checks - only PvP case
@@ -2738,7 +2761,7 @@ namespace Game.Entities
             {
                 if (unit != null && unit.HasUnitFlag(UnitFlags.PlayerControlled))
                 {
-                    if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.AttackIgnoreImmuneToPCFlag))
+                    if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.AttackIgnoreImmuneToPcFlag))
                         if (unitTarget != null && unitTarget.IsImmuneToPC())
                             return false;
                 }
@@ -2771,7 +2794,7 @@ namespace Game.Entities
                         return false;
 
                     // can't assist player out of sanctuary from sanctuary if has pvp enabled
-                    if (unitTarget.IsPvP())
+                    if (unitTarget.IsPvP() && (bySpell == null || bySpell.HasAttribute(SpellAttr8.IgnoreSanctuary)))
                         if (unit.IsInSanctuary() && !unitTarget.IsInSanctuary())
                             return false;
                 }
@@ -2836,7 +2859,7 @@ namespace Game.Entities
         {
             return spellInfo.GetSpellXSpellVisualId(this);
         }
-        
+
         public List<GameObject> GetGameObjectListWithEntryInGrid(uint entry = 0, float maxSearchRange = 250.0f)
         {
             List<GameObject> gameobjectList = new();
@@ -3120,6 +3143,7 @@ namespace Game.Entities
 
         public virtual bool LoadFromDB(ulong spawnId, Map map, bool addToMap, bool allowDuplicate) { return true; }
 
+        public virtual ObjectGuid GetCreatorGUID() { return default; }
         public virtual ObjectGuid GetOwnerGUID() { return default; }
         public virtual ObjectGuid GetCharmerOrOwnerGUID() { return GetOwnerGUID(); }
 
@@ -3387,12 +3411,12 @@ namespace Game.Entities
             }
 
             // angle to face `obj` to `this`
-            float angle = (float)RandomHelper.NextDouble() * (2 * MathFunctions.PI);
-            float new_dist = (float)RandomHelper.NextDouble() + (float)RandomHelper.NextDouble();
+            float angle = RandomHelper.NextSingle() * (2 * MathFunctions.PI);
+            float new_dist = RandomHelper.NextSingle() + RandomHelper.NextSingle();
             new_dist = distance * (new_dist > 1 ? new_dist - 2 : new_dist);
 
-            rand_x = (float)(pos.posX + new_dist * Math.Cos(angle));
-            rand_y = (float)(pos.posY + new_dist * Math.Sin(angle));
+            rand_x = (pos.posX + new_dist * MathF.Cos(angle));
+            rand_y = (pos.posY + new_dist * MathF.Sin(angle));
             rand_z = pos.posZ;
 
             GridDefines.NormalizeMapCoord(ref rand_x);
@@ -3568,7 +3592,7 @@ namespace Game.Entities
         public Position GetRandomNearPosition(float radius)
         {
             var pos = GetPosition();
-            MovePosition(pos, radius * (float)RandomHelper.NextDouble(), (float)RandomHelper.NextDouble() * MathFunctions.PI * 2);
+            MovePosition(pos, radius * RandomHelper.NextSingle(), RandomHelper.NextSingle() * MathFunctions.PI * 2);
             return pos;
         }
 
@@ -4088,5 +4112,6 @@ namespace Game.Entities
 
         public ObjectGuid? OwnerGuid;
         public ObjectGuid? PrivateObjectOwnerGuid;
+        public GameObjectTypes? GameObjectType;
     }
 }

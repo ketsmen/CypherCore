@@ -260,6 +260,7 @@ namespace Framework.Constants
         Enrage = 9,
         ZGTicket = 10,
         OldUnused = 11,
+        Max,
 
         AllMask = ((1 << Magic) | (1 << Curse) | (1 << Disease) | (1 << Poison))
     }
@@ -1783,7 +1784,7 @@ namespace Framework.Constants
         IgnoreCasterAndTargetRestrictions = 0x10000000, /*Nyi*/ // Ignore Caster & Target Restrictions
         IgnoreCasterModifiers = 0x20000000, // Ignore Caster Modifiers
         DoNotDisplayRange = 0x40000000, // Do Not Display Range (Client Only)
-        NotOnAoeImmune = 0x80000000  /*Nyi, No Aoe Immunity Implementation*/ // Not On Aoe Immune
+        NotOnAoeImmune = 0x80000000  // Not On Aoe Immune
     }
     public enum SpellAttr4 : uint
     {
@@ -1892,73 +1893,73 @@ namespace Framework.Constants
     }
     public enum SpellAttr7 : uint
     {
-        Unk0 = 0x01, //  0 Shaman'S New Spells (Call Of The ...), Feign Death.
-        IgnoreDurationMods = 0x02, //  1 Duration is not affected by duration modifiers
-        ReactivateAtResurrect = 0x04, //  2 Paladin'S Auras And 65607 Only.
-        IsCheatSpell = 0x08, //  3 Cannot Cast If Caster Doesn'T Have Unitflag2 & UnitFlag2AllowCheatSpells
-        Unk4 = 0x10, //  4 Only 47883 (Soulstone Resurrection) And Test Spell.
-        SummonTotem = 0x20, //  5 Only Shaman Player Totems.
-        NoPushbackOnDamage = 0x40, //  6 Does not cause spell pushback on damage
-        Unk7 = 0x80, //  7 66218 (Launch) Spell.
-        HordeOnly = 0x100, //  8 Teleports, Mounts And Other Spells.
-        AllianceOnly = 0x200, //  9 Teleports, Mounts And Other Spells.
-        DispelCharges = 0x400, // 10 Dispel And Spellsteal Individual Charges Instead Of Whole Aura.
-        InterruptOnlyNonplayer = 0x800, // 11 Only Non-Player Casts Interrupt, Though Feral Charge - Bear Has It.
-        SilenceOnlyNonplayer = 0x1000, // 12 Not Set In 3.2.2a.
-        CanAlwaysBeInterrupted = 0x2000, // 13 Can always be interrupted, even if caster is immune
-        Unk14 = 0x4000, // 14 Only 52150 (Raise Dead - Pet) Spell.
-        Unk15 = 0x8000, // 15 Exorcism. Usable On Players? 100% Crit Chance On Undead And Demons?
-        HiddenInSpellbookWhenLearned = 0x10000, // 16 After learning these spells become hidden in spellbook (but are visible when not learned for low level characters)
-        Unk17 = 0x20000, // 17 Only 27965 (Suicide) Spell.
-        HasChargeEffect = 0x40000, // 18 Only Spells That Have Charge Among Effects.
-        ZoneTeleport = 0x80000, // 19 Teleports To Specific Zones.
-        Unk20 = 0x100000, // 20 Blink, Divine Shield, Ice Block
-        Unk21 = 0x200000, // 21 Not Set
-        Unk22 = 0x400000, // 22
-        NoAttackDodge = 0x800000, // 23 No Attack Dodge
-        NoAttackParry = 0x1000000, // 24 No Attack Parry
+        AllowSpellReflection = 0x01, // Allow Spell Reflection
+        NoTargetDurationMod = 0x02, // No Target Duration Mod
+        DisableAuraWhileDead = 0x04, // Disable Aura While Dead
+        DebugSpell = 0x08, // Debug Spell Description Cannot Cast If Caster Doesn'T Have Unitflag2 & UnitFlag2AllowCheatSpells
+        TreatAsRaidBuff = 0x10, /*Nyi*/ // Treat As Raid Buff
+        CanBeMultiCast = 0x20, // Can Be Multi Cast
+        DontCauseSpellPushback = 0x40, // Don'T Cause Spell Pushback Description Damage Dealt By This Does Not Cause Spell Pushback
+        PrepareForVehicleControlEnd = 0x80, /*Nyi*/ // Prepare For Vehicle Control End
+        HordeSpecificSpell = 0x100, /*Nyi*/ // Horde Specific Spell
+        AllianceSpecificSpell = 0x200, /*Nyi*/ // Alliance Specific Spell
+        DispelRemovesCharges = 0x400, // Dispel Removes Charges Description Dispel/Spellsteal Remove Individual Charges
+        CanCauseInterrupt = 0x800, // Can Cause Interrupt Description Only Interrupt Non-Player Casting
+        CanCauseSilence = 0x1000, /*Nyi*/ // Can Cause Silence
+        NoUiNotInterruptible = 0x2000, // No Ui Not Interruptible Description Can Always Be Interrupted, Even If Caster Is Immune
+        RecastOnResummon = 0x4000, /*Nyi - Deprecated Attribute, There Is No SpellGo Sent Anymore On Pet Resummon*/ // Recast On Resummon
+        ResetSwingTimerAtSpellStart = 0x8000, // Reset Swing Timer At Spell Start
+        OnlyInSpellbookUntilLearned = 0x10000, // Only In Spellbook Until Learned Description After Learning These Spells Become Hidden In Spellbook (But Are Visible When Not Learned For Low Level Characters)
+        DoNotLogPvpKill = 0x20000, /*Nyi, Only Used By 1 Spell That Is Already Filtered Out In Pvp Credits Because Its Self Targeting*/ // Do Not Log Pvp Kill
+        AttackOnChargeToUnit = 0x40000, // Attack On Charge To Unit
+        ReportSpellFailureToUnitTarget = 0x80000, // Report Spell Failure To Unit Target
+        NoClientFailWhileStunnedFleeingConfused = 0x100000, // No Client Fail While Stunned, Fleeing, Confused Description Clientside - Skips Stunned/Fleeing/Confused Checks
+        RetainCooldownThroughLoad = 0x200000, /*Nyi*/ // Retain Cooldown Through Load
+        IgnoresColdWeatherFlyingRequirement = 0x400000, /*Nyi - Deprecated Attribute*/ // Ignores Cold Weather Flying Requirement
+        NoAttackDodge = 0x800000, // No Attack Dodge
+        NoAttackParry = 0x1000000, // No Attack Parry
         NoAttackMiss = 0x2000000, // No Attack Miss
-        Unk26 = 0x4000000, // 26
-        BypassNoResurrectAura = 0x8000000, // 27 Bypass No Resurrect Aura
-        ConsolidatedRaidBuff = 0x10000000, // 28 Related To Player Positive Buff
-        Unk29 = 0x20000000, // 29 Only 69028, 71237
-        Unk30 = 0x40000000, // 30 Burning Determination, Divine Sacrifice, Earth Shield, Prayer Of Mending
-        ClientIndicator = 0x80000000  // 31 Only 70769
+        TreatAsNpcAoe = 0x4000000, // Treat As Npc Aoe
+        BypassNoResurrectAura = 0x8000000, // Bypass No Resurrect Aura
+        DoNotCountForPvpScoreboard = 0x10000000, // Do Not Count For Pvp Scoreboard
+        ReflectionOnlyDefends = 0x20000000, // Reflection Only Defends
+        CanProcFromSuppressedTargetProcs = 0x40000000, // Can Proc From Suppressed Target Procs
+        AlwaysCastLog = 0x80000000  // Always Cast Log
     }
     public enum SpellAttr8 : uint
     {
-        CantMiss = 0x01, // 0
-        Unk1 = 0x02, // 1
-        Unk2 = 0x04, // 2
-        Unk3 = 0x08, // 3
-        Unk4 = 0x10, // 4
-        Unk5 = 0x20, // 5
-        Unk6 = 0x40, // 6
-        Unk7 = 0x80, // 7
-        AffectPartyAndRaid = 0x100, // 8
-        PeriodicCanCrit = 0x200, // 9
-        NameChangedDuringTransofrm = 0x400, // 10
-        Unk11 = 0x800, // 11
-        AuraSendAmount = 0x1000, // 12 Aura Must Have Flag AflagAnyEffectAmountSent To Send Amount
-        Unk13 = 0x2000, // 13
-        Unk14 = 0x4000, // 14
-        WaterMount = 0x8000, // 15
-        Unk16 = 0x10000, // 16
-        HasteAffectsDuration = 0x20000, // 17 Haste Affects Duration
-        RememberSpells = 0x40000, // 18
-        UseComboPointsOnAnyTarget = 0x80000, // 19
-        ArmorSpecialization = 0x100000, // 20
-        Unk21 = 0x200000, // 21
-        Unk22 = 0x400000, // 22
-        BattleResurrection = 0x800000, // 23
-        HealingSpell = 0x1000000, // 24
-        Unk25 = 0x2000000, // 25
-        RaidMarker = 0x4000000, // 26 Probably Spell No Need Learn To Cast
-        Unk27 = 0x8000000, // 27
-        NotInBgOrArena = 0x10000000, // 28
-        MasteryAffectPoints = 0x20000000, // 29
-        Unk30 = 0x40000000, // 30
-        AttackIgnoreImmuneToPCFlag = 0x80000000  // 31
+        NoAttackBlock = 0x01, // No Attack Block
+        IgnoreDynamicObjectCaster = 0x02, /*Nyi*/ // Ignore Dynamic Object Caster
+        RemoveOutsideDungeonsAndRaids = 0x04, // Remove Outside Dungeons And Raids
+        OnlyTargetIfSameCreator = 0x08, // Only Target If Same Creator
+        CanHitAoeUntargetable = 0x10, /*Nyi - No Aoe Immunity Implementation*/ // Can Hit Aoe Untargetable
+        AllowWhileCharmed = 0x20, /*Nyi - Not Implementable Currently, Charming Replaces Ai*/ // Allow While Charmed
+        AuraRequiredByClient = 0x40, /*Nyi - We Send All Auras To Client*/ // Aura Required By Client
+        IgnoreSanctuary = 0x80, // Ignore Sanctuary
+        UseTargetsLevelForSpellScaling = 0x100, // Use Target'S Level For Spell Scaling
+        PeriodicCanCrit = 0x200, // Periodic Can Crit
+        MirrorCreatureName = 0x400, // Mirror Creature Name Description Transform Auras Also Override Name (Handled Clientside)
+        OnlyPlayersCanCastThisSpell = 0x800, // Only Players Can Cast This Spell
+        AuraPointsOnClient = 0x1000, // Aura Points On Client
+        NotInSpellbookUntilLearned = 0x2000, // Not In Spellbook Until Learned Description Hides Autolearned Spell From Spellbook Before Learning (Handled Clientside)
+        TargetProcsOnCaster = 0x4000, // Target Procs On Caster Description Target (Taken) Procs Happen On Caster (Actor) Instead Of Aura Target (Action Target)
+        RequiresLocationToBeOnLiquidSurface = 0x8000, // Requires Location To Be On Liquid Surface
+        OnlyTargetOwnSummons = 0x10000, // Only Target Own Summons
+        HasteAffectsDuration = 0x20000, // Haste Affects Duration
+        IgnoreSpellcastOverrideCost = 0x40000, // Ttile Ignore Spellcast Override Cost
+        AllowTargetsHiddenBySpawnTracking = 0x80000, /*Nyi - No Spawn Tracking Implementation*/ // Allow Targets Hidden By Spawn Tracking
+        RequiresEquippedInvTypes = 0x100000, // Requires Equipped Inv Types
+        NoSummonDestFromClientTargetingPathingRequirement = 0x200000, /*Nyi - Vald Path To A Spell Dest Is Not Required Currently If The Dest Comes From Client*/ // No 'Summon + Dest From Client' Targeting Pathing Requirement
+        MeleeHasteAffectsPeriodic = 0x400000, // Melee Haste Affects Periodic
+        EnforceInCombatRessurectionLimit = 0x800000, // Enforce In Combat Ressurection Limit Description Used To Limit The Number Of Resurrections In Boss Encounters
+        HealPrediction = 0x1000000, // Heal Prediction
+        NoLevelUpToast = 0x2000000, // No Level Up Toast
+        SkipIsKnownCheck = 0x4000000, // Skip Is Known Check
+        AiFaceTarget = 0x8000000, /*Nyi - Unknown Facing Conditions, Needs Research*/ // Ai Face Target
+        NotInBattleground = 0x10000000, // Not In Battleground
+        MasteryAffectsPoints = 0x20000000, // Mastery Affects Points
+        DisplayLargeAuraIconOnUnitFramesBossAura = 0x40000000, // Display Large Aura Icon On Unit Frames (Boss Aura)
+        AttackIgnoreImmuneToPcFlag = 0x80000000  // Can Attack Immunepc Description Do Not Check UnitFlagImmuneToPc In Isvalidattacktarget
     }
     public enum SpellAttr9 : uint
     {
@@ -2067,8 +2068,8 @@ namespace Framework.Constants
     }
     public enum SpellAttr12 : uint
     {
-        Unk0 = 0x01, //  0
-        Unk1 = 0x02, //  1
+        EnableProcsFromSuppressedCasterProcs = 0x01, //  0
+        CanProcFromSuppressedCasterProcs = 0x02, //  1
         Unk2 = 0x04, //  2
         Unk3 = 0x08, //  3
         Unk4 = 0x10, //  4
@@ -2122,7 +2123,7 @@ namespace Framework.Constants
         Unk17 = 0x20000, // 17
         ActivatesRequiredShapeshift = 0x40000, // 18
         Unk19 = 0x80000, // 19
-        Unk20 = 0x100000, // 20
+        PeriodicRefreshExtendsDuration = 0x100000, // 20 Periodic Refresh Extends Duration
         Unk21 = 0x200000, // 21
         Unk22 = 0x400000, // 22
         Unk23 = 0x800000, // 23
@@ -2595,7 +2596,7 @@ namespace Framework.Constants
 
         RangedMask = DealRangedAttack | TakeRangedAttack | DealRangedAbility | TakeRangedAbility,
 
-        SpellMask = DealMeleeAbility | TakeMeleeAbility |  DealRangedAttack | TakeRangedAttack
+        SpellMask = DealMeleeAbility | TakeMeleeAbility | DealRangedAttack | TakeRangedAttack
             | DealRangedAbility | TakeRangedAbility | DealHelpfulAbility | TakeHelpfulAbility
             | DealHarmfulAbility | TakeHarmfulAbility | DealHelpfulSpell | TakeHelpfulSpell
             | DealHarmfulSpell | TakeHarmfulSpell | DealHarmfulPeriodic | TakeHarmfulPeriodic | DealHelpfulPeriodic | TakeHelpfulPeriodic,
@@ -2773,7 +2774,7 @@ namespace Framework.Constants
         DestFrontLeft = 71,
         DestCasterRandom = 72,
         DestCasterRadius = 73,
-        DestRandom = 74,
+        DestTargetRandom = 74,
         DestRadius = 75,
         DestChannelTarget = 76,
         UnitChannelTarget = 77,
@@ -2972,5 +2973,19 @@ namespace Framework.Constants
     {
         TargetA = 0,
         TargetB = 1
+    }
+
+    public enum SpellHealPredictionType : byte
+    {
+        Target = 0,
+        TargetAndCaster = 1,
+        TargetAndBeacon = 2,
+        TargetParty = 3,
+    }
+
+    public enum WorldObjectSpellAreaTargetSearchReason
+    {
+        Area,
+        Chain
     }
 }

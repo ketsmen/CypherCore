@@ -1,6 +1,7 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
 using Game.DataStorage;
@@ -55,7 +56,7 @@ namespace Game.AI
                 SmartScriptType source_type = (SmartScriptType)result.Read<byte>(1);
                 if (source_type >= SmartScriptType.Max)
                 {
-                    Log.outError(LogFilter.Sql, "SmartAIMgr.LoadSmartAI: invalid source_type ({0}), skipped loading.", source_type);
+                    Log.outError(LogFilter.Sql, "SmartAIMgr.LoadFromDB: invalid source_type ({0}), skipped loading.", source_type);
                     continue;
                 }
                 if (temp.EntryOrGuid >= 0)
@@ -65,7 +66,7 @@ namespace Game.AI
                         case SmartScriptType.Creature:
                             if (Global.ObjectMgr.GetCreatureTemplate((uint)temp.EntryOrGuid) == null)
                             {
-                                Log.outError(LogFilter.Sql, "SmartAIMgr.LoadSmartAI: Creature entry ({0}) does not exist, skipped loading.", temp.EntryOrGuid);
+                                Log.outError(LogFilter.Sql, "SmartAIMgr.LoadFromDB: Creature entry ({0}) does not exist, skipped loading.", temp.EntryOrGuid);
                                 continue;
                             }
                             break;
@@ -74,7 +75,7 @@ namespace Game.AI
                         {
                             if (Global.ObjectMgr.GetGameObjectTemplate((uint)temp.EntryOrGuid) == null)
                             {
-                                Log.outError(LogFilter.Sql, "SmartAIMgr.LoadSmartAI: GameObject entry ({0}) does not exist, skipped loading.", temp.EntryOrGuid);
+                                Log.outError(LogFilter.Sql, "SmartAIMgr.LoadFromDB: GameObject entry ({0}) does not exist, skipped loading.", temp.EntryOrGuid);
                                 continue;
                             }
                             break;
@@ -83,7 +84,7 @@ namespace Game.AI
                         {
                             if (CliDB.AreaTableStorage.LookupByKey((uint)temp.EntryOrGuid) == null)
                             {
-                                Log.outError(LogFilter.Sql, "SmartAIMgr.LoadSmartAI: AreaTrigger entry ({0}) does not exist, skipped loading.", temp.EntryOrGuid);
+                                Log.outError(LogFilter.Sql, "SmartAIMgr.LoadFromDB: AreaTrigger entry ({0}) does not exist, skipped loading.", temp.EntryOrGuid);
                                 continue;
                             }
                             break;
@@ -101,7 +102,7 @@ namespace Game.AI
                         {
                             if (!Global.ObjectMgr.IsValidEvent((uint)temp.EntryOrGuid))
                             {
-                                Log.outError(LogFilter.Sql, $"SmartAIMgr::LoadSmartAIFromDB: Event id ({temp.EntryOrGuid}) does not exist, skipped loading.");
+                                Log.outError(LogFilter.Sql, $"SmartAIMgr::LoadFromDB: Event id ({temp.EntryOrGuid}) does not exist, skipped loading.");
                                 continue;
                             }
                             break;
@@ -126,11 +127,11 @@ namespace Game.AI
                             }
                             break;
                         }
-                        case SmartScriptType.AreaTriggerEntityServerside:
+                        case SmartScriptType.AreaTriggerEntityCustom:
                         {
                             if (Global.AreaTriggerDataStorage.GetAreaTriggerTemplate(new AreaTriggerId((uint)temp.EntryOrGuid, true)) == null)
                             {
-                                Log.outError(LogFilter.Sql, $"SmartAIMgr.LoadFromDB: AreaTrigger entry ({temp.EntryOrGuid} IsServerSide true) does not exist, skipped loading.");
+                                Log.outError(LogFilter.Sql, $"SmartAIMgr.LoadFromDB: AreaTrigger entry ({temp.EntryOrGuid} IsCustom true) does not exist, skipped loading.");
                                 continue;
                             }
                             break;
@@ -199,36 +200,60 @@ namespace Game.AI
                 temp.SourceType = source_type;
                 temp.EventId = result.Read<ushort>(2);
                 temp.Link = result.Read<ushort>(3);
-                temp.Event.type = (SmartEvents)result.Read<byte>(4);
-                temp.Event.event_phase_mask = result.Read<ushort>(5);
-                temp.Event.event_chance = result.Read<byte>(6);
-                temp.Event.event_flags = (SmartEventFlags)result.Read<ushort>(7);
 
-                temp.Event.raw.param1 = result.Read<uint>(8);
-                temp.Event.raw.param2 = result.Read<uint>(9);
-                temp.Event.raw.param3 = result.Read<uint>(10);
-                temp.Event.raw.param4 = result.Read<uint>(11);
-                temp.Event.raw.param5 = result.Read<uint>(12);
-                temp.Event.param_string = result.Read<string>(13);
+                bool invalidDifficulties = false;
+                foreach (string token in result.Read<string>(4).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!Enum.TryParse<Difficulty>(token, out Difficulty difficultyId))
+                    {
+                        invalidDifficulties = true;
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr::LoadFromDB: Invalid difficulties for entryorguid ({temp.EntryOrGuid}) source_type ({temp.GetScriptType()}) id ({temp.EventId}), skipped loading.");
+                        break;
+                    }
 
-                temp.Action.type = (SmartActions)result.Read<byte>(14);
-                temp.Action.raw.param1 = result.Read<uint>(15);
-                temp.Action.raw.param2 = result.Read<uint>(16);
-                temp.Action.raw.param3 = result.Read<uint>(17);
-                temp.Action.raw.param4 = result.Read<uint>(18);
-                temp.Action.raw.param5 = result.Read<uint>(19);
-                temp.Action.raw.param6 = result.Read<uint>(20);
-                temp.Action.raw.param7 = result.Read<uint>(21);
+                    if (difficultyId != 0 && !CliDB.DifficultyStorage.ContainsKey(difficultyId))
+                    {
+                        invalidDifficulties = true;
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr::LoadFromDB: Invalid difficulty id ({difficultyId}) for entryorguid ({temp.EntryOrGuid}) source_type ({temp.GetScriptType()}) id ({temp.EventId}), skipped loading.");
+                        break;
+                    }
 
-                temp.Target.type = (SmartTargets)result.Read<byte>(22);
-                temp.Target.raw.param1 = result.Read<uint>(23);
-                temp.Target.raw.param2 = result.Read<uint>(24);
-                temp.Target.raw.param3 = result.Read<uint>(25);
-                temp.Target.raw.param4 = result.Read<uint>(26);
-                temp.Target.x = result.Read<float>(27);
-                temp.Target.y = result.Read<float>(28);
-                temp.Target.z = result.Read<float>(29);
-                temp.Target.o = result.Read<float>(30);
+                    temp.Difficulties.Add(difficultyId);
+                }
+
+                if (invalidDifficulties)
+                    continue;
+
+                temp.Event.type = (SmartEvents)result.Read<byte>(5);
+                temp.Event.event_phase_mask = result.Read<ushort>(6);
+                temp.Event.event_chance = result.Read<byte>(7);
+                temp.Event.event_flags = (SmartEventFlags)result.Read<ushort>(8);
+
+                temp.Event.raw.param1 = result.Read<uint>(9);
+                temp.Event.raw.param2 = result.Read<uint>(10);
+                temp.Event.raw.param3 = result.Read<uint>(11);
+                temp.Event.raw.param4 = result.Read<uint>(12);
+                temp.Event.raw.param5 = result.Read<uint>(13);
+                temp.Event.param_string = result.Read<string>(14);
+
+                temp.Action.type = (SmartActions)result.Read<byte>(15);
+                temp.Action.raw.param1 = result.Read<uint>(16);
+                temp.Action.raw.param2 = result.Read<uint>(17);
+                temp.Action.raw.param3 = result.Read<uint>(18);
+                temp.Action.raw.param4 = result.Read<uint>(19);
+                temp.Action.raw.param5 = result.Read<uint>(20);
+                temp.Action.raw.param6 = result.Read<uint>(21);
+                temp.Action.raw.param7 = result.Read<uint>(22);
+
+                temp.Target.type = (SmartTargets)result.Read<byte>(23);
+                temp.Target.raw.param1 = result.Read<uint>(24);
+                temp.Target.raw.param2 = result.Read<uint>(25);
+                temp.Target.raw.param3 = result.Read<uint>(26);
+                temp.Target.raw.param4 = result.Read<uint>(27);
+                temp.Target.x = result.Read<float>(28);
+                temp.Target.y = result.Read<float>(29);
+                temp.Target.z = result.Read<float>(30);
+                temp.Target.o = result.Read<float>(31);
 
                 //check target
                 if (!IsTargetValid(temp))
@@ -908,6 +933,11 @@ namespace Game.AI
                 Log.outError(LogFilter.ScriptsAi, "SmartAIMgr: EntryOrGuid {0} using event({1}) has invalid event flags ({2}), skipped.", e.EntryOrGuid, e.EventId, e.Event.event_flags);
                 return false;
             }
+            if (e.Event.event_flags.HasFlag(SmartEventFlags.Deprecated))
+            {
+                Log.outError(LogFilter.Sql, $"SmartAIMgr: EntryOrGuid {e.EntryOrGuid} using event ({e.EventId}) has deprecated event flags ({e.Event.event_flags}), skipped.");
+                return false;
+            }
             if (e.Link != 0 && e.Link == e.EventId)
             {
                 Log.outError(LogFilter.Sql, "SmartAIMgr: EntryOrGuid {0} SourceType {1}, Event {2}, Event is linking self (infinite loop), skipped.", e.EntryOrGuid, e.GetScriptType(), e.EventId);
@@ -1093,9 +1123,9 @@ namespace Game.AI
                     }
                     case SmartEvents.AreatriggerOntrigger:
                     {
-                        if (e.Event.areatrigger.id != 0 && (e.GetScriptType() == SmartScriptType.AreaTriggerEntity || e.GetScriptType() == SmartScriptType.AreaTriggerEntityServerside))
+                        if (e.Event.areatrigger.id != 0 && (e.GetScriptType() == SmartScriptType.AreaTriggerEntity || e.GetScriptType() == SmartScriptType.AreaTriggerEntityCustom))
                         {
-                            Log.outError(LogFilter.Sql, $"SmartAIMgr: Entry {e.EntryOrGuid} SourceType {e.GetScriptType()} Event {e.EventId} Action {e.GetActionType()} areatrigger param not supported for SMART_SCRIPT_TYPE_AREATRIGGER_ENTITY and SMART_SCRIPT_TYPE_AREATRIGGER_ENTITY_SERVERSIDE, skipped.");
+                            Log.outError(LogFilter.Sql, $"SmartAIMgr: Entry {e.EntryOrGuid} SourceType {e.GetScriptType()} Event {e.EventId} Action {e.GetActionType()} areatrigger param not supported for SMART_SCRIPT_TYPE_AREATRIGGER_ENTITY and SMART_SCRIPT_TYPE_AREATRIGGER_ENTITY_CUSTOM, skipped.");
                             return false;
                         }
 
@@ -1615,7 +1645,7 @@ namespace Game.AI
                 case SmartActions.WpStart:
                 {
                     WaypointPath path = Global.WaypointMgr.GetPath(e.Action.wpStart.pathID);
-                    if (path == null || path.nodes.Empty())
+                    if (path == null || path.Nodes.Empty())
                     {
                         Log.outError(LogFilter.ScriptsAi, $"SmartAIMgr: {e} uses non-existent WaypointPath id {e.Action.wpStart.pathID}, skipped.");
                         return false;
@@ -1841,7 +1871,7 @@ namespace Game.AI
                         return false;
                     }
 
-                    if (areaEntry.ParentAreaID != 0)
+                    if (areaEntry.ParentAreaID != 0 && areaEntry.GetFlags().HasFlag(AreaFlags.IsSubzone))
                     {
                         Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} uses subzone (ID: {e.Action.overrideLight.zoneId}) instead of zone, skipped.");
                         return false;
@@ -1870,7 +1900,7 @@ namespace Game.AI
                         return false;
                     }
 
-                    if (areaEntry.ParentAreaID != 0)
+                    if (areaEntry.ParentAreaID != 0 && areaEntry.GetFlags().HasFlag(AreaFlags.IsSubzone))
                     {
                         Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} uses subzone (ID: {e.Action.overrideWeather.zoneId}) instead of zone, skipped.");
                         return false;
@@ -2321,7 +2351,7 @@ namespace Game.AI
                 SmartScriptType.TimedActionlist => SmartScriptTypeMaskId.TimedActionlist,
                 SmartScriptType.Scene => SmartScriptTypeMaskId.Scene,
                 SmartScriptType.AreaTriggerEntity => SmartScriptTypeMaskId.AreatrigggerEntity,
-                SmartScriptType.AreaTriggerEntityServerside => SmartScriptTypeMaskId.AreatrigggerEntity,
+                SmartScriptType.AreaTriggerEntityCustom => SmartScriptTypeMaskId.AreatrigggerEntity,
                 _ => 0,
             };
 
@@ -2434,6 +2464,8 @@ namespace Game.AI
         public SmartScriptType SourceType;
         public uint EventId;
         public uint Link;
+        public List<Difficulty> Difficulties = new();
+
         public SmartEvent Event;
         public SmartAction Action;
         public SmartTarget Target;

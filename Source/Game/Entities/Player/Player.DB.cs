@@ -333,7 +333,6 @@ namespace Game.Entities
         void _LoadSkills(SQLResult result)
         {
             Race race = GetRace();
-            uint count = 0;
             Dictionary<uint, uint> loadedSkillValues = new();
             List<ushort> loadedProfessionsWithoutSlot = new(); // fixup old characters
             if (!result.IsEmpty())
@@ -414,22 +413,37 @@ namespace Game.Entities
                 while (result.NextRow());
             }
             // Learn skill rewarded spells after all skills have been loaded to prevent learning a skill from them before its loaded with proper value from DB
-            foreach (var skill in loadedSkillValues)
+            foreach (var (skillId, skillValue) in loadedSkillValues)
             {
-                LearnSkillRewardedSpells(skill.Key, skill.Value, race);
-                List<SkillLineRecord> childSkillLines = Global.DB2Mgr.GetSkillLinesForParentSkill(skill.Key);
+                LearnSkillRewardedSpells(skillId, skillValue, race);
+
+                // enable parent skill line if missing
+                var skillEntry = CliDB.SkillLineStorage.LookupByKey(skillId);
+                if (skillEntry.ParentSkillLineID != 0 && skillEntry.ParentTierIndex > 0 && GetSkillStep(skillEntry.ParentSkillLineID) < skillEntry.ParentTierIndex)
+                {
+                    var rcEntry = Global.DB2Mgr.GetSkillRaceClassInfo(skillEntry.ParentSkillLineID, GetRace(), GetClass());
+                    if (rcEntry != null)
+                    {
+                        var tier = Global.ObjectMgr.GetSkillTier(rcEntry.SkillTierID);
+                        if (tier != null)
+                            SetSkill(skillEntry.ParentSkillLineID, (uint)skillEntry.ParentTierIndex, Math.Max(GetPureSkillValue(skillEntry.ParentSkillLineID), 1u), tier.GetValueForTierIndex(skillEntry.ParentTierIndex - 1));
+                    }
+                }
+
+                List<SkillLineRecord> childSkillLines = Global.DB2Mgr.GetSkillLinesForParentSkill(skillId);
                 if (childSkillLines != null)
                 {
-                    foreach (var childItr in childSkillLines)
+                    foreach (var childSkillLine in childSkillLines)
                     {
                         if (mSkillStatus.Count >= SkillConst.MaxPlayerSkills)
                             break;
 
-                        if (!mSkillStatus.ContainsKey(childItr.Id))
+                        if (!mSkillStatus.ContainsKey(childSkillLine.Id))
                         {
-                            SetSkillLineId(count, (ushort)childItr.Id);
-                            SetSkillStartingRank(count, 1);
-                            mSkillStatus.Add(childItr.Id, new SkillStatusData(count, SkillState.Unchanged));
+                            uint pos = (uint)mSkillStatus.Count;
+                            SetSkillLineId(pos, (ushort)childSkillLine.Id);
+                            SetSkillStartingRank(pos, 1);
+                            mSkillStatus.Add(childSkillLine.Id, new SkillStatusData(pos, SkillState.Unchanged));
                         }
                     }
                 }
@@ -465,7 +479,7 @@ namespace Game.Entities
                 do
                 {
                     var spell = m_spells.LookupByKey(favoritesResult.Read<uint>(0));
-                    if (spell !=null)
+                    if (spell != null)
                         spell.Favorite = true;
                 } while (favoritesResult.NextRow());
             }
@@ -707,6 +721,10 @@ namespace Game.Entities
         void _LoadQuestStatus(SQLResult result)
         {
             ushort slot = 0;
+
+            long lastDailyReset = Global.WorldMgr.GetNextDailyQuestsResetTime() - Time.Day;
+            long lastWeeklyReset = Global.WorldMgr.GetNextWeeklyQuestsResetTime() - Time.Week;
+
             if (!result.IsEmpty())
             {
                 do
@@ -714,64 +732,73 @@ namespace Game.Entities
                     uint questId = result.Read<uint>(0);
                     // used to be new, no delete?
                     Quest quest = Global.ObjectMgr.GetQuestTemplate(questId);
-                    if (quest != null)
+                    if (quest == null)
+                        continue;
+
+                    // find or create
+                    QuestStatusData questStatusData = new();
+
+                    QuestStatus qstatus = (QuestStatus)result.Read<byte>(1);
+                    if (qstatus < QuestStatus.Max)
+                        questStatusData.Status = qstatus;
+                    else
                     {
-                        // find or create
-                        QuestStatusData questStatusData = new();
-
-                        byte qstatus = result.Read<byte>(1);
-                        if (qstatus < (byte)QuestStatus.Max)
-                            questStatusData.Status = (QuestStatus)qstatus;
-                        else
-                        {
-                            questStatusData.Status = QuestStatus.Incomplete;
-                            Log.outError(LogFilter.Player, "Player {0} (GUID: {1}) has invalid quest {2} status ({3}), replaced by QUEST_STATUS_INCOMPLETE(3).",
-                                GetName(), GetGUID().ToString(), questId, qstatus);
-                        }
-
-                        questStatusData.Explored = result.Read<byte>(2) > 0;
-
-                        long acceptTime = result.Read<long>(3);
-                        long endTime = result.Read<long>(4);
-
-                        if (quest.LimitTime != 0 && !GetQuestRewardStatus(questId))
-                        {
-                            AddTimedQuest(questId);
-
-                            if (endTime <= GameTime.GetGameTime())
-                                questStatusData.Timer = 1;
-                            else
-                                questStatusData.Timer = (uint)((endTime - GameTime.GetGameTime()) * Time.InMilliseconds);
-                        }
-                        else
-                            endTime = 0;
-
-                        // add to quest log
-                        if (slot < SharedConst.MaxQuestLogSize && questStatusData.Status != QuestStatus.None)
-                        {
-                            questStatusData.Slot = slot;
-
-                            foreach (QuestObjective obj in quest.Objectives)
-                                m_questObjectiveStatus.Add((obj.Type, obj.ObjectID), new QuestObjectiveStatusData() { QuestStatusPair = (questId, questStatusData), Objective = obj });
-
-                            SetQuestSlot(slot, questId);
-                            SetQuestSlotEndTime(slot, endTime);
-                            questStatusData.AcceptTime = acceptTime;
-
-                            if (questStatusData.Status == QuestStatus.Complete)
-                                SetQuestSlotState(slot, QuestSlotStateMask.Complete);
-                            else if (questStatusData.Status == QuestStatus.Failed)
-                                SetQuestSlotState(slot, QuestSlotStateMask.Fail);
-
-                            if (quest.HasFlagEx(QuestFlagsEx.RecastAcceptSpellOnLogin) && quest.HasFlag(QuestFlags.PlayerCastAccept) && quest.SourceSpellID > 0)
-                                CastSpell(this, quest.SourceSpellID, new CastSpellExtraArgs(TriggerCastFlags.FullMask));
-
-                            ++slot;
-                        }
-
-                        m_QuestStatus[questId] = questStatusData;
-                        Log.outDebug(LogFilter.ServerLoading, "Quest status is {0} for quest {1} for player (GUID: {2})", questStatusData.Status, questId, GetGUID().ToString());
+                        questStatusData.Status = QuestStatus.Incomplete;
+                        Log.outError(LogFilter.Player, $"Player._LoadQuestStatus: Player '{GetName()}' ({GetGUID()}) has invalid quest {questId} status ({qstatus}), replaced by QUEST_STATUS_INCOMPLETE(3).");
                     }
+
+                    questStatusData.Explored = result.Read<byte>(2) > 0;
+
+                    questStatusData.AcceptTime = result.Read<long>(3);
+                    if (quest.HasFlagEx(QuestFlagsEx.RemoveOnPeriodicReset))
+                    {
+                        if ((quest.IsDaily() && questStatusData.AcceptTime < lastDailyReset)
+                            || (quest.IsWeekly() && questStatusData.AcceptTime < lastWeeklyReset))
+                        {
+                            questStatusData.Status = QuestStatus.None;
+                            m_QuestStatusSave[questId] = QuestSaveType.Delete;
+                            SendPacket(new QuestForceRemoved(questId));
+                        }
+                    }
+
+                    long endTime = result.Read<long>(4);
+                    if (quest.LimitTime != 0 && !GetQuestRewardStatus(questId))
+                    {
+                        AddTimedQuest(questId);
+
+                        if (endTime <= GameTime.GetGameTime())
+                            questStatusData.Timer = 1;
+                        else
+                            questStatusData.Timer = (uint)((endTime - GameTime.GetGameTime()) * Time.InMilliseconds);
+                    }
+                    else
+                        endTime = 0;
+
+                    // add to quest log
+                    if (slot < SharedConst.MaxQuestLogSize && questStatusData.Status != QuestStatus.None)
+                    {
+                        questStatusData.Slot = slot;
+
+                        foreach (QuestObjective obj in quest.Objectives)
+                            m_questObjectiveStatus.Add((obj.Type, obj.ObjectID), new QuestObjectiveStatusData() { QuestStatusPair = (questId, questStatusData), ObjectiveId = obj.Id });
+
+                        SetQuestSlot(slot, questId);
+                        SetQuestSlotEndTime(slot, endTime);
+
+                        if (questStatusData.Status == QuestStatus.Complete)
+                            SetQuestSlotState(slot, QuestSlotStateMask.Complete);
+                        else if (questStatusData.Status == QuestStatus.Failed)
+                            SetQuestSlotState(slot, QuestSlotStateMask.Fail);
+
+                        if (quest.HasFlagEx(QuestFlagsEx.RecastAcceptSpellOnLogin) && quest.HasFlag(QuestFlags.PlayerCastAccept) && quest.SourceSpellID > 0)
+                            CastSpell(this, quest.SourceSpellID, new CastSpellExtraArgs(TriggerCastFlags.FullMask));
+
+                        ++slot;
+                    }
+
+                    m_QuestStatus[questId] = questStatusData;
+                    Log.outDebug(LogFilter.ServerLoading, "Quest status is {0} for quest {1} for player (GUID: {2})", questStatusData.Status, questId, GetGUID().ToString());
+
                 }
                 while (result.NextRow());
             }
@@ -1388,9 +1415,9 @@ namespace Game.Entities
             if (result.IsEmpty())
                 return;
 
-            _declinedname = new DeclinedName();
-            for (byte i = 0; i < SharedConst.MaxDeclinedNameCases; ++i)
-                _declinedname.name[i] = result.Read<string>(i);
+            DeclinedNames declinedNames = m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.DeclinedNames);
+            for (int i = 0; i < SharedConst.MaxDeclinedNameCases; ++i)
+                SetUpdateFieldValue(ref declinedNames.ModifyValue(declinedNames.Name, i), result.Read<string>(i));
         }
         void _LoadArenaTeamInfo(SQLResult result)
         {
@@ -1609,7 +1636,7 @@ namespace Game.Entities
             //         0           1     2      3      4      5      6          7          8        9           10
             // SELECT instanceId, team, joinX, joinY, joinZ, joinO, joinMapId, taxiStart, taxiEnd, mountSpell, queueTypeId FROM character_Battleground_data WHERE guid = ?
             m_bgData.bgInstanceID = result.Read<uint>(0);
-            m_bgData.bgTeam = result.Read<ushort>(1);
+            m_bgData.bgTeam = (Team)result.Read<ushort>(1);
             m_bgData.joinPos = new WorldLocation(result.Read<ushort>(6), result.Read<float>(2), result.Read<float>(3), result.Read<float>(4), result.Read<float>(5));
             m_bgData.taxiPath[0] = result.Read<uint>(7);
             m_bgData.taxiPath[1] = result.Read<uint>(8);
@@ -2047,7 +2074,7 @@ namespace Game.Entities
         void _SaveActions(SQLTransaction trans)
         {
             int traitConfigId = 0;
-            
+
             TraitConfig traitConfig = GetTraitConfig((int)(uint)m_activePlayerData.ActiveCombatTraitConfigID);
             if (traitConfig != null)
             {
@@ -2430,7 +2457,7 @@ namespace Game.Entities
 
             m_traitConfigStates.Clear();
         }
-        
+
         public void _SaveMail(SQLTransaction trans)
         {
             PreparedStatement stmt;
@@ -2558,6 +2585,8 @@ namespace Game.Entities
             stmt.AddValue(index++, m_unitData.RangedAttackPower);
             stmt.AddValue(index++, GetBaseSpellPowerBonus());
             stmt.AddValue(index, m_activePlayerData.CombatRatings[(int)CombatRating.ResiliencePlayerDamage]);
+            stmt.AddValue(index++, m_activePlayerData.Mastery);
+            stmt.AddValue(index++, m_activePlayerData.Versatility);
 
             trans.Append(stmt);
         }
@@ -2768,7 +2797,7 @@ namespace Game.Entities
             stmt = CharacterDatabase.GetPreparedStatement(CharStatements.INS_PLAYER_BGDATA);
             stmt.AddValue(0, GetGUID().GetCounter());
             stmt.AddValue(1, m_bgData.bgInstanceID);
-            stmt.AddValue(2, m_bgData.bgTeam);
+            stmt.AddValue(2, (ushort)m_bgData.bgTeam);
             stmt.AddValue(3, m_bgData.joinPos.GetPositionX());
             stmt.AddValue(4, m_bgData.joinPos.GetPositionY());
             stmt.AddValue(5, m_bgData.joinPos.GetPositionZ());
@@ -2861,7 +2890,11 @@ namespace Game.Entities
             PlayerRestState honorRestState = (PlayerRestState)result.Read<byte>(fieldIndex++);
             float honorRestBonus = result.Read<float>(fieldIndex++);
             byte numRespecs = result.Read<byte>(fieldIndex++);
-
+            int personalTabardEmblemStyle = result.Read<int>(fieldIndex++);
+            int personalTabardEmblemColor = result.Read<int>(fieldIndex++);
+            int personalTabardBorderStyle = result.Read<int>(fieldIndex++);
+            int personalTabardBorderColor = result.Read<int>(fieldIndex++);
+            int personalTabardBackgroundColor = result.Read<int>(fieldIndex++);
 
             // check if the character's account in the db and the logged in account match.
             // player should be able to load/delete character only with correct account!
@@ -2893,9 +2926,10 @@ namespace Game.Entities
                 return false;
             }
 
+            SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.Name), GetName());
 
             SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.WowAccount), GetSession().GetAccountGUID());
-            SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.BnetAccount), GetSession().GetBattlenetAccountGUID());
+            SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.BnetAccount), GetSession().GetBattlenetAccountGUID());
 
             if (gender >= Gender.None)
             {
@@ -2919,8 +2953,13 @@ namespace Game.Entities
             SetXP(xp);
 
             StringArray exploredZonesStrings = new(exploredZones, ' ');
-            for (int i = 0; i < exploredZonesStrings.Length && i / 2 < ActivePlayerData.ExploredZonesSize; ++i)
-                SetUpdateFieldFlagValue(ref m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.ExploredZones, i / 2), (ulong)((long.Parse(exploredZonesStrings[i])) << (32 * (i % 2))));
+            for (int i = 0; i < exploredZonesStrings.Length && i / 2 < PlayerConst.ExploredZonesSize; ++i)
+            {
+                if (!ulong.TryParse(exploredZonesStrings[i], out ulong value))
+                    value = 0;
+
+                AddExploredZones(i / 2, (value << (32 * (i % 2))));
+            }
 
             StringArray knownTitlesStrings = new(knownTitles, ' ');
             if ((knownTitlesStrings.Length % 2) == 0)
@@ -3097,7 +3136,7 @@ namespace Game.Entities
                             transport = transportOnMap;
                     }
                 }
-                
+
                 if (transport != null)
                 {
                     float x = trans_x;
@@ -3215,7 +3254,7 @@ namespace Game.Entities
             else if (map.IsDungeon()) // if map is dungeon...
             {
                 TransferAbortParams denyReason = map.CannotEnter(this); // ... and can't enter map, then look for entry point.
-                if (denyReason != null) 
+                if (denyReason != null)
                 {
                     SendTransferAborted(map.GetId(), denyReason.Reason, denyReason.Arg, denyReason.MapDifficultyXConditionId);
                     areaTrigger = Global.ObjectMgr.GetGoBackTrigger(mapId);
@@ -3457,6 +3496,8 @@ namespace Game.Entities
                     ++runes;
                 }
             }
+
+            SetPersonalTabard(personalTabardEmblemStyle, personalTabardEmblemColor, personalTabardBorderStyle, personalTabardBorderColor, personalTabardBackgroundColor);
 
             Log.outDebug(LogFilter.Player, "The value of player {0} after load item and aura is: ", GetName());
 
@@ -3706,8 +3747,8 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetLootSpecId());
 
                 ss.Clear();
-                for (int i = 0; i < PlayerConst.ExploredZonesSize; ++i)
-                    ss.Append($"{(uint)(m_activePlayerData.ExploredZones[i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.ExploredZones[i] >> 32) & 0xFFFFFFFF)} ");
+                for (int i = 0; i < m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size(); ++i)
+                    ss.Append($"{(uint)(m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] >> 32) & 0xFFFFFFFF)} ");
 
                 stmt.AddValue(index++, ss.ToString());
 
@@ -3841,8 +3882,8 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetLootSpecId());
 
                 ss.Clear();
-                for (int i = 0; i < PlayerConst.ExploredZonesSize; ++i)
-                    ss.Append($"{(uint)(m_activePlayerData.ExploredZones[i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.ExploredZones[i] >> 32) & 0xFFFFFFFF)} ");
+                for (int i = 0; i < m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size(); ++i)
+                    ss.Append($"{(uint)(m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] >> 32) & 0xFFFFFFFF)} ");
 
                 stmt.AddValue(index++, ss.ToString());
 
@@ -4480,7 +4521,7 @@ namespace Game.Entities
                     stmt.AddValue(0, guid);
                     trans.Append(stmt);
 
-                    Global.CharacterCacheStorage.UpdateCharacterInfoDeleted(playerGuid, true);
+                    Global.CharacterCacheStorage.UpdateCharacterInfoDeleted(playerGuid, true, "");
                     break;
                 }
                 default:

@@ -5,6 +5,7 @@ using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
 using Framework.IO;
+using Game.Achievements;
 using Game.Conditions;
 using Game.DataStorage;
 using Game.Entities;
@@ -47,6 +48,7 @@ namespace Game
             name = new string(charArray);
             return true;
         }
+
         public static ExtendedPlayerName ExtractExtendedPlayerName(string name)
         {
             int pos = name.IndexOf('-');
@@ -55,43 +57,21 @@ namespace Game
             else
                 return new ExtendedPlayerName(name, "");
         }
-        static LanguageType GetRealmLanguageType(bool create)
+
+        static CfgCategoriesCharsets GetRealmLanguageType(bool create)
         {
-            switch ((RealmZones)WorldConfig.GetIntValue(WorldCfg.RealmZone))
-            {
-                case RealmZones.Unknown:                            // any language
-                case RealmZones.Development:
-                case RealmZones.TestServer:
-                case RealmZones.QaServer:
-                    return LanguageType.Any;
-                case RealmZones.UnitedStates:                      // extended-Latin
-                case RealmZones.Oceanic:
-                case RealmZones.LatinAmerica:
-                case RealmZones.English:
-                case RealmZones.German:
-                case RealmZones.French:
-                case RealmZones.Spanish:
-                    return LanguageType.ExtendenLatin;
-                case RealmZones.Korea:                              // East-Asian
-                case RealmZones.Taiwan:
-                case RealmZones.China:
-                    return LanguageType.EastAsia;
-                case RealmZones.Russian:                            // Cyrillic
-                    return LanguageType.Cyrillic;
-                default:
-                    return create ? LanguageType.BasicLatin : LanguageType.Any;        // basic-Latin at create, any at login
-            }
+            Cfg_CategoriesRecord category = CliDB.CfgCategoriesStorage.LookupByKey(Global.WorldMgr.GetRealm().Timezone);
+            if (category != null)
+                return create ? category.GetCreateCharsetMask() : category.GetExistingCharsetMask();
+
+            return create ? CfgCategoriesCharsets.English : CfgCategoriesCharsets.Any;        // basic-Latin at create, any at login
         }
 
         public static CreatureModel ChooseDisplayId(CreatureTemplate cinfo, CreatureData data = null)
         {
             // Load creature model (display id)
-            if (data != null && data.displayid != 0)
-            {
-                CreatureModel model = cinfo.GetModelWithDisplayId(data.displayid);
-                if (model != null)
-                    return model;
-            }
+            if (data != null && data.display != null)
+                return data.display;
 
             if (!cinfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Trigger))
             {
@@ -175,44 +155,43 @@ namespace Game
         {
             if (strictMask == 0)                                       // any language, ignore realm
             {
-                if (IsCultureString(LanguageType.BasicLatin, str, numericOrSpace))
+                if (IsCultureString(CfgCategoriesCharsets.Latin1, str, numericOrSpace))
                     return true;
-                if (IsCultureString(LanguageType.ExtendenLatin, str, numericOrSpace))
+                if (IsCultureString(CfgCategoriesCharsets.Russian, str, numericOrSpace))
                     return true;
-                if (IsCultureString(LanguageType.Cyrillic, str, numericOrSpace))
+                if (IsCultureString(CfgCategoriesCharsets.Korean, str, numericOrSpace))
                     return true;
-                if (IsCultureString(LanguageType.EastAsia, str, numericOrSpace))
+                if (IsCultureString(CfgCategoriesCharsets.Chinese, str, numericOrSpace))
                     return true;
                 return false;
             }
 
             if (Convert.ToBoolean(strictMask & 0x2))                                    // realm zone specific
             {
-                LanguageType lt = GetRealmLanguageType(create);
-                if (lt.HasAnyFlag(LanguageType.ExtendenLatin))
-                {
-                    if (IsCultureString(LanguageType.BasicLatin, str, numericOrSpace))
-                        return true;
-                    if (IsCultureString(LanguageType.ExtendenLatin, str, numericOrSpace))
-                        return true;
-                }
-                if (lt.HasAnyFlag(LanguageType.Cyrillic))
-                    if (IsCultureString(LanguageType.Cyrillic, str, numericOrSpace))
-                        return true;
-                if (lt.HasAnyFlag(LanguageType.EastAsia))
-                    if (IsCultureString(LanguageType.EastAsia, str, numericOrSpace))
-                        return true;
+                CfgCategoriesCharsets lt = GetRealmLanguageType(create);
+                if (lt == CfgCategoriesCharsets.Any)
+                    return true;
+                if (lt.HasFlag(CfgCategoriesCharsets.Latin1) && IsCultureString(CfgCategoriesCharsets.Latin1, str, numericOrSpace))
+                    return true;
+                if (lt.HasFlag(CfgCategoriesCharsets.English) && IsCultureString(CfgCategoriesCharsets.English, str, numericOrSpace))
+                    return true;
+                if (lt.HasFlag(CfgCategoriesCharsets.Russian) && IsCultureString(CfgCategoriesCharsets.Russian, str, numericOrSpace))
+                    return true;
+                if (lt.HasFlag(CfgCategoriesCharsets.Korean) && IsCultureString(CfgCategoriesCharsets.Korean, str, numericOrSpace))
+                    return true;
+                if (lt.HasFlag(CfgCategoriesCharsets.Chinese) && IsCultureString(CfgCategoriesCharsets.Chinese, str, numericOrSpace))
+                    return true;
             }
 
             if (Convert.ToBoolean(strictMask & 0x1))                                    // basic Latin
             {
-                if (IsCultureString(LanguageType.BasicLatin, str, numericOrSpace))
+                if (IsCultureString(CfgCategoriesCharsets.English, str, numericOrSpace))
                     return true;
             }
 
             return false;
         }
-        static bool IsCultureString(LanguageType culture, string str, bool numericOrSpace)
+        static bool IsCultureString(CfgCategoriesCharsets culture, string str, bool numericOrSpace)
         {
             foreach (var wchar in str)
             {
@@ -221,13 +200,17 @@ namespace Game
 
                 switch (culture)
                 {
-                    case LanguageType.BasicLatin:
+                    case CfgCategoriesCharsets.English:
                         if (wchar >= 'a' && wchar <= 'z')                      // LATIN SMALL LETTER A - LATIN SMALL LETTER Z
                             return true;
                         if (wchar >= 'A' && wchar <= 'Z')                      // LATIN CAPITAL LETTER A - LATIN CAPITAL LETTER Z
                             return true;
-                        return false;
-                    case LanguageType.ExtendenLatin:
+                        break;
+                    case CfgCategoriesCharsets.Latin1:
+                        if (wchar >= 'a' && wchar <= 'z')                      // LATIN SMALL LETTER A - LATIN SMALL LETTER Z
+                            return true;
+                        if (wchar >= 'A' && wchar <= 'Z')                      // LATIN CAPITAL LETTER A - LATIN CAPITAL LETTER Z
+                            return true;
                         if (wchar >= 0x00C0 && wchar <= 0x00D6)                  // LATIN CAPITAL LETTER A WITH GRAVE - LATIN CAPITAL LETTER O WITH DIAERESIS
                             return true;
                         if (wchar >= 0x00D8 && wchar <= 0x00DE)                  // LATIN CAPITAL LETTER O WITH STROKE - LATIN CAPITAL LETTER THORN
@@ -242,31 +225,33 @@ namespace Game
                             return true;
                         if (wchar == 0x1E9E)                                     // LATIN CAPITAL LETTER SHARP S
                             return true;
-                        return false;
-                    case LanguageType.Cyrillic:
+                        break;
+                    case CfgCategoriesCharsets.Russian:
                         if (wchar >= 0x0410 && wchar <= 0x044F)                  // CYRILLIC CAPITAL LETTER A - CYRILLIC SMALL LETTER YA
                             return true;
                         if (wchar == 0x0401 || wchar == 0x0451)                  // CYRILLIC CAPITAL LETTER IO, CYRILLIC SMALL LETTER IO
                             return true;
-                        return false;
-                    case LanguageType.EastAsia:
+                        break;
+                    case CfgCategoriesCharsets.Korean:
                         if (wchar >= 0x1100 && wchar <= 0x11F9)                  // Hangul Jamo
                             return true;
-                        if (wchar >= 0x3041 && wchar <= 0x30FF)                  // Hiragana + Katakana
-                            return true;
                         if (wchar >= 0x3131 && wchar <= 0x318E)                  // Hangul Compatibility Jamo
-                            return true;
-                        if (wchar >= 0x31F0 && wchar <= 0x31FF)                  // Katakana Phonetic Ext.
-                            return true;
-                        if (wchar >= 0x3400 && wchar <= 0x4DB5)                  // CJK Ideographs Ext. A
-                            return true;
-                        if (wchar >= 0x4E00 && wchar <= 0x9FC3)                  // Unified CJK Ideographs
                             return true;
                         if (wchar >= 0xAC00 && wchar <= 0xD7A3)                  // Hangul Syllables
                             return true;
                         if (wchar >= 0xFF01 && wchar <= 0xFFEE)                  // Halfwidth forms
                             return true;
-                        return false;
+                        break;
+                    case CfgCategoriesCharsets.Chinese:
+                        if (wchar >= 0x4E00 && wchar <= 0x9FFF)                  // Unified CJK Ideographs
+                            return true;
+                        if (wchar >= 0x3400 && wchar <= 0x4DBF)                  // CJK Ideographs Ext. A
+                            return true;
+                        if (wchar >= 0x3100 && wchar <= 0x312C)                  // Bopomofo
+                            return true;
+                        if (wchar >= 0xF900 && wchar <= 0xFAFF)                  // CJK Compatibility Ideographs
+                            return true;
+                        break;
                 }
             }
 
@@ -916,7 +901,7 @@ namespace Game
 
                 if (conditionObject != null)
                 {
-                    if (!Global.ConditionMgr.IsObjectMeetToConditions(conditionSource, data.Conditions))
+                    if (!data.Conditions.Meets(conditionSource))
                         continue;
 
                     if (entry.Loc.GetMapId() == mapEntry.ParentMapID && !conditionObject.GetPhaseShift().HasVisibleMapId(entry.Loc.GetMapId()))
@@ -925,7 +910,7 @@ namespace Game
                 else if (team != 0)
                 {
                     bool teamConditionMet = true;
-                    foreach (Condition cond in data.Conditions)
+                    foreach (Condition cond in data.Conditions.Conditions)
                     {
                         if (cond.ConditionType != ConditionTypes.Team)
                             continue;
@@ -1455,7 +1440,7 @@ namespace Game
                     Log.outError(LogFilter.Sql, $"Table `spell_scripts` - spell {spellId} effect {spellEffIndex} is not SPELL_EFFECT_SCRIPT_EFFECT or SPELL_EFFECT_DUMMY");
             }
         }
-        
+
         void LoadEventSet()
         {
             _eventStorage.Clear();
@@ -1465,34 +1450,47 @@ namespace Game
                 _eventStorage.AddRange(go.Value.GetEventScriptSet());
 
             // Load all possible event ids from spells
-            foreach (SpellNameRecord spellNameEntry in CliDB.SpellNameStorage.Values)
-            {
-                SpellInfo spell = Global.SpellMgr.GetSpellInfo(spellNameEntry.Id, Difficulty.None);
-                if (spell != null)
-                {
-                    foreach (var spellEffectInfo in spell.GetEffects())
-                    {
-                        if (spellEffectInfo.IsEffect(SpellEffectName.SendEvent))
-                            if (spellEffectInfo.MiscValue != 0)
-                                _eventStorage.Add((uint)spellEffectInfo.MiscValue);
-                    }
-                }
-            }
+            foreach (var spellEffect in CliDB.SpellEffectStorage.Values)
+                if (spellEffect.Effect == (uint)SpellEffectName.SendEvent && spellEffect.EffectMiscValue[0] != 0)
+                    _eventStorage.Add((uint)spellEffect.EffectMiscValue[0]);
 
             // Load all possible event ids from taxi path nodes
-            foreach (var path_idx in CliDB.TaxiPathNodesByPath)
+            foreach (var node in CliDB.TaxiPathNodeStorage.Values)
             {
-                for (uint node_idx = 0; node_idx < path_idx.Value.Length; ++node_idx)
-                {
-                    TaxiPathNodeRecord node = path_idx.Value[node_idx];
+                if (node.ArrivalEventID != 0)
+                    _eventStorage.Add(node.ArrivalEventID);
 
-                    if (node.ArrivalEventID != 0)
-                        _eventStorage.Add(node.ArrivalEventID);
-
-                    if (node.DepartureEventID != 0)
-                        _eventStorage.Add(node.DepartureEventID);
-                }
+                if (node.DepartureEventID != 0)
+                    _eventStorage.Add(node.DepartureEventID);
             }
+
+            // Load all possible event ids from criterias
+            void addCriteriaEventsToStore(List<Criteria> criteriaList)
+            {
+                foreach (Criteria criteria in criteriaList)
+                    if (criteria.Entry.Asset != 0)
+                        _eventStorage.Add(criteria.Entry.Asset);
+            };
+
+            CriteriaType[] eventCriteriaTypes = { CriteriaType.PlayerTriggerGameEvent, CriteriaType.AnyoneTriggerGameEventScenario };
+            foreach (CriteriaType criteriaType in eventCriteriaTypes)
+            {
+                addCriteriaEventsToStore(Global.CriteriaMgr.GetPlayerCriteriaByType(criteriaType, 0));
+                addCriteriaEventsToStore(Global.CriteriaMgr.GetGuildCriteriaByType(criteriaType));
+                addCriteriaEventsToStore(Global.CriteriaMgr.GetQuestObjectiveCriteriaByType(criteriaType));
+            }
+
+            foreach (ScenarioRecord scenario in CliDB.ScenarioStorage.Values)
+                foreach (CriteriaType criteriaType in eventCriteriaTypes)
+                    addCriteriaEventsToStore(Global.CriteriaMgr.GetScenarioCriteriaByTypeAndScenario(criteriaType, scenario.Id));
+
+            foreach (var (gameEventId, _) in Global.CriteriaMgr.GetCriteriaByStartEvent(CriteriaStartEvent.SendEvent))
+                if (gameEventId != 0)
+                    _eventStorage.Add((uint)gameEventId);
+
+            foreach (var (gameEventId, _) in Global.CriteriaMgr.GetCriteriaByFailEvent(CriteriaFailEvent.SendEvent))
+                if (gameEventId != 0)
+                    _eventStorage.Add((uint)gameEventId);
         }
 
         public void LoadEventScripts()
@@ -1507,7 +1505,7 @@ namespace Game
             foreach (var script in sEventScripts)
             {
                 if (!IsValidEvent(script.Key))
-                    Log.outError(LogFilter.Sql, $"Table `event_scripts` has script (Id: {script.Key}) not referring to any gameobject_template (data field referencing GameEvent), any taxi path node or any spell effect {SpellEffectName.SendEvent}");
+                    Log.outError(LogFilter.Sql, $"Table `event_scripts` has script (Id: {script.Key}) not referring to any gameobject_template (data field referencing GameEvent), any taxi path node, any criteria asset or any spell effect {SpellEffectName.SendEvent}");
             }
 
             uint oldMSTime = Time.GetMSTime();
@@ -1528,7 +1526,7 @@ namespace Game
 
                 if (!IsValidEvent(eventId))
                 {
-                    Log.outError(LogFilter.Sql, $"Event (ID: {eventId}) not referring to any gameobject_template (data field referencing GameEvent), any taxi path node or any spell effect {SpellEffectName.SendEvent}");
+                    Log.outError(LogFilter.Sql, $"Event (ID: {eventId}) not referring to any gameobject_template (data field referencing GameEvent), any taxi path node, any criteria asset or any spell effect {SpellEffectName.SendEvent}");
                     continue;
                 }
                 _eventScriptStorage[eventId] = GetScriptId(scriptName);
@@ -1538,32 +1536,6 @@ namespace Game
         }
 
         //Load WP Scripts
-        public void LoadWaypointScripts()
-        {
-            LoadScripts(ScriptsType.Waypoint);
-
-            List<uint> actionSet = new();
-
-            foreach (var script in sWaypointScripts)
-                actionSet.Add(script.Key);
-
-            PreparedStatement stmt = WorldDatabase.GetPreparedStatement(WorldStatements.SEL_WAYPOINT_DATA_ACTION);
-            SQLResult result = DB.World.Query(stmt);
-
-            if (!result.IsEmpty())
-            {
-                do
-                {
-                    uint action = result.Read<uint>(0);
-
-                    actionSet.Remove(action);
-                }
-                while (result.NextRow());
-            }
-
-            foreach (var id in actionSet)
-                Log.outError(LogFilter.Sql, "There is no waypoint which links to the waypoint script {0}", id);
-        }
         public void LoadSpellScriptNames()
         {
             uint oldMSTime = Time.GetMSTime();
@@ -1745,8 +1717,6 @@ namespace Game
                     return sSpellScripts;
                 case ScriptsType.Event:
                     return sEventScripts;
-                case ScriptsType.Waypoint:
-                    return sWaypointScripts;
                 default:
                     return null;
             }
@@ -1759,8 +1729,6 @@ namespace Game
                     return "spell_scripts";
                 case ScriptsType.Event:
                     return "event_scripts";
-                case ScriptsType.Waypoint:
-                    return "waypoint_scripts";
                 default:
                     return "";
             }
@@ -1793,8 +1761,6 @@ namespace Game
             // We load the creature models after loading but before checking
             LoadCreatureTemplateModels();
 
-            LoadCreatureSummonedData();
-
             // Checking needs to be done after loading because of the difficulty self referencing
             foreach (var template in creatureTemplateStorage.Values)
                 CheckCreatureTemplate(template);
@@ -1823,7 +1789,7 @@ namespace Game
             creature.SpeedWalk = fields.Read<float>(12);
             creature.SpeedRun = fields.Read<float>(13);
             creature.Scale = fields.Read<float>(14);
-            creature.Rank = (CreatureEliteType)fields.Read<uint>(15);
+            creature.Classification = (CreatureClassifications)fields.Read<uint>(15);
             creature.DmgSchool = fields.Read<uint>(16);
             creature.BaseAttackTime = fields.Read<uint>(17);
             creature.RangeAttackTime = fields.Read<uint>(18);
@@ -1874,11 +1840,10 @@ namespace Game
             creature.WidgetSetID = fields.Read<int>(41);
             creature.WidgetSetUnitConditionID = fields.Read<int>(42);
             creature.RegenHealth = fields.Read<bool>(43);
-            creature.MechanicImmuneMask = fields.Read<ulong>(44);
-            creature.SpellSchoolImmuneMask = fields.Read<uint>(45);
-            creature.FlagsExtra = (CreatureFlagsExtra)fields.Read<uint>(46);
-            creature.ScriptID = GetScriptId(fields.Read<string>(47));
-            creature.StringId = fields.Read<string>(48);
+            creature.CreatureImmunitiesId = fields.Read<int>(44);
+            creature.FlagsExtra = (CreatureFlagsExtra)fields.Read<uint>(45);
+            creature.ScriptID = GetScriptId(fields.Read<string>(46));
+            creature.StringId = fields.Read<string>(47);
 
             creatureTemplateStorage[entry] = creature;
         }
@@ -2050,12 +2015,13 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} creature template models in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
         }
-        void LoadCreatureSummonedData()
+
+        public void LoadCreatureSummonedData()
         {
             uint oldMSTime = Time.GetMSTime();
 
-            //                                         0           1                            2                     3
-            SQLResult result = DB.World.Query("SELECT CreatureID, CreatureIDVisibleToSummoner, GroundMountDisplayID, FlyingMountDisplayID FROM creature_summoned_data");
+            //                                         0           1                            2                     3                     4
+            SQLResult result = DB.World.Query("SELECT CreatureID, CreatureIDVisibleToSummoner, GroundMountDisplayID, FlyingMountDisplayID, DespawnOnQuestsRemoved FROM creature_summoned_data");
             if (result.IsEmpty())
             {
                 Log.outInfo(LogFilter.ServerLoading, "Loaded 0 creature summoned data definitions. DB table `creature_summoned_data` is empty.");
@@ -2071,7 +2037,7 @@ namespace Game
                     continue;
                 }
 
-                if (creatureSummonedDataStorage.ContainsKey(creatureId))
+                if (!creatureSummonedDataStorage.ContainsKey(creatureId))
                     creatureSummonedDataStorage[creatureId] = new();
 
                 CreatureSummonedData summonedData = creatureSummonedDataStorage[creatureId];
@@ -2106,6 +2072,28 @@ namespace Game
                     }
                 }
 
+                if (!result.IsNull(4))
+                {
+                    List<uint> questList = new();
+                    foreach (string questStr in result.Read<string>(4).Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (!uint.TryParse(questStr, out uint questId))
+                            continue;
+
+                        Quest quest = GetQuestTemplate(questId);
+                        if (quest == null)
+                        {
+                            Log.outError(LogFilter.Sql, $"Table `creature_summoned_data` references non-existing quest {questId} in DespawnOnQuestsRemoved for creature {creatureId}, skipping");
+                            continue;
+                        }
+
+                        questList.Add(questId);
+                    }
+
+                    if (!questList.Empty())
+                        summonedData.DespawnOnQuestsRemoved = questList;
+                }
+
             } while (result.NextRow());
 
             Log.outInfo(LogFilter.ServerLoading, $"Loaded {creatureSummonedDataStorage.Count} creature summoned data definitions in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
@@ -2113,8 +2101,8 @@ namespace Game
         public void LoadCreatureTemplateAddons()
         {
             var time = Time.GetMSTime();
-            //                                         0      1        2      3           4         5         6            7         8      9          10               11            12                      13
-            SQLResult result = DB.World.Query("SELECT entry, path_id, mount, StandState, AnimTier, VisFlags, SheathState, PvPFlags, emote, aiAnimKit, movementAnimKit, meleeAnimKit, visibilityDistanceType, auras FROM creature_template_addon");
+            //                                         0      1       2      3           4         5         6            7         8      9          10               11            12                      13
+            SQLResult result = DB.World.Query("SELECT entry, PathId, mount, StandState, AnimTier, VisFlags, SheathState, PvPFlags, emote, aiAnimKit, movementAnimKit, meleeAnimKit, visibilityDistanceType, auras FROM creature_template_addon");
 
             if (result.IsEmpty())
             {
@@ -2133,7 +2121,7 @@ namespace Game
                 }
 
                 CreatureAddon creatureAddon = new();
-                creatureAddon.path_id = result.Read<uint>(1);
+                creatureAddon.PathId = result.Read<uint>(1);
                 creatureAddon.mount = result.Read<uint>(2);
                 creatureAddon.standState = result.Read<byte>(3);
                 creatureAddon.animTier = result.Read<byte>(4);
@@ -2246,8 +2234,8 @@ namespace Game
         public void LoadCreatureAddons()
         {
             var time = Time.GetMSTime();
-            //                                         0     1        2      3           4         5         6            7         8      9          10               11            12                      13
-            SQLResult result = DB.World.Query("SELECT guid, path_id, mount, StandState, AnimTier, VisFlags, SheathState, PvPFlags, emote, aiAnimKit, movementAnimKit, meleeAnimKit, visibilityDistanceType, auras FROM creature_addon");
+            //                                         0     1       2      3           4         5         6            7         8      9          10               11            12                      13
+            SQLResult result = DB.World.Query("SELECT guid, PathId, mount, StandState, AnimTier, VisFlags, SheathState, PvPFlags, emote, aiAnimKit, movementAnimKit, meleeAnimKit, visibilityDistanceType, auras FROM creature_addon");
 
             if (result.IsEmpty())
             {
@@ -2268,8 +2256,8 @@ namespace Game
 
                 CreatureAddon creatureAddon = new();
 
-                creatureAddon.path_id = result.Read<uint>(1);
-                if (creData.movementType == (byte)MovementGeneratorType.Waypoint && creatureAddon.path_id == 0)
+                creatureAddon.PathId = result.Read<uint>(1);
+                if (creData.movementType == (byte)MovementGeneratorType.Waypoint && creatureAddon.PathId == 0)
                 {
                     creData.movementType = (byte)MovementGeneratorType.Idle;
                     Log.outError(LogFilter.Sql, $"Creature (GUID {guid}) has movement type set to WAYPOINTMOTIONTYPE but no path assigned");
@@ -2759,7 +2747,7 @@ namespace Game
                 creatureDifficulty.StaticFlags = new(result.Read<uint>(18), result.Read<uint>(19), result.Read<uint>(20), result.Read<uint>(21), result.Read<uint>(22), result.Read<uint>(23), result.Read<uint>(24), result.Read<uint>(25));
 
                 // TODO: Check if this still applies
-                creatureDifficulty.DamageModifier *= Creature._GetDamageMod(template.Rank);
+                creatureDifficulty.DamageModifier *= Creature.GetDamageMod(template.Classification);
 
                 if (creatureDifficulty.HealthScalingExpansion < (int)Expansion.LevelCurrent || creatureDifficulty.HealthScalingExpansion >= (int)Expansion.Max)
                 {
@@ -2904,7 +2892,7 @@ namespace Game
             uint disallowedUnitFlags3 = (cInfo.UnitFlags3 & ~(uint)UnitFlags3.Allowed);
             if (disallowedUnitFlags3 != 0)
             {
-                Log.outError(LogFilter.Sql, $"Table `creature_template` lists creature (Entry: {cInfo.Entry}) with disallowed `unit_flags2` {disallowedUnitFlags3}, removing incorrect flag.");
+                Log.outError(LogFilter.Sql, $"Table `creature_template` lists creature (Entry: {cInfo.Entry}) with disallowed `unit_flags3` {disallowedUnitFlags3}, removing incorrect flag.");
                 cInfo.UnitFlags3 &= (uint)UnitFlags3.Allowed;
             }
 
@@ -3508,7 +3496,10 @@ namespace Game
                 data.Id = entry;
                 data.MapId = result.Read<ushort>(2);
                 data.SpawnPoint = new Position(result.Read<float>(3), result.Read<float>(4), result.Read<float>(5), result.Read<float>(6));
-                data.displayid = result.Read<uint>(7);
+                uint displayId = result.Read<uint>(7);
+                if (displayId != 0)
+                    data.display = new(displayId, SharedConst.DefaultPlayerDisplayScale, 1.0f);
+
                 data.equipmentId = result.Read<sbyte>(8);
                 data.spawntimesecs = result.Read<int>(9);
                 data.WanderDistance = result.Read<float>(10);
@@ -3666,7 +3657,7 @@ namespace Game
                     uint disallowedUnitFlags3 = (data.unit_flags3.Value & ~(uint)UnitFlags3.Allowed);
                     if (disallowedUnitFlags3 != 0)
                     {
-                        Log.outError(LogFilter.Sql, $"Table `creature_template` lists creature (Entry: {cInfo.Entry}) with disallowed `unit_flags2` {disallowedUnitFlags3}, removing incorrect flag.");
+                        Log.outError(LogFilter.Sql, $"Table `creature_template` lists creature (Entry: {cInfo.Entry}) with disallowed `unit_flags3` {disallowedUnitFlags3}, removing incorrect flag.");
                         data.unit_flags3 = data.unit_flags3 & (uint)UnitFlags3.Allowed;
                     }
                 }
@@ -4761,7 +4752,7 @@ namespace Game
             if (CliDB.LockStorage.ContainsKey(dataN))
                 return;
 
-            Log.outError(LogFilter.Sql, "Gameobject (Entry: {0} GoType: {1}) have data{2}={3} but lock (Id: {4}) not found.", goInfo.entry, goInfo.type, N, goInfo.Door.open, goInfo.Door.open);
+            Log.outError(LogFilter.Sql, "Gameobject (Entry: {0} GoType: {1}) have data{2}={3} but lock (Id: {4}) not found.", goInfo.entry, goInfo.type, N, dataN, dataN);
         }
 
         void CheckGOLinkedTrapId(GameObjectTemplate goInfo, uint dataN, uint N)
@@ -5029,7 +5020,7 @@ namespace Game
             var time = Time.GetMSTime();
 
             uint count = 0;
-            SQLResult result = DB.World.Query("SELECT Id, FlagsCu, FoodType, MinMoneyLoot, MaxMoneyLoot, SpellPPMChance, RandomBonusListTemplateId FROM item_template_addon");
+            SQLResult result = DB.World.Query("SELECT Id, FlagsCu, FoodType, MinMoneyLoot, MaxMoneyLoot, SpellPPMChance, RandomBonusListTemplateId, QuestLogItemId FROM item_template_addon");
             if (!result.IsEmpty())
             {
                 do
@@ -5057,6 +5048,7 @@ namespace Game
                     itemTemplate.MaxMoneyLoot = maxMoneyLoot;
                     itemTemplate.SpellPPMRate = result.Read<float>(5);
                     itemTemplate.RandomBonusListTemplateId = result.Read<uint>(6);
+                    itemTemplate.QuestLogItemId = result.Read<int>(7);
                     ++count;
                 } while (result.NextRow());
             }
@@ -5253,7 +5245,7 @@ namespace Game
         {
             return _creatureTemplateSparringStorage.LookupByKey(entry);
         }
-        
+
         public CreatureMovementData GetCreatureMovementOverride(ulong spawnId)
         {
             return creatureMovementOverrides.LookupByKey(spawnId);
@@ -5494,97 +5486,6 @@ namespace Game
             } while (result.NextRow());
 
             Log.outInfo(LogFilter.ServerLoading, "Loaded {0} access requirement definitions in {1} ms", count, Time.GetMSTimeDiffToNow(oldMSTime));
-        }
-        public void LoadInstanceEncounters()
-        {
-            uint oldMSTime = Time.GetMSTime();
-
-            //                                           0         1            2                3
-            SQLResult result = DB.World.Query("SELECT entry, creditType, creditEntry, lastEncounterDungeon FROM instance_encounters");
-            if (result.IsEmpty())
-            {
-                Log.outInfo(LogFilter.ServerLoading, "Loaded 0 instance encounters, table is empty!");
-                return;
-            }
-
-            uint count = 0;
-            Dictionary<uint, Tuple<uint, DungeonEncounterRecord>> dungeonLastBosses = new();
-            do
-            {
-                uint entry = result.Read<uint>(0);
-                EncounterCreditType creditType = (EncounterCreditType)result.Read<byte>(1);
-                uint creditEntry = result.Read<uint>(2);
-                uint lastEncounterDungeon = result.Read<uint>(3);
-                DungeonEncounterRecord dungeonEncounter = CliDB.DungeonEncounterStorage.LookupByKey(entry);
-                if (dungeonEncounter == null)
-                {
-                    Log.outError(LogFilter.Sql, "Table `instance_encounters` has an invalid encounter id {0}, skipped!", entry);
-                    continue;
-                }
-
-                if (lastEncounterDungeon != 0 && Global.LFGMgr.GetLFGDungeonEntry(lastEncounterDungeon) == 0)
-                {
-                    Log.outError(LogFilter.Sql, "Table `instance_encounters` has an encounter {0} ({1}) marked as final for invalid dungeon id {2}, skipped!",
-                        entry, dungeonEncounter.Name[Global.WorldMgr.GetDefaultDbcLocale()], lastEncounterDungeon);
-                    continue;
-                }
-
-                var pair = dungeonLastBosses.LookupByKey(lastEncounterDungeon);
-                if (lastEncounterDungeon != 0)
-                {
-                    if (pair != null)
-                    {
-                        Log.outError(LogFilter.Sql, "Table `instance_encounters` specified encounter {0} ({1}) as last encounter but {2} ({3}) is already marked as one, skipped!",
-                            entry, dungeonEncounter.Name[Global.WorldMgr.GetDefaultDbcLocale()], pair.Item1, pair.Item2.Name[Global.WorldMgr.GetDefaultDbcLocale()]);
-                        continue;
-                    }
-
-                    dungeonLastBosses[lastEncounterDungeon] = Tuple.Create(entry, dungeonEncounter);
-                }
-
-                switch (creditType)
-                {
-                    case EncounterCreditType.KillCreature:
-                    {
-                        CreatureTemplate creatureInfo = GetCreatureTemplate(creditEntry);
-                        if (creatureInfo == null)
-                        {
-                            Log.outError(LogFilter.Sql, "Table `instance_encounters` has an invalid creature (entry {0}) linked to the encounter {1} ({2}), skipped!",
-                                creditEntry, entry, dungeonEncounter.Name[Global.WorldMgr.GetDefaultDbcLocale()]);
-                            continue;
-                        }
-                        creatureInfo.FlagsExtra |= CreatureFlagsExtra.DungeonBoss;
-                        break;
-                    }
-                    case EncounterCreditType.CastSpell:
-                        if (!Global.SpellMgr.HasSpellInfo(creditEntry, Difficulty.None))
-                        {
-                            Log.outError(LogFilter.Sql, "Table `instance_encounters` has an invalid spell (entry {0}) linked to the encounter {1} ({2}), skipped!",
-                                creditEntry, entry, dungeonEncounter.Name[Global.WorldMgr.GetDefaultDbcLocale()]);
-                            continue;
-                        }
-                        break;
-                    default:
-                        Log.outError(LogFilter.Sql, "Table `instance_encounters` has an invalid credit type ({0}) for encounter {1} ({2}), skipped!",
-                            creditType, entry, dungeonEncounter.Name[Global.WorldMgr.GetDefaultDbcLocale()]);
-                        continue;
-                }
-
-                if (dungeonEncounter.DifficultyID == 0)
-                {
-                    foreach (var difficulty in CliDB.DifficultyStorage.Values)
-                    {
-                        if (Global.DB2Mgr.GetMapDifficultyData((uint)dungeonEncounter.MapID, (Difficulty)difficulty.Id) != null)
-                            _dungeonEncounterStorage.Add(MathFunctions.MakePair64((uint)dungeonEncounter.MapID, difficulty.Id), new DungeonEncounter(dungeonEncounter, creditType, creditEntry, lastEncounterDungeon));
-                    }
-                }
-                else
-                    _dungeonEncounterStorage.Add(MathFunctions.MakePair64((uint)dungeonEncounter.MapID, (uint)dungeonEncounter.DifficultyID), new DungeonEncounter(dungeonEncounter, creditType, creditEntry, lastEncounterDungeon));
-
-                ++count;
-            } while (result.NextRow());
-
-            Log.outInfo(LogFilter.ServerLoading, "Loaded {0} instance encounters in {1} ms", count, Time.GetMSTimeDiffToNow(oldMSTime));
         }
         public void LoadSpawnGroupTemplates()
         {
@@ -5875,10 +5776,6 @@ namespace Game
             }
 
             return false;
-        }
-        public List<DungeonEncounter> GetDungeonEncounterList(uint mapId, Difficulty difficulty)
-        {
-            return _dungeonEncounterStorage.LookupByKey(MathFunctions.MakePair64(mapId, (uint)difficulty));
         }
         public bool IsTransportMap(uint mapId) { return _transportMaps.Contains((ushort)mapId); }
         public SpawnGroupTemplateData GetSpawnGroupData(uint groupId) { return _spawnGroupDataStorage.LookupByKey(groupId); }
@@ -6178,11 +6075,11 @@ namespace Game
                         var raceMask = new RaceMask<long>(rcInfo.RaceMask);
                         for (Race raceIndex = Race.Human; raceIndex < Race.Max; ++raceIndex)
                         {
-                            if (raceMask.HasRace(raceIndex))
+                            if (raceMask.IsEmpty() || raceMask.HasRace(raceIndex))
                             {
                                 for (Class classIndex = Class.Warrior; classIndex < Class.Max; ++classIndex)
                                 {
-                                    if (rcInfo.ClassMask == -1 || Convert.ToBoolean((1 << ((int)classIndex - 1)) & rcInfo.ClassMask))
+                                    if (rcInfo.ClassMask == -1 || rcInfo.ClassMask == 0 || Convert.ToBoolean((1 << ((int)classIndex - 1)) & rcInfo.ClassMask))
                                     {
                                         PlayerInfo info = _playerInfo.LookupByKey(Tuple.Create(raceIndex, classIndex));
                                         if (info != null)
@@ -8327,7 +8224,12 @@ namespace Game
 
             return null;
         }
-        
+
+        public List<int> GetCreatureQuestCurrencyList(uint creatureId)
+        {
+            return creatureQuestCurrenciesStorage.LookupByKey(creatureId);
+        }
+
         //Spells /Skills / Phases
         public void LoadPhases()
         {
@@ -10107,6 +10009,46 @@ namespace Game
                 Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} Player Choice Response locale strings in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
             }
         }
+
+        public void LoadCreatureQuestCurrencies()
+        {
+            uint oldMSTime = Time.GetMSTime();
+
+            //                                         0           1
+            SQLResult result = DB.World.Query("SELECT CreatureId, CurrencyId FROM creature_quest_currency ORDER BY CreatureId, CurrencyId ASC");
+            if (result.IsEmpty())
+            {
+                Log.outInfo(LogFilter.ServerLoading, ">> Loaded 0 creature quest currencies. DB table `creature_quest_currency` is empty.");
+                return;
+            }
+
+            uint count = 0;
+            do
+            {
+                uint entry = result.Read<uint>(0);
+                int currency = result.Read<int>(1);
+
+                if (GetCreatureTemplate(entry) == null)
+                {
+                    Log.outError(LogFilter.Sql, $"Table `creature_quest_currency` has data for nonexistent creature (entry: {entry}, currency: {currency}), skipped");
+                    continue;
+                }
+
+                if (!CliDB.CurrencyTypesStorage.HasRecord((uint)currency))
+                {
+                    Log.outError(LogFilter.Sql, $"Table `creature_quest_currency` has nonexistent currency (ID: {currency}) in creature (entry: {entry}, currency: {currency}), skipped");
+                    continue;
+                }
+
+                creatureQuestCurrenciesStorage.Add(entry, currency);
+
+                ++count;
+            }
+            while (result.NextRow());
+
+            Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} creature quest currencies in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
+        }
+
         public void InitializeQueriesData(QueryDataGroup mask)
         {
             uint oldMSTime = Time.GetMSTime();
@@ -10414,7 +10356,7 @@ namespace Game
 
             return 0;
         }
-        
+
         public uint GetMaxLevelForExpansion(Expansion expansion)
         {
             switch (expansion)
@@ -10462,16 +10404,15 @@ namespace Game
         {
             var key = (mapid, difficulty);
 
-            if (mapObjectGuidsStore.ContainsKey(key) && mapObjectGuidsStore[key].ContainsKey(cellid))
-                return mapObjectGuidsStore[key][cellid];
+            if (mapObjectGuidsStore.ContainsKey(key) && mapObjectGuidsStore[key].TryGetValue(cellid, out CellObjectGuids guids))
+                return guids;
 
             return null;
         }
 
         public Dictionary<uint, CellObjectGuids> GetMapObjectGuids(uint mapid, Difficulty difficulty)
         {
-            var key = (mapid, difficulty);
-            return mapObjectGuidsStore.LookupByKey(key);
+            return mapObjectGuidsStore.LookupByKey((mapid, difficulty));
         }
 
         public PageText GetPageText(uint pageEntry)
@@ -10485,11 +10426,11 @@ namespace Game
             float dist = 10000;
             uint id = 0;
 
-            TaxiNodeFlags requireFlag = (team == Team.Alliance) ? TaxiNodeFlags.Alliance : TaxiNodeFlags.Horde;
+            TaxiNodeFlags requireFlag = (team == Team.Alliance) ? TaxiNodeFlags.ShowOnAllianceMap : TaxiNodeFlags.ShowOnHordeMap;
             foreach (var node in CliDB.TaxiNodesStorage.Values)
             {
                 var i = node.Id;
-                if (node.ContinentID != mapid || !node.Flags.HasAnyFlag(requireFlag))
+                if (node.ContinentID != mapid || !node.GetFlags().HasFlag(requireFlag) || node.GetFlags().HasFlag(TaxiNodeFlags.IgnoreForFindNearest))
                     continue;
 
                 uint field = (i - 1) / 8;
@@ -10892,7 +10833,6 @@ namespace Game
         MultiMap<uint, uint> spellScriptsStorage = new();
         public Dictionary<uint, MultiMap<uint, ScriptInfo>> sSpellScripts = new();
         public Dictionary<uint, MultiMap<uint, ScriptInfo>> sEventScripts = new();
-        public Dictionary<uint, MultiMap<uint, ScriptInfo>> sWaypointScripts = new();
         Dictionary<uint, uint> areaTriggerScriptStorage = new();
         List<uint> _eventStorage = new();
         Dictionary<uint, uint> _eventScriptStorage = new();
@@ -10931,6 +10871,7 @@ namespace Game
         Dictionary<ulong, CreatureData> creatureDataStorage = new();
         Dictionary<ulong, CreatureAddon> creatureAddonStorage = new();
         MultiMap<(uint, Difficulty), uint> creatureQuestItemStorage = new();
+        MultiMap<uint, int> creatureQuestCurrenciesStorage = new();
         Dictionary<uint, CreatureAddon> creatureTemplateAddonStorage = new();
         MultiMap<uint, float> _creatureTemplateSparringStorage = new();
         Dictionary<ulong, CreatureMovementData> creatureMovementOverrides = new();
@@ -10992,7 +10933,6 @@ namespace Game
         List<uint> _tavernAreaTriggerStorage = new();
         Dictionary<uint, AreaTriggerStruct> _areaTriggerStorage = new();
         Dictionary<ulong, AccessRequirement> _accessRequirementStorage = new();
-        MultiMap<ulong, DungeonEncounter> _dungeonEncounterStorage = new();
         Dictionary<uint, WorldSafeLocsEntry> _worldSafeLocs = new();
 
         Dictionary<HighGuid, ObjectGuidGenerator> _guidGenerators = new();
@@ -11414,7 +11354,7 @@ namespace Game
     public class GraveyardData
     {
         public uint SafeLocId;
-        public List<Condition> Conditions = new();
+        public ConditionsReference Conditions;
     }
 
     public class QuestPOIBlobData
@@ -11528,22 +11468,6 @@ namespace Game
         public float target_Z;
         public float target_Orientation;
         public uint PortLocId;
-    }
-
-    public class DungeonEncounter
-    {
-        public DungeonEncounter(DungeonEncounterRecord _dbcEntry, EncounterCreditType _creditType, uint _creditEntry, uint _lastEncounterDungeon)
-        {
-            dbcEntry = _dbcEntry;
-            creditType = _creditType;
-            creditEntry = _creditEntry;
-            lastEncounterDungeon = _lastEncounterDungeon;
-        }
-
-        public DungeonEncounterRecord dbcEntry;
-        public EncounterCreditType creditType;
-        public uint creditEntry;
-        public uint lastEncounterDungeon;
     }
 
     public class MailLevelReward
@@ -11829,6 +11753,17 @@ namespace Game
     {
         public uint Id;
         public uint[] Value = new uint[SkillConst.MaxSkillStep];
+
+        public uint GetValueForTierIndex(int tierIndex)
+        {
+            if (tierIndex >= SkillConst.MaxSkillStep)
+                tierIndex = (int)SkillConst.MaxSkillStep - 1;
+
+            while (Value[tierIndex] == 0 && tierIndex > 0)
+                --tierIndex;
+
+            return Value[tierIndex];
+        }
     }
 
     public class TerrainSwapInfo

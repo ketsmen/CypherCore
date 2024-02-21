@@ -93,8 +93,10 @@ namespace Game.Entities
         {
             // FFA_PVP flags are area and not zone id dependent
             // so apply them accordingly
+            uint oldArea = m_areaUpdateId;
             m_areaUpdateId = newArea;
 
+            AreaTableRecord oldAreaEntry = CliDB.AreaTableStorage.LookupByKey(oldArea);
             AreaTableRecord area = CliDB.AreaTableStorage.LookupByKey(newArea);
             bool oldFFAPvPArea = pvpInfo.IsInFFAPvPArea;
             pvpInfo.IsInFFAPvPArea = area != null && area.GetFlags().HasFlag(AreaFlags.FreeForAllPvP);
@@ -132,9 +134,17 @@ namespace Game.Entities
 
             PushQuests();
 
-            UpdateCriteria(CriteriaType.EnterTopLevelArea, newArea);
-
             UpdateMountCapability();
+
+            if ((oldAreaEntry != null && oldAreaEntry.GetFlags2().HasFlag(AreaFlags2.UseSubzoneForChatChannel))
+                || (area != null && area.GetFlags2().HasFlag(AreaFlags2.UseSubzoneForChatChannel)))
+                UpdateLocalChannels(newArea);
+
+            if (oldArea != newArea)
+            {
+                UpdateCriteria(CriteriaType.EnterArea, newArea);
+                UpdateCriteria(CriteriaType.LeaveArea, oldArea);
+            }
         }
 
         public void UpdateZone(uint newZone, uint newArea)
@@ -201,7 +211,9 @@ namespace Game.Entities
             AutoUnequipOffhandIfNeed();
 
             // recent client version not send leave/join channel packets for built-in local channels
-            UpdateLocalChannels(newZone);
+            var newAreaEntry = CliDB.AreaTableStorage.LookupByKey(newArea);
+            if (newAreaEntry == null || !newAreaEntry.GetFlags2().HasFlag(AreaFlags2.UseSubzoneForChatChannel))
+                UpdateLocalChannels(newZone);
 
             UpdateZoneDependentAuras(newZone);
 
@@ -215,6 +227,9 @@ namespace Game.Entities
                 Guild guild = GetGuild();
                 if (guild != null)
                     guild.UpdateMemberData(this, GuildMemberData.ZoneId, newZone);
+
+                UpdateCriteria(CriteriaType.EnterTopLevelArea, newZone);
+                UpdateCriteria(CriteriaType.LeaveTopLevelArea, oldZone);
             }
         }
 
@@ -612,7 +627,7 @@ namespace Game.Entities
 
             return (instanceLock.GetData().CompletedEncountersMask & (1u << dungeonEncounter.Bit)) != 0;
         }
-        
+
         public override void ProcessTerrainStatusUpdate(ZLiquidStatus oldLiquidStatus, LiquidData newLiquidData)
         {
             // process liquid auras using generic unit code

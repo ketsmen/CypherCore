@@ -92,7 +92,7 @@ namespace Scripts.EasternKingdoms.MagistersTerrace.SelinFireheart
         void SelectNearestCrystal()
         {
             Creature crystal = me.FindNearestCreature(CreatureIds.FelCrystal, 250.0f);
-            if (crystal)
+            if (crystal != null)
             {
                 Talk(TextIds.SayEnergy);
                 Talk(TextIds.EmoteCrystal);
@@ -197,7 +197,7 @@ namespace Scripts.EasternKingdoms.MagistersTerrace.SelinFireheart
                         Talk(TextIds.SayEmpowered);
 
                         Creature CrystalChosen = ObjectAccessor.GetCreature(me, CrystalGUID);
-                        if (CrystalChosen && CrystalChosen.IsAlive())
+                        if (CrystalChosen != null && CrystalChosen.IsAlive())
                             CrystalChosen.KillSelf();
 
                         CrystalGUID.Clear();
@@ -231,8 +231,6 @@ namespace Scripts.EasternKingdoms.MagistersTerrace.SelinFireheart
                         _events.ScheduleEvent(EventIds.DrainCrystal, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(25), 0, PhaseIds.Normal);
                 }
             }
-
-            DoMeleeAttackIfReady();
         }
     }
 
@@ -247,10 +245,9 @@ namespace Scripts.EasternKingdoms.MagistersTerrace.SelinFireheart
             if (instance != null)
             {
                 Creature selin = instance.GetCreature(DataTypes.SelinFireheart);
-                if (selin && selin.IsAlive())
+                if (selin != null && selin.IsAlive())
                     selin.GetAI().DoAction(MiscConst.ActionSwitchPhase);
             }
         }
     }
 }
-

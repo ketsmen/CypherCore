@@ -538,8 +538,6 @@ namespace Scripts.BrokenIsles.ZoneMardum
 
             if (me.HasUnitState(UnitState.Casting))
                 return;
-
-            DoMeleeAttackIfReady();
         }
     }
 
@@ -667,7 +665,7 @@ namespace Scripts.BrokenIsles.ZoneMardum
 
         public override void OnSceneStart(Player player, uint sceneInstanceID, SceneTemplate sceneTemplate)
         {
-            Creature sevisObject = player.FindNearestCreatureWithOptions(30.0f, new() { CreatureId = AshtongueIntroData.NpcSevisBrightflameAshtongue, IgnorePhases = true });
+            Creature sevisObject = player.FindNearestCreatureWithOptions(30.0f, new FindCreatureOptions() { CreatureId = AshtongueIntroData.NpcSevisBrightflameAshtongue, IgnorePhases = true });
             if (sevisObject == null)
                 return;
 

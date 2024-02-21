@@ -1080,6 +1080,55 @@ namespace Framework.Constants
     }
 
     [Flags]
+    public enum CfgCategoriesCharsets
+    {
+        Any = 0x00,
+        Latin1 = 0x01,
+        English = 0x02,
+        Russian = 0x04,
+        Korean = 0x08,
+        Chinese = 0x10
+    }
+
+    [Flags]
+    public enum CfgCategoriesFlags
+    {
+        None = 0x0,
+        Tournament = 0x1
+    }
+
+    [Flags]
+    public enum ChatChannelFlags
+    {
+        None = 0x00,
+        AutoJoin = 0x01,
+        ZoneBased = 0x02,
+        ReadOnly = 0x04,
+        AllowItemLinks = 0x08,
+        OnlyInCities = 0x10,
+        LinkedChannel = 0x20,
+        ZoneAttackAlerts = 0x10000,
+        GuildRecruitment = 0x20000,
+        LookingForGroup = 0x40000,
+        GlobalForTournament = 0x80000,
+        DisableRaidIcons = 0x100000,
+        Regional = 0x200000
+    }
+
+    public enum ChatChannelRuleset
+    {
+        None = 0,
+        Mentor = 1,
+        Disabled = 2,
+        ChromieTimeCataclysm = 3,
+        ChromieTimeBuringCrusade = 4,
+        ChromieTimeWrath = 5,
+        ChromieTimeMists = 6,
+        ChromieTimeWoD = 7,
+        ChromieTimeLegion = 8,
+    }
+
+    [Flags]
     public enum ChrRacesFlag
     {
         NPCOnly = 0x01,
@@ -1792,7 +1841,7 @@ namespace Framework.Constants
         Some = 8
     }
 
-    public enum MountCapabilityFlags : byte
+    public enum MountCapabilityFlags : int
     {
         Ground = 0x1,
         Flying = 0x2,
@@ -1801,7 +1850,7 @@ namespace Framework.Constants
         IgnoreRestrictions = 0x20
     }
 
-    public enum MountFlags : ushort
+    public enum MountFlags : int
     {
         SelfMount = 0x02,                   // Player becomes the mount himself
         FactionSpecific = 0x04,
@@ -1810,7 +1859,7 @@ namespace Framework.Constants
         HideIfUnknown = 0x40
     }
 
-    public enum PhaseEntryFlags : ushort
+    public enum PhaseEntryFlags : int
     {
         ReadOnly = 0x1,
         InternalPhase = 0x2,
@@ -1863,7 +1912,7 @@ namespace Framework.Constants
         Registrar = 11,
         Vendor = 12,
         PetitionVendor = 13,
-        TabardVendor = 14,
+        GuildTabardVendor = 14,
         TalentMaster = 15,
         SpecializationMaster = 16,
         MailInfo = 17,
@@ -1913,7 +1962,8 @@ namespace Framework.Constants
         TraitSystem = 61,
         BarbersChoice = 62,
         JailersTowerBuffs = 63,
-        MajorFactionRenown = 64
+        MajorFactionRenown = 64,
+        PersonalTabardVendor = 65
     }
 
     [Flags]
@@ -1973,12 +2023,28 @@ namespace Framework.Constants
     public enum SpellEffectAttributes
     {
         None = 0,
-        UnaffectedByInvulnerability = 0x01, // not cancelled by immunities
-        NoScaleWithStack = 0x40,
+        NoImmunity = 0x01,  // not cancelled by immunities
+        PositionIsFacingRelative = 0x02, /*NYI*/
+        JumpChargeUnitMeleeRange = 0x04, /*NYI*/
+        JumpChargeUnitStrictPathCheck = 0x08, /*NYI*/
+        ExcludeOwnParty = 0x10, /*NYI*/
+        AlwaysAoeLineOfSight = 0x20,
+        SuppressPointsStacking = 0x40,
         ChainFromInitialTarget = 0x80,
-        StackAuraAmountOnRecast = 0x8000, // refreshing periodic auras with this attribute will add remaining damage to new aura
-        AllowAnyExplicitTarget = 0x100000,
-        IgnoreDuringCooldownTimeRateCalculation = 0x800000
+        UncontrolledNoBackwards = 0x100, /*NYI*/
+        AuraPointsStack = 0x000200, /*NYI*/ // refreshing periodic auras with this attribute will add remaining damage to new aura
+        NoCopyDamageInterruptsOrProcs = 0x400, /*NYI*/
+        AddTargetCombatReachToAOE = 0x800, /*NYI*/
+        IsHarmful = 0x1000,
+        ForceScaleToOverrideCameraMinHeight = 0x2000, /*NYI*/
+        PlayersOnly = 0x004000,
+        ComputePointsOnlyAtCastTime = 0x8000, /*NYI*/
+        EnforceLineOfSightToChainTargets = 0x10000,
+        AreaEffectsUseTargetRadius = 0x20000, /*NYI*/
+        TeleportWithVehicle = 0x40000, /*NYI*/
+        ScalePointsByChallengeModeDamageScaler = 0x80000, /*NYI*/
+        DontFailSpellOnTargetingFailure = 0x100000, /*NYI*/
+        IgnoreDuringCooldownTimeRateCalculation = 0x800000, /*NYI*/
     }
 
     public enum SpellProcsPerMinuteModType : byte
@@ -2050,13 +2116,20 @@ namespace Framework.Constants
         DontDismissWhenEncounterIsAborted = 0x80000000  // NYI
     }
 
+    [Flags]
     public enum TaxiNodeFlags : int
     {
-        Alliance = 0x1,
-        Horde = 0x2,
-        UseFavoriteMount = 0x10
+        ShowOnAllianceMap = 0x01,
+        ShowOnHordeMap = 0x02,
+        ShowOnMapBorder = 0x04,
+        ShowIfClientPassesCondition = 0x08,
+        UsePlayerFavoriteMount = 0x10,
+        EndPointPnly = 0x20,
+        IgnoreForFindNearest = 0x40,
+        DoNotShowInWorldMapUI = 0x80,
     }
 
+    [Flags]
     public enum TaxiPathNodeFlags : int
     {
         Teleport = 0x1,

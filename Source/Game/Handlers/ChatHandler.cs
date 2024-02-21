@@ -334,6 +334,10 @@ namespace Game
                     Channel chn = !channelGuid.IsEmpty() ? ChannelManager.GetChannelForPlayerByGuid(channelGuid, sender) : ChannelManager.GetChannelForPlayerByNamePart(target, sender);
                     if (chn != null)
                     {
+                        var chatChannel = CliDB.ChatChannelsStorage.LookupByKey(chn.GetChannelId());
+                        if (chatChannel != null && chatChannel.GetFlags().HasFlag(ChatChannelFlags.ReadOnly))
+                            return;
+
                         Global.ScriptMgr.OnPlayerChat(GetPlayer(), type, lang, msg, chn);
                         chn.Say(GetPlayer().GetGUID(), msg, lang);
                     }
@@ -644,6 +648,18 @@ namespace Game
             canLocalWhisperTargetResponse.WhisperTarget = canLocalWhisperTargetRequest.WhisperTarget;
             canLocalWhisperTargetResponse.Status = status;
             SendPacket(canLocalWhisperTargetResponse);
+        }
+
+        [WorldPacketHandler(ClientOpcodes.UpdateAadcStatus, Processing = PacketProcessing.Inplace)]
+        void HandleChatUpdateAADCStatus(UpdateAADCStatus updateAADCStatus)
+        {
+            // disabling chat not supported
+            // send Sueccess and force chat disabled to false instead of sending that change failed
+            // this makes client change the cvar back to false instead of just printing error message in console
+            UpdateAADCStatusResponse response = new();
+            response.Success = true;
+            response.ChatDisabled = false;
+            SendPacket(response);
         }
     }
 }

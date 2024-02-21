@@ -2027,17 +2027,17 @@ namespace Game.AI
                                 foreach (uint pathId in waypoints)
                                 {
                                     WaypointPath path = Global.WaypointMgr.GetPath(pathId);
-                                    if (path == null || path.nodes.Empty())
+                                    if (path == null || path.Nodes.Empty())
                                         continue;
 
-                                    foreach (var waypoint in path.nodes)
+                                    foreach (var waypoint in path.Nodes)
                                     {
-                                        float distToThisPath = creature.GetDistance(waypoint.x, waypoint.y, waypoint.z);
-                                        if (distToThisPath < distanceToClosest)
+                                        float distanceToThisNode = creature.GetDistance(waypoint.X, waypoint.Y, waypoint.Z);
+                                        if (distanceToThisNode < distanceToClosest)
                                         {
-                                            distanceToClosest = distToThisPath;
+                                            distanceToClosest = distanceToThisNode;
                                             closestPathId = pathId;
-                                            closestWaypointId = waypoint.id;
+                                            closestWaypointId = waypoint.Id;
                                         }
                                     }
                                 }
@@ -2240,7 +2240,7 @@ namespace Game.AI
 
                             Log.outDebug(LogFilter.ScriptsAi, $"SmartScript::ProcessAction:: SMART_ACTION_PLAY_ANIMKIT: target: {target.GetName()} ({target.GetGUID()}), AnimKit: {e.Action.animKit.animKit}, Type: {e.Action.animKit.type}");
                         }
-                        else if(IsGameObject(target))
+                        else if (IsGameObject(target))
                         {
                             switch (e.Action.animKit.type)
                             {
@@ -3764,9 +3764,7 @@ namespace Game.AI
 
         public void OnUpdate(uint diff)
         {
-            if ((_scriptType == SmartScriptType.Creature || _scriptType == SmartScriptType.GameObject
-                || _scriptType == SmartScriptType.AreaTriggerEntity || _scriptType == SmartScriptType.AreaTriggerEntityServerside)
-                && GetBaseObject() == null)
+            if ((_scriptType == SmartScriptType.Creature || _scriptType == SmartScriptType.GameObject || _scriptType == SmartScriptType.AreaTriggerEntity || _scriptType == SmartScriptType.AreaTriggerEntityCustom) && GetBaseObject() == null)
                 return;
 
             if (_me != null && _me.IsInEvadeMode())
@@ -3887,44 +3885,27 @@ namespace Game.AI
                     Log.outDebug(LogFilter.ScriptsAi, $"SmartScript: EventMap for Event {eventId} is empty but is using SmartScript.");
                 return;
             }
-            foreach (var holder in e)
+
+            foreach (var scriptholder in e)
             {
-                if (holder.Event.event_flags.HasAnyFlag(SmartEventFlags.DifficultyAll))//if has instance flag add only if in it
+                if (obj != null && !scriptholder.Difficulties.Empty())
                 {
-                    if (!(obj != null && obj.GetMap().IsDungeon()))
-                        continue;
-
-                    // TODO: fix it for new maps and difficulties
-                    switch (obj.GetMap().GetDifficultyID())
+                    bool foundValidDifficulty = false;
+                    foreach (Difficulty difficulty in scriptholder.Difficulties)
                     {
-
-
-                        case Difficulty.Normal:
-                        case Difficulty.Raid10N:
-                            if (holder.Event.event_flags.HasAnyFlag(SmartEventFlags.Difficulty0))
-                                _events.Add(holder);
+                        if (difficulty == obj.GetMap().GetDifficultyID())
+                        {
+                            foundValidDifficulty = true;
                             break;
-                        case Difficulty.Heroic:
-                        case Difficulty.Raid25N:
-                            if (holder.Event.event_flags.HasAnyFlag(SmartEventFlags.Difficulty1))
-                                _events.Add(holder);
-                            break;
-                        case Difficulty.Raid10HC:
-                            if (holder.Event.event_flags.HasAnyFlag(SmartEventFlags.Difficulty2))
-                                _events.Add(holder);
-                            break;
-                        case Difficulty.Raid25HC:
-                            if (holder.Event.event_flags.HasAnyFlag(SmartEventFlags.Difficulty3))
-                                _events.Add(holder);
-                            break;
-                        default:
-                            break;
-
+                        }
                     }
+
+                    if (!foundValidDifficulty)
+                        continue;
                 }
 
-                _allEventFlags |= holder.Event.event_flags;
-                _events.Add(holder);//NOTE: 'world(0)' events still get processed in ANY instance mode
+                _allEventFlags |= scriptholder.Event.event_flags;
+                _events.Add(scriptholder);
             }
         }
 
@@ -3947,7 +3928,7 @@ namespace Game.AI
                     FillScript(e, _go, null, null, null, 0);
                     break;
                 case SmartScriptType.AreaTriggerEntity:
-                case SmartScriptType.AreaTriggerEntityServerside:
+                case SmartScriptType.AreaTriggerEntityCustom:
                     e = Global.SmartAIMgr.GetScript((int)_areaTrigger.GetEntry(), _scriptType);
                     FillScript(e, _areaTrigger, null, null, null, 0);
                     break;
@@ -4058,8 +4039,8 @@ namespace Game.AI
                         break;
                     case TypeId.AreaTrigger:
                         _areaTrigger = obj.ToAreaTrigger();
-                        _scriptType = _areaTrigger.IsServerSide() ? SmartScriptType.AreaTriggerEntityServerside : SmartScriptType.AreaTriggerEntity;
-                        Log.outDebug(LogFilter.ScriptsAi, $"SmartScript.OnInitialize: source is AreaTrigger {_areaTrigger.GetEntry()}, IsServerSide {_areaTrigger.IsServerSide()}");
+                        _scriptType = _areaTrigger.IsCustom() ? SmartScriptType.AreaTriggerEntityCustom : SmartScriptType.AreaTriggerEntity;
+                        Log.outDebug(LogFilter.ScriptsAi, $"SmartScript.OnInitialize: source is AreaTrigger {_areaTrigger.GetEntry()}, IsCustom {_areaTrigger.IsCustom()}");
                         break;
                     default:
                         Log.outError(LogFilter.Scripts, "SmartScript.OnInitialize: Unhandled TypeID !WARNING!");
@@ -4121,7 +4102,7 @@ namespace Game.AI
             Cell.VisitGridObjects(_me, searcher, range);
             return searcher.GetTarget();
         }
-        
+
         void DoFindFriendlyCC(List<Creature> creatures, float range)
         {
             if (_me == null)
@@ -4221,7 +4202,7 @@ namespace Game.AI
         }
 
         public bool HasAnyEventWithFlag(SmartEventFlags flag) { return _allEventFlags.HasAnyFlag(flag); }
-        
+
         public bool IsUnit(WorldObject obj) { return obj != null && (obj.IsTypeId(TypeId.Unit) || obj.IsTypeId(TypeId.Player)); }
 
         public bool IsPlayer(WorldObject obj) { return obj != null && obj.IsTypeId(TypeId.Player); }

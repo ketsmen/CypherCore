@@ -21,21 +21,31 @@ namespace Game.Entities
         {
             return m_movementInfo.HasMovementFlag(MovementFlag.DisableGravity);
         }
+
         public bool IsWalking()
         {
             return m_movementInfo.HasMovementFlag(MovementFlag.Walking);
         }
+
         public bool IsHovering() { return m_movementInfo.HasMovementFlag(MovementFlag.Hover); }
+
         public bool IsStopped() { return !HasUnitState(UnitState.Moving); }
+
         public bool IsMoving() { return m_movementInfo.HasMovementFlag(MovementFlag.MaskMoving); }
+
         public bool IsTurning() { return m_movementInfo.HasMovementFlag(MovementFlag.MaskTurning); }
+
         public virtual bool CanFly() { return false; }
+
         public bool IsFlying() { return m_movementInfo.HasMovementFlag(MovementFlag.Flying | MovementFlag.DisableGravity); }
+
         public bool IsFalling()
         {
             return m_movementInfo.HasMovementFlag(MovementFlag.Falling | MovementFlag.FallingFar) || MoveSpline.IsFalling();
         }
+
         public virtual bool CanEnterWater() { return false; }
+
         public virtual bool CanSwim()
         {
             // Mirror client behavior, if this method returns false then client will not use swimming animation and for players will apply gravity as if there was no water
@@ -50,13 +60,20 @@ namespace Game.Entities
 
             return HasUnitFlag(UnitFlags.Rename | UnitFlags.CanSwim);
         }
+
         public bool IsInWater()
         {
             return GetLiquidStatus().HasAnyFlag(ZLiquidStatus.InWater | ZLiquidStatus.UnderWater);
         }
+
         public bool IsUnderWater()
         {
             return GetLiquidStatus().HasFlag(ZLiquidStatus.UnderWater);
+        }
+
+        public bool IsOnOceanFloor()
+        {
+            return GetLiquidStatus().HasFlag(ZLiquidStatus.OceanFloor);
         }
 
         void PropagateSpeedChange() { GetMotionMaster().PropagateSpeedChange(); }
@@ -141,7 +158,7 @@ namespace Game.Entities
         {
             return MovementGeneratorType.Idle;
         }
-        
+
         public void StopMoving()
         {
             ClearUnitState(UnitState.Moving);
@@ -234,7 +251,7 @@ namespace Game.Entities
             //GetMotionMaster()->LaunchMoveSpline(std::move(init), EVENT_FACE, MOTION_PRIORITY_HIGHEST);
             init.Launch();
         }
-        
+
         public void MonsterMoveWithSpeed(float x, float y, float z, float speed, bool generatePath = false, bool forceDestination = false)
         {
             var initializer = (MoveSplineInit init) =>
@@ -352,7 +369,7 @@ namespace Game.Entities
         {
             // Temporarily disabled for short lived auras that unapply before client had time to ACK applying
             //if (enable == HasUnitMovementFlag2(MovementFlag2.CanTurnWhileFalling))
-                //return false;
+            //return false;
 
             if (enable)
                 AddUnitMovementFlag2(MovementFlag2.CanTurnWhileFalling);
@@ -545,8 +562,8 @@ namespace Game.Entities
                         Creature creature1 = ToCreature();
                         if (creature1 != null)
                         {
-                            ulong immuneMask = creature1.GetCreatureTemplate().MechanicImmuneMask;
-                            if (Convert.ToBoolean(immuneMask & (1 << ((int)Mechanics.Snare - 1))) || Convert.ToBoolean(immuneMask & (1 << ((int)Mechanics.Daze - 1))))
+                            CreatureImmunities immunities = Global.SpellMgr.GetCreatureImmunities(creature1.GetCreatureTemplate().CreatureImmunitiesId);
+                            if (immunities != null && (immunities.Mechanic[(int)Mechanics.Snare] || immunities.Mechanic[(int)Mechanics.Daze]))
                                 break;
                         }
 
@@ -680,7 +697,7 @@ namespace Game.Entities
         {
             return HasUnitMovementFlag(MovementFlag.Hover) ? m_unitData.HoverHeight : 0.0f;
         }
-        
+
         public bool IsWithinBoundaryRadius(Unit obj)
         {
             if (obj == null || !IsInMap(obj) || !InSamePhase(obj))
@@ -733,6 +750,16 @@ namespace Game.Entities
                 else
                     SetAnimTier(AnimTier.Ground);
             }
+
+            if (IsAlive())
+            {
+                if (IsGravityDisabled() || IsHovering())
+                    SetPlayHoverAnim(true);
+                else
+                    SetPlayHoverAnim(false);
+            }
+            else if (IsPlayer()) // To update player who dies while flying/hovering
+                SetPlayHoverAnim(false, false);
 
             return true;
         }
@@ -844,6 +871,9 @@ namespace Game.Entities
 
         public void UpdateMountCapability()
         {
+            if (IsLoading())
+                return;
+
             var mounts = GetAuraEffectsByType(AuraType.Mounted);
             foreach (AuraEffect aurEff in mounts.ToArray())
             {
@@ -857,9 +887,9 @@ namespace Game.Entities
                         if (!HasAura(capability.ModSpellAuraID))
                             CastSpell(this, capability.ModSpellAuraID, new CastSpellExtraArgs(aurEff));
                 }
+            }
         }
-    }
-        
+
         public override void ProcessPositionDataChanged(PositionFullTerrainStatus data)
         {
             ZLiquidStatus oldLiquidStatus = GetLiquidStatus();
@@ -1024,7 +1054,7 @@ namespace Game.Entities
         {
             // Temporarily disabled for short lived auras that unapply before client had time to ACK applying
             //if (enable == HasUnitMovementFlag(MovementFlag.FallingSlow))
-                //return false;
+            //return false;
 
             if (enable)
                 AddUnitMovementFlag(MovementFlag.FallingSlow);
@@ -1109,6 +1139,16 @@ namespace Game.Entities
                     SetAnimTier(AnimTier.Ground);
             }
 
+            if (IsAlive())
+            {
+                if (IsGravityDisabled() || IsHovering())
+                    SetPlayHoverAnim(true);
+                else
+                    SetPlayHoverAnim(false);
+            }
+            else if (IsPlayer()) // To update player who dies while flying/hovering
+                SetPlayHoverAnim(false, false);
+
             return true;
         }
 
@@ -1153,7 +1193,7 @@ namespace Game.Entities
             {
                 WorldLocation target = new(GetMapId(), pos);
                 ToPlayer().TeleportTo(target, (TeleportToOptions.NotLeaveTransport | TeleportToOptions.NotLeaveCombat | TeleportToOptions.NotUnSummonPet | (casting ? TeleportToOptions.Spell : 0)));
-            }                
+            }
             else
             {
                 SendTeleportPacket(pos);
@@ -1196,7 +1236,6 @@ namespace Game.Entities
                     case UnitState.Confused:
                         if (!HasUnitState(UnitState.Stunned))
                         {
-                            ClearUnitState(UnitState.MeleeAttacking);
                             SendMeleeAttackStop();
                             // SendAutoRepeatCancel ?
                             SetConfused(true);
@@ -1205,7 +1244,6 @@ namespace Game.Entities
                     case UnitState.Fleeing:
                         if (!HasUnitState(UnitState.Stunned | UnitState.Confused))
                         {
-                            ClearUnitState(UnitState.MeleeAttacking);
                             SendMeleeAttackStop();
                             // SendAutoRepeatCancel ?
                             SetFeared(true);
@@ -1657,10 +1695,16 @@ namespace Game.Entities
         }
 
         public bool IsPlayingHoverAnim() { return _playHoverAnim; }
-        
-        void SetPlayHoverAnim(bool enable)
+
+        void SetPlayHoverAnim(bool enable, bool sendUpdate = true)
         {
+            if (IsPlayingHoverAnim() == enable)
+                return;
+
             _playHoverAnim = enable;
+
+            if (!sendUpdate)
+                return;
 
             SetPlayHoverAnim data = new();
             data.UnitGUID = GetGUID();
@@ -1725,7 +1769,7 @@ namespace Game.Entities
         public bool HasExtraUnitMovementFlag2(MovementFlags3 f) { return m_movementInfo.HasExtraMovementFlag2(f); }
         public MovementFlags3 GetExtraUnitMovementFlags2() { return m_movementInfo.GetExtraMovementFlags2(); }
         public void SetExtraUnitMovementFlags2(MovementFlags3 f) { m_movementInfo.SetExtraMovementFlags2(f); }
-        
+
         //Spline
         public bool IsSplineEnabled()
         {
@@ -1762,7 +1806,7 @@ namespace Game.Entities
                 if (animTier.HasValue)
                     SetAnimTier(animTier.Value);
             }
-            
+
             UpdateSplinePosition();
         }
 

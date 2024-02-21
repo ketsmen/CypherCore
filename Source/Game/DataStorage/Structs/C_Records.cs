@@ -6,6 +6,21 @@ using System.Numerics;
 
 namespace Game.DataStorage
 {
+    public sealed class Cfg_CategoriesRecord
+    {
+        public uint Id;
+        public LocalizedString Name;
+        public ushort LocaleMask;
+        public byte CreateCharsetMask;
+        public byte ExistingCharsetMask;
+        public byte Flags;
+        public sbyte Order;
+
+        public CfgCategoriesCharsets GetCreateCharsetMask() { return (CfgCategoriesCharsets)CreateCharsetMask; }
+        public CfgCategoriesCharsets GetExistingCharsetMask() { return (CfgCategoriesCharsets)ExistingCharsetMask; }
+        public CfgCategoriesFlags GetFlags() { return (CfgCategoriesFlags)Flags; }
+    }
+
     public sealed class Cfg_RegionsRecord
     {
         public uint Id;
@@ -60,9 +75,12 @@ namespace Game.DataStorage
         public uint Id;
         public LocalizedString Name;
         public string Shortcut;
-        public ChannelDBCFlags Flags;
+        public int Flags;
         public sbyte FactionGroup;
         public int Ruleset;
+
+        public ChatChannelFlags GetFlags() { return (ChatChannelFlags)Flags; }
+        public ChatChannelRuleset GetRuleset() { return (ChatChannelRuleset)Ruleset; }
     }
 
     public sealed class ChrClassUIDisplayRecord
@@ -145,6 +163,7 @@ namespace Game.DataStorage
         public uint DisplayID;
         public float BarberShopMinCameraDistance;
         public float BarberShopHeightOffset;
+        public float BarberShopCameraZoomOffset;
     }
 
     public sealed class ChrCustomizationElementRecord
@@ -162,6 +181,7 @@ namespace Game.DataStorage
         public int ChrCustomizationVoiceID;
         public int AnimKitID;
         public int ParticleColorID;
+        public int ChrCustGeoComponentLinkID;
     }
 
     public sealed class ChrCustomizationOptionRecord
@@ -337,7 +357,7 @@ namespace Game.DataStorage
     public sealed class ConditionalChrModelRecord
     {
         public uint Id;
-        public uint ChrModelID;                                      // This is the PK
+        public int ChrModelID;
         public int ChrCustomizationReqID;
         public int PlayerConditionID;
         public int Flags;
@@ -404,6 +424,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public uint BroadcastTextID;
+        public uint Unused1020;
         public uint SpellVisualKitID;
         public int AdditionalDuration;
         public ushort NextConversationLineID;

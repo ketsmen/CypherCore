@@ -147,7 +147,7 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockDepths.TombOfSeven
             _scheduler.Schedule(TimeSpan.FromSeconds(18), task =>
             {
                 Unit target = SelectTarget(SelectTargetMethod.Random, 0, 100.0f, true);
-                if (target)
+                if (target != null)
                     DoCast(target, SpellIds.Immolate);
                 task.Repeat(TimeSpan.FromSeconds(25));
             });
@@ -189,7 +189,7 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockDepths.TombOfSeven
             if (!UpdateVictim())
                 return;
 
-            _scheduler.Update(diff, () => DoMeleeAttackIfReady());
+            _scheduler.Update(diff);
         }
 
         public override bool OnGossipSelect(Player player, uint menuId, uint gossipListId)

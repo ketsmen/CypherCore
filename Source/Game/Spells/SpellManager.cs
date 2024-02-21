@@ -1,6 +1,7 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
 using Framework.Dynamic;
@@ -12,6 +13,7 @@ using Game.Miscellaneous;
 using Game.Movement;
 using Game.Spells;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -603,6 +605,11 @@ namespace Game.Entities
             return mSpellAreaForAreaMap.LookupByKey(area_id);
         }
 
+        public CreatureImmunities GetCreatureImmunities(int creatureImmunitiesId)
+        {
+            return mCreatureImmunities.LookupByKey(creatureImmunitiesId);
+        }
+
         public SpellInfo GetSpellInfo(uint spellId, Difficulty difficulty)
         {
             var list = mSpellInfoMap.LookupByKey(spellId);
@@ -819,11 +826,8 @@ namespace Game.Entities
                         case SpellEffectName.Skill:
                             dbc_node.skill = (SkillType)spellEffectInfo.MiscValue;
                             dbc_node.step = (ushort)spellEffectInfo.CalcValue();
-                            if (dbc_node.skill != SkillType.Riding)
-                                dbc_node.value = 1;
-                            else
-                                dbc_node.value = (ushort)(dbc_node.step * 75);
-                            dbc_node.maxvalue = (ushort)(dbc_node.step * 75);
+                            dbc_node.value = 0;
+                            dbc_node.maxvalue = 0;
                             break;
                         case SpellEffectName.DualWield:
                             dbc_node.skill = SkillType.DualWield;
@@ -992,8 +996,8 @@ namespace Game.Entities
 
             mSpellTargetPositions.Clear();                                // need for reload case
 
-            //                                         0   1         2           3                  4                  5
-            SQLResult result = DB.World.Query("SELECT ID, EffectIndex, MapID, PositionX, PositionY, PositionZ FROM spell_target_position");
+            //                                         0   1            2      3          4          5          6
+            SQLResult result = DB.World.Query("SELECT ID, EffectIndex, MapID, PositionX, PositionY, PositionZ, Orientation FROM spell_target_position");
             if (result.IsEmpty())
             {
                 Log.outInfo(LogFilter.ServerLoading, "Loaded 0 spell target coordinates. DB table `spell_target_position` is empty.");
@@ -1038,11 +1042,16 @@ namespace Game.Entities
                     continue;
                 }
 
-                // target facing is in degrees for 6484 & 9268... (blizz sucks)
-                if (spellInfo.GetEffect(effIndex).PositionFacing > 2 * Math.PI)
-                    st.target_Orientation = spellInfo.GetEffect(effIndex).PositionFacing * (float)Math.PI / 180;
+                if (!result.IsNull(6))
+                    st.target_Orientation = result.Read<float>(6);
                 else
-                    st.target_Orientation = spellInfo.GetEffect(effIndex).PositionFacing;
+                {
+                    // target facing is in degrees for 6484 & 9268... (blizz sucks)
+                    if (spellInfo.GetEffect(effIndex).PositionFacing > 2 * MathF.PI)
+                        st.target_Orientation = spellInfo.GetEffect(effIndex).PositionFacing * MathF.PI / 180;
+                    else
+                        st.target_Orientation = spellInfo.GetEffect(effIndex).PositionFacing;
+                }
 
                 bool hasTarget(Targets target)
                 {
@@ -3065,7 +3074,7 @@ namespace Game.Entities
                 {
                     ApplySpellEffectFix(spellInfo, 1, spellEffectInfo =>
                     {
-                        spellEffectInfo.ApplyAuraPeriod = 1 * Time.InMilliseconds;;
+                        spellEffectInfo.ApplyAuraPeriod = 1 * Time.InMilliseconds;
                     });
                 });
 
@@ -3074,7 +3083,7 @@ namespace Game.Entities
                 {
                     ApplySpellEffectFix(spellInfo, 1, spellEffectInfo =>
                     {
-                        spellEffectInfo.ApplyAuraPeriod = 5 * Time.InMilliseconds;;
+                        spellEffectInfo.ApplyAuraPeriod = 5 * Time.InMilliseconds;
                     });
                 });
 
@@ -3083,7 +3092,7 @@ namespace Game.Entities
                 {
                     ApplySpellEffectFix(spellInfo, 1, spellEffectInfo =>
                     {
-                        spellEffectInfo.ApplyAuraPeriod = 1 * Time.InMilliseconds;;
+                        spellEffectInfo.ApplyAuraPeriod = 1 * Time.InMilliseconds;
                     });
                 });
             }
@@ -3597,8 +3606,8 @@ namespace Game.Entities
                 44408  // Trained Rock Falcon/Hawk Hunting
              }, spellInfo =>
              {
-                spellInfo.Speed = 0.0f;
-            });
+                 spellInfo.Speed = 0.0f;
+             });
 
             // Summon Corpse Scarabs
             ApplySpellFix(new[] { 28864, 29105 }, spellInfo =>
@@ -3610,7 +3619,7 @@ namespace Game.Entities
             });
 
             // Tag Greater Felfire Diemetradon
-            ApplySpellFix(new[] { 
+            ApplySpellFix(new[] {
                 37851, // Tag Greater Felfire Diemetradon
                 37918  // Arcano-pince
             }, spellInfo =>
@@ -4091,7 +4100,7 @@ namespace Game.Entities
                 ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
                 {
                     spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards10); // 10yd
-            spellEffectInfo.MiscValue = 190;
+                    spellEffectInfo.MiscValue = 190;
                 });
             });
             // ENDOF ICECROWN CITADEL SPELLS
@@ -4260,7 +4269,7 @@ namespace Game.Entities
             });
 
             // Baron Rivendare (Stratholme) - Unholy Aura
-            ApplySpellFix(new [] { 17466, 17467 }, spellInfo =>
+            ApplySpellFix(new[] { 17466, 17467 }, spellInfo =>
             {
                 spellInfo.AttributesEx2 |= SpellAttr2.NoInitialThreat;
             });
@@ -4333,7 +4342,7 @@ namespace Game.Entities
             });
 
             // Earthquake
-            ApplySpellFix(new [] { 61882 }, spellInfo =>
+            ApplySpellFix(new[] { 61882 }, spellInfo =>
             {
                 spellInfo.NegativeEffects[2] = true;
             });
@@ -4391,7 +4400,7 @@ namespace Game.Entities
             });
 
             // Burning Rush
-            ApplySpellFix(new[] {111400 }, spellInfo =>
+            ApplySpellFix(new[] { 111400 }, spellInfo =>
             {
                 spellInfo.AttributesEx4 |= SpellAttr4.AuraIsBuff;
             });
@@ -4499,6 +4508,54 @@ namespace Game.Entities
         public void LoadSpellInfoImmunities()
         {
             uint oldMSTime = Time.GetMSTime();
+
+            mCreatureImmunities.Clear();
+
+            //                                         0   1           2               3              4        5      6          7
+            SQLResult result = DB.World.Query("SELECT ID, SchoolMask, DispelTypeMask, MechanicsMask, Effects, Auras, ImmuneAoE, ImmuneChain FROM creature_immunities");
+            if (!result.IsEmpty())
+            {
+                do
+                {
+                    int id = result.Read<int>(0);
+                    byte school = result.Read<byte>(1);
+                    ushort dispelType = result.Read<ushort>(2);
+                    ulong mechanics = result.Read<ulong>(3);
+
+                    CreatureImmunities immunities = new();
+                    immunities.School = new BitSet(new uint[] { school });
+                    immunities.DispelType = new BitSet(new uint[] { dispelType });
+                    immunities.Mechanic = new BitSet(mechanics);
+                    immunities.ImmuneAoE = result.Read<bool>(6);
+                    immunities.ImmuneChain = result.Read<bool>(7);
+
+                    if (immunities.School.ToUInt() != school)
+                        Log.outError(LogFilter.Sql, $"Invalid value in `SchoolMask` {school} for creature immunities {id}, truncated");
+                    if (immunities.DispelType.ToUInt() != dispelType)
+                        Log.outError(LogFilter.Sql, $"Invalid value in `DispelTypeMask` {dispelType} for creature immunities {id}, truncated");
+                    if (immunities.Mechanic.ToUInt() != mechanics)
+                        Log.outError(LogFilter.Sql, $"Invalid value in `MechanicsMask` {mechanics} for creature immunities {id}, truncated");
+
+                    foreach (string token in result.Read<string>(4).Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (uint.TryParse(token, out uint effect) && effect != 0 && effect < (int)SpellEffectName.TotalSpellEffects)
+                            immunities.Effect.Add((SpellEffectName)effect);
+                        else
+                            Log.outError(LogFilter.Sql, $"Invalid effect type in `Effects` {token} for creature immunities {id}, skipped");
+                    }
+
+                    foreach (string token in result.Read<string>(5).Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (uint.TryParse(token, out uint aura) && aura != 0 && aura < (int)AuraType.Total)
+                            immunities.Aura.Add((AuraType)aura);
+                        else
+                            Log.outError(LogFilter.Sql, $"Invalid aura type in `Auras` {token} for creature immunities {id}, skipped");
+                    }
+
+                    mCreatureImmunities[id] = immunities;
+                }
+                while (result.NextRow());
+            }
 
             foreach (SpellInfo spellInfo in mSpellInfoMap.Values)
             {
@@ -4809,6 +4866,7 @@ namespace Game.Entities
         MultiMap<SpellGroup, AuraType> mSpellSameEffectStack = new();
         List<ServersideSpellName> mServersideSpellNames = new();
         Dictionary<(uint id, Difficulty difficulty), SpellProcEntry> mSpellProcMap = new();
+        Dictionary<int, CreatureImmunities> mCreatureImmunities = new();
         Dictionary<uint, SpellThreatEntry> mSpellThreatMap = new();
         Dictionary<uint, PetAura> mSpellPetAuraMap = new();
         MultiMap<(SpellLinkedType, uint), int> mSpellLinkedMap = new();
@@ -4918,7 +4976,6 @@ namespace Game.Entities
         }
     }
 
-
     public class PetDefaultSpellsEntry
     {
         public uint[] spellid = new uint[4];
@@ -4998,9 +5055,9 @@ namespace Game.Entities
                     // team that controls the workshop in the specified area
                     uint team = bf.GetData(newArea);
 
-                    if (team == TeamId.Horde)
+                    if (team == BatttleGroundTeamId.Horde)
                         return spellId == 56618;
-                    else if (team == TeamId.Alliance)
+                    else if (team == BatttleGroundTeamId.Alliance)
                         return spellId == 56617;
                     break;
                 }
@@ -5094,5 +5151,16 @@ namespace Game.Entities
         public float target_Y;
         public float target_Z;
         public float target_Orientation;
+    }
+
+    public class CreatureImmunities
+    {
+        public BitSet School = new((int)SpellSchools.Max);
+        public BitSet DispelType = new((int)Framework.Constants.DispelType.Max);
+        public BitSet Mechanic = new((int)Mechanics.Max);
+        public List<SpellEffectName> Effect = new();
+        public List<AuraType> Aura = new();
+        public bool ImmuneAoE;   // NYI
+        public bool ImmuneChain; // NYI
     }
 }

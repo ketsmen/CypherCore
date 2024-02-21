@@ -915,36 +915,16 @@ namespace Game.Chat
             return true;
         }
 
-        [Command("waypoint_data", RBACPermissions.CommandReloadWaypointData, true)]
+        [Command("waypoint_path", RBACPermissions.CommandReloadWaypointPath, true)]
         static bool HandleReloadWpCommand(CommandHandler handler, StringArguments args)
         {
             if (args != null)
-                Log.outInfo(LogFilter.Server, "Re-Loading Waypoints data from 'waypoints_data'");
+                Log.outInfo(LogFilter.Server, "Re-Loading Waypoints data from 'waypoint_path' and 'waypoint_path_node'");
 
-            Global.WaypointMgr.Load();
-
-            if (args != null)
-                handler.SendGlobalGMSysMessage("DB Table 'waypoint_data' reloaded.");
-
-            return true;
-        }
-
-        [Command("waypoint_scripts", RBACPermissions.CommandReloadWaypointScripts, true)]
-        static bool HandleReloadWpScriptsCommand(CommandHandler handler, StringArguments args)
-        {
-            if (Global.MapMgr.IsScriptScheduled())
-            {
-                handler.SendSysMessage("DB scripts used currently, please attempt reload later.");
-                return false;
-            }
+            Global.WaypointMgr.LoadPaths();
 
             if (args != null)
-                Log.outInfo(LogFilter.Server, "Re-Loading Scripts from `waypoint_scripts`...");
-
-            Global.ObjectMgr.LoadWaypointScripts();
-
-            if (args != null)
-                handler.SendGlobalGMSysMessage("DB table `waypoint_scripts` reloaded.");
+                handler.SendGlobalGMSysMessage("DB Tables 'waypoint_path' and 'waypoint_path_node' reloaded.");
 
             return true;
         }
@@ -1080,7 +1060,6 @@ namespace Game.Chat
                 HandleReloadEventScriptsCommand(handler, null);
                 HandleReloadSpellScriptsCommand(handler, null);
                 handler.SendGlobalGMSysMessage("DB tables `*_scripts` reloaded.");
-                HandleReloadWpScriptsCommand(handler, null);
                 HandleReloadWpCommand(handler, null);
                 return true;
             }

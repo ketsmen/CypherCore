@@ -120,6 +120,18 @@ namespace System.Collections.Generic
                 list.Resize(size);
         }
 
+        public static void RandomShuffle<T>(this IList<T> array)
+        {
+            for (int n = array.Count; n > 1;)
+            {
+                int k = (int)RandomHelper.Rand32(n);
+                --n;
+                T temp = array[n];
+                array[n] = array[k];
+                array[k] = temp;
+            }
+        }
+
         public static void RandomShuffle<T>(this IList<T> array, int first, int count)
         {
             for (int n = count; n > 1;)
@@ -146,7 +158,7 @@ namespace System.Collections.Generic
         {
             float totalWeight = sequence.Sum(weightSelector);
             // The weight we are after...
-            float itemWeightIndex = (float)RandomHelper.NextDouble() * totalWeight;
+            float itemWeightIndex = RandomHelper.NextSingle() * totalWeight;
             float currentWeightIndex = 0;
 
             foreach (var item in from weightedItem in sequence select new { Value = weightedItem, Weight = weightSelector(weightedItem) })
@@ -172,6 +184,13 @@ namespace System.Collections.Generic
             uint[] blockValues = new uint[array.Length / 32 + 1];
             array.CopyTo(blockValues, 0);
             return blockValues;
+        }
+
+        public static uint ToUInt(this BitSet array)
+        {
+            uint[] blockValues = new uint[array.Length / 32 + 1];
+            array.CopyTo(blockValues, 0);
+            return blockValues[0];
         }
 
         public static void Clear(this Array array)

@@ -61,7 +61,7 @@ namespace Game.Spells
             // default amount calculation
             int amount = 0;
 
-            if (!m_spellInfo.HasAttribute(SpellAttr8.MasteryAffectPoints) || MathFunctions.fuzzyEq(GetSpellEffectInfo().BonusCoefficient, 0.0f))
+            if (!m_spellInfo.HasAttribute(SpellAttr8.MasteryAffectsPoints) || MathFunctions.fuzzyEq(GetSpellEffectInfo().BonusCoefficient, 0.0f))
                 amount = GetSpellEffectInfo().CalcValue(caster, m_baseAmount, GetBase().GetOwner().ToUnit(), GetBase().GetCastItemId(), GetBase().GetCastItemLevel());
             else if (caster != null && caster.IsTypeId(TypeId.Player))
                 amount = (int)(caster.ToPlayer().m_activePlayerData.Mastery * GetSpellEffectInfo().BonusCoefficient);
@@ -116,7 +116,7 @@ namespace Game.Spells
             }
 
             GetBase().CallScriptEffectCalcAmountHandlers(this, ref amount, ref m_canBeRecalculated);
-            if (!GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.NoScaleWithStack))
+            if (!GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.SuppressPointsStacking))
                 amount *= GetBase().GetStackAmount();
 
             _estimatedAmount = CalculateEstimatedAmount(caster, amount);
@@ -126,7 +126,7 @@ namespace Game.Spells
 
         public static float? CalculateEstimatedAmount(Unit caster, Unit target, SpellInfo spellInfo, SpellEffectInfo spellEffectInfo, int amount, byte stack, AuraEffect aurEff)
         {
-            uint stackAmountForBonuses = !spellEffectInfo.EffectAttributes.HasFlag(SpellEffectAttributes.NoScaleWithStack) ? stack : 1u;
+            uint stackAmountForBonuses = !spellEffectInfo.EffectAttributes.HasFlag(SpellEffectAttributes.SuppressPointsStacking) ? stack : 1u;
 
             switch (spellEffectInfo.ApplyAuraName)
             {
@@ -169,6 +169,8 @@ namespace Game.Spells
                 caster.ModSpellDurationTime(spellInfo, ref period);
             else if (spellInfo.HasAttribute(SpellAttr5.SpellHasteAffectsPeriodic))
                 period = (int)(period * caster.m_unitData.ModCastingSpeed);
+            else if (spellInfo.HasAttribute(SpellAttr8.MeleeHasteAffectsPeriodic))
+                period = (int)(period * caster.m_unitData.ModHaste);
 
             if (period == 0)
                 return 0.0f;
@@ -179,7 +181,7 @@ namespace Game.Spells
 
             return totalTicks * CalculateEstimatedAmount(caster, target, spellInfo, spellEffectInfo, (int)amount, stack, null).GetValueOrDefault(amount);
         }
-        
+
         public uint GetTotalTicks()
         {
             uint totalTicks = 0;
@@ -252,6 +254,8 @@ namespace Game.Spells
                         caster.ModSpellDurationTime(m_spellInfo, ref _period);
                     else if (m_spellInfo.HasAttribute(SpellAttr5.SpellHasteAffectsPeriodic))
                         _period = (int)(_period * caster.m_unitData.ModCastingSpeed);
+                    else if (m_spellInfo.HasAttribute(SpellAttr8.MeleeHasteAffectsPeriodic))
+                        _period = (int)(_period * caster.m_unitData.ModHaste);
                 }
             }
             else // prevent infinite loop on Update
@@ -365,7 +369,7 @@ namespace Game.Spells
                 HandleEffect(aurApp, handleMask, true, triggeredBy);
             }
 
-            if (GetSpellInfo().HasAttribute(SpellAttr8.AuraSendAmount) || Aura.EffectTypeNeedsSendingAmount(GetAuraType()))
+            if (GetSpellInfo().HasAttribute(SpellAttr8.AuraPointsOnClient) || Aura.EffectTypeNeedsSendingAmount(GetAuraType()))
                 GetBase().SetNeedClientUpdateForTargets();
         }
 
@@ -2428,6 +2432,24 @@ namespace Game.Spells
             caster.GetThreatManager().TauntUpdate();
         }
 
+        [AuraEffectHandler(AuraType.ModFixate)]
+        void HandleAuraModFixate(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.Real))
+                return;
+
+            Unit caster = GetCaster();
+            Unit target = aurApp.GetTarget();
+
+            if (caster == null || !caster.IsAlive() || !target.IsAlive() || !caster.CanHaveThreatList())
+                return;
+
+            if (apply)
+                caster.GetThreatManager().FixateTarget(target);
+            else
+                caster.GetThreatManager().ClearFixate();
+        }
+
         /*****************************/
         /***        CONTROL        ***/
         /*****************************/
@@ -2519,7 +2541,7 @@ namespace Game.Spells
                 if (!apply && !target.IsFlying())
                     target.GetMotionMaster().MoveFall();
         }
-        
+
         [AuraEffectHandler(AuraType.ModStunDisableGravity)]
         void HandleAuraModStunAndDisableGravity(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {
@@ -4567,12 +4589,8 @@ namespace Game.Spells
             }
 
             Item newitem = plCaster.StoreNewItem(dest, GetSpellEffectInfo().ItemType, true);
-            if (newitem == null)
-            {
-                plCaster.SendEquipError(InventoryResult.ItemNotFound);
-                return;
-            }
-            plCaster.SendNewItem(newitem, count, true, true);
+            if (newitem != null)
+                plCaster.SendNewItem(newitem, count, true, true);
         }
 
         [AuraEffectHandler(AuraType.BindSight)]
@@ -4826,7 +4844,7 @@ namespace Game.Spells
             uint casterType = (uint)GetMiscValue();
             if (casterType > 0)
                 caster = GetCaster();
-            
+
             caster?.CastSpell(aurApp.GetTarget(), GetSpellEffectInfo().TriggerSpell, new CastSpellExtraArgs(this));
         }
 
@@ -5043,7 +5061,7 @@ namespace Game.Spells
             if (!target.IsAlive())
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo()))
+            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5057,7 +5075,7 @@ namespace Game.Spells
 
             CleanDamage cleanDamage = new(0, 0, WeaponAttackType.BaseAttack, MeleeHitOutcome.Normal);
 
-            uint stackAmountForBonuses = !GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.NoScaleWithStack) ? GetBase().GetStackAmount() : 1u;
+            uint stackAmountForBonuses = !GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.SuppressPointsStacking) ? GetBase().GetStackAmount() : 1u;
 
             // ignore non positive values (can be result apply spellmods to aura damage
             uint damage = (uint)Math.Max(GetAmount(), 0);
@@ -5126,8 +5144,8 @@ namespace Game.Spells
 
             if (!GetSpellInfo().HasAttribute(SpellAttr4.IgnoreDamageTakenModifiers))
             {
-                if (GetSpellEffectInfo().IsTargetingArea() || GetSpellEffectInfo().IsAreaAuraEffect() || GetSpellEffectInfo().IsEffect(SpellEffectName.PersistentAreaAura) || GetSpellInfo().HasAttribute(SpellAttr5.TreatAsAreaEffect))
-                    damage = (uint)target.CalculateAOEAvoidance((int)damage, (uint)m_spellInfo.SchoolMask, GetBase().GetCastItemGUID());
+                if (GetSpellEffectInfo().IsTargetingArea() || GetSpellEffectInfo().IsAreaAuraEffect() || GetSpellEffectInfo().IsEffect(SpellEffectName.PersistentAreaAura) || GetSpellInfo().HasAttribute(SpellAttr5.TreatAsAreaEffect) || GetSpellInfo().HasAttribute(SpellAttr7.TreatAsNpcAoe))
+                    damage = (uint)target.CalculateAOEAvoidance((int)damage, (uint)m_spellInfo.SchoolMask, (caster != null && !caster.IsControlledByPlayer()) || GetSpellInfo().HasAttribute(SpellAttr7.TreatAsNpcAoe));
             }
 
             int dmg = (int)damage;
@@ -5171,7 +5189,7 @@ namespace Game.Spells
             if (!target.IsAlive())
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo()))
+            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5184,7 +5202,7 @@ namespace Game.Spells
 
             CleanDamage cleanDamage = new(0, 0, GetSpellInfo().GetAttackType(), MeleeHitOutcome.Normal);
 
-            uint stackAmountForBonuses = !GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.NoScaleWithStack) ? GetBase().GetStackAmount() : 1u;
+            uint stackAmountForBonuses = !GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.SuppressPointsStacking) ? GetBase().GetStackAmount() : 1u;
 
             // ignore negative values (can be result apply spellmods to aura damage
             uint damage = (uint)Math.Max(GetAmount(), 0);
@@ -5208,8 +5226,8 @@ namespace Game.Spells
 
             if (!GetSpellInfo().HasAttribute(SpellAttr4.IgnoreDamageTakenModifiers))
             {
-                if (GetSpellEffectInfo().IsTargetingArea() || GetSpellEffectInfo().IsAreaAuraEffect() || GetSpellEffectInfo().IsEffect(SpellEffectName.PersistentAreaAura) || GetSpellInfo().HasAttribute(SpellAttr5.TreatAsAreaEffect))
-                    damage = (uint)target.CalculateAOEAvoidance((int)damage, (uint)m_spellInfo.SchoolMask, GetBase().GetCastItemGUID());
+                if (GetSpellEffectInfo().IsTargetingArea() || GetSpellEffectInfo().IsAreaAuraEffect() || GetSpellEffectInfo().IsEffect(SpellEffectName.PersistentAreaAura) || GetSpellInfo().HasAttribute(SpellAttr5.TreatAsAreaEffect) || GetSpellInfo().HasAttribute(SpellAttr7.TreatAsNpcAoe))
+                    damage = (uint)target.CalculateAOEAvoidance((int)damage, (uint)m_spellInfo.SchoolMask, (caster != null && !caster.IsControlledByPlayer()) || GetSpellInfo().HasAttribute(SpellAttr7.TreatAsNpcAoe));
             }
 
             int dmg = (int)damage;
@@ -5311,7 +5329,7 @@ namespace Game.Spells
             if (GetBase().IsPermanent() && target.IsFullHealth())
                 return;
 
-            uint stackAmountForBonuses = !GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.NoScaleWithStack) ? GetBase().GetStackAmount() : 1u;
+            uint stackAmountForBonuses = !GetSpellEffectInfo().EffectAttributes.HasFlag(SpellEffectAttributes.SuppressPointsStacking) ? GetBase().GetStackAmount() : 1u;
 
             // ignore negative values (can be result apply spellmods to aura damage
             uint damage = (uint)Math.Max(GetAmount(), 0);
@@ -5361,7 +5379,7 @@ namespace Game.Spells
             if (caster == null || !caster.IsAlive() || !target.IsAlive() || target.GetPowerType() != powerType)
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo()))
+            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5479,7 +5497,7 @@ namespace Game.Spells
             if (caster == null || !target.IsAlive() || target.GetPowerType() != powerType)
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo()))
+            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5558,6 +5576,8 @@ namespace Game.Spells
         {
             Unit triggerCaster = aurApp.GetTarget();
             Unit triggerTarget = eventInfo.GetProcTarget();
+            if (GetSpellInfo().HasAttribute(SpellAttr8.TargetProcsOnCaster) && eventInfo.GetTypeMask().HasFlag(ProcFlags.TakenHitMask))
+                triggerTarget = eventInfo.GetActor();
 
             uint triggerSpellId = GetSpellEffectInfo().TriggerSpell;
             if (triggerSpellId == 0)
@@ -5580,6 +5600,8 @@ namespace Game.Spells
         {
             Unit triggerCaster = aurApp.GetTarget();
             Unit triggerTarget = eventInfo.GetProcTarget();
+            if (GetSpellInfo().HasAttribute(SpellAttr8.TargetProcsOnCaster) && eventInfo.GetTypeMask().HasFlag(ProcFlags.TakenHitMask))
+                triggerTarget = eventInfo.GetActor();
 
             uint triggerSpellId = GetSpellEffectInfo().TriggerSpell;
             if (triggerSpellId == 0)
@@ -5605,7 +5627,7 @@ namespace Game.Spells
         {
             Unit target = aurApp.GetTarget();
             Unit triggerTarget = eventInfo.GetProcTarget();
-            if (triggerTarget.HasUnitState(UnitState.Isolated) || triggerTarget.IsImmunedToDamage(GetSpellInfo()))
+            if (triggerTarget.HasUnitState(UnitState.Isolated) || triggerTarget.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(triggerTarget, target);
                 return;
@@ -5753,7 +5775,8 @@ namespace Game.Spells
 
             if (apply)
             {
-                AreaTrigger.CreateAreaTrigger((uint)GetMiscValue(), GetCaster(), target, GetSpellInfo(), target, GetBase().GetDuration(), GetBase().GetSpellVisual(), null, this);
+                AreaTriggerId createPropertiesId = new((uint)GetMiscValue(), false);
+                AreaTrigger.CreateAreaTrigger(createPropertiesId, target, GetBase().GetDuration(), GetCaster(), target, GetBase().GetSpellVisual(), GetSpellInfo(), null, this);
             }
             else
             {
@@ -5993,7 +6016,7 @@ namespace Game.Spells
                 playerTarget.ReplaceAllRequiredMountCapabilityFlags((byte)mountCapabilityFlags);
             }
         }
-        
+
         [AuraEffectHandler(AuraType.SuppressItemPassiveEffectBySpellLabel)]
         void HandleSuppressItemPassiveEffectBySpellLabel(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {

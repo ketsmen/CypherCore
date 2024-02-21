@@ -16,9 +16,9 @@ public class RandomHelper
     /// Returns a random number between 0.0 and 1.0.
     /// </summary>
     /// <returns></returns>
-    public static double NextDouble()
+    public static float NextSingle()
     {
-        return rand.NextDouble();
+        return rand.NextSingle();
     }
 
     /// <summary>
@@ -82,6 +82,13 @@ public class RandomHelper
     public static void NextBytes(byte[] buffer)
     {
         rand.NextBytes(buffer);
+    }
+
+    public static byte[] GetRandomBytes(int length)
+    {
+        byte[] buffer = new byte[length];
+        rand.NextBytes(buffer);
+        return buffer;
     }
 
     public static T RAND<T>(params T[] args)

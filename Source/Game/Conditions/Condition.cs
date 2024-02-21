@@ -38,9 +38,10 @@ namespace Game.Conditions
                     break;
                 case ConditionTypes.InstanceInfo:
                 {
-                    if (map.IsDungeon())
+                    InstanceMap instanceMap = map.ToInstanceMap();
+                    if (instanceMap != null)
                     {
-                        InstanceScript instance = ((InstanceMap)map).GetInstanceScript();
+                        InstanceScript instance = instanceMap.GetInstanceScript();
                         if (instance != null)
                         {
                             switch ((InstanceInfo)ConditionValue3)
@@ -48,14 +49,31 @@ namespace Game.Conditions
                                 case InstanceInfo.Data:
                                     condMeets = instance.GetData(ConditionValue1) == ConditionValue2;
                                     break;
-                                //case INSTANCE_INFO_GUID_DATA:
-                                //    condMeets = instance->GetGuidData(ConditionValue1) == ObjectGuid(uint64(ConditionValue2));
-                                //    break;
                                 case InstanceInfo.BossState:
                                     condMeets = instance.GetBossState(ConditionValue1) == (EncounterState)ConditionValue2;
                                     break;
                                 case InstanceInfo.Data64:
                                     condMeets = instance.GetData64(ConditionValue1) == ConditionValue2;
+                                    break;
+                                default:
+                                    condMeets = false;
+                                    break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        BattlegroundMap bgMap = map.ToBattlegroundMap();
+                        if (bgMap != null)
+                        {
+                            ZoneScript zoneScript = bgMap.GetBG();
+                            switch ((InstanceInfo)ConditionValue3)
+                            {
+                                case InstanceInfo.Data:
+                                    condMeets = zoneScript.GetData(ConditionValue1) == ConditionValue2;
+                                    break;
+                                case InstanceInfo.Data64:
+                                    condMeets = zoneScript.GetData64(ConditionValue1) == ConditionValue2;
                                     break;
                                 default:
                                     condMeets = false;
@@ -152,7 +170,7 @@ namespace Game.Conditions
                     break;
                 case ConditionTypes.Team:
                     if (player != null)
-                        condMeets = (uint)player.GetTeam() == ConditionValue1;
+                        condMeets = player.GetTeam() == (Team)ConditionValue1;
                     break;
                 case ConditionTypes.Class:
                     if (unit != null)
@@ -196,7 +214,7 @@ namespace Game.Conditions
                     }
                     break;
                 case ConditionTypes.Areaid:
-                    condMeets = obj.GetAreaId() == ConditionValue1;
+                    condMeets = Global.DB2Mgr.IsInArea(obj.GetAreaId(), ConditionValue1);
                     break;
                 case ConditionTypes.Spell:
                     if (player != null)
@@ -440,6 +458,19 @@ namespace Game.Conditions
                     condMeets = !obj.GetPrivateObjectOwner().IsEmpty();
                     break;
                 }
+                case ConditionTypes.StringId:
+                {
+                    Creature creature = obj.ToCreature();
+                    if (creature != null)
+                        condMeets = creature.HasStringId(ConditionStringValue1);
+                    else
+                    {
+                        GameObject go = obj.ToGameObject();
+                        if (go != null)
+                            condMeets = go.HasStringId(ConditionStringValue1);
+                    }
+                    break;
+                }
                 default:
                     break;
             }
@@ -601,8 +632,10 @@ namespace Game.Conditions
         {
             StringBuilder ss = new();
             ss.AppendFormat("[Condition SourceType: {0}", SourceType);
-            if (SourceType < ConditionSourceType.Max)
+            if (SourceType < ConditionSourceType.MaxDbAllowed)
                 ss.AppendFormat(" ({0})", Global.ConditionMgr.StaticSourceTypeData[(int)SourceType]);
+            else if (SourceType == ConditionSourceType.ReferenceCondition)
+                ss.Append(" (Reference)");
             else
                 ss.Append(" (Unknown)");
             if (Global.ConditionMgr.CanHaveSourceGroupSet(SourceType))
@@ -633,12 +666,59 @@ namespace Game.Conditions
         public uint ConditionValue1;
         public uint ConditionValue2;
         public uint ConditionValue3;
+        public string ConditionStringValue1;
         public uint ErrorType;
         public uint ErrorTextId;
         public uint ReferenceId;
         public uint ScriptId;
         public byte ConditionTarget;
         public bool NegativeCondition;
+    }
+
+    public struct ConditionId
+    {
+        public uint SourceGroup;
+        public int SourceEntry;
+        public uint SourceId;
+
+        public ConditionId(uint sourceGroup, int sourceEntry, uint sourceId)
+        {
+            SourceGroup = sourceGroup;
+            SourceEntry = sourceEntry;
+            SourceId = sourceId;
+        }
+
+        public override int GetHashCode()
+        {
+            return SourceGroup.GetHashCode() ^ SourceEntry.GetHashCode() ^ SourceId.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is ConditionId)
+                return (ConditionId)obj == this;
+
+            return false;
+        }
+
+        public static bool operator ==(ConditionId left, ConditionId right)
+        {
+            if (left.SourceGroup != right.SourceGroup)
+                return false;
+
+            if (left.SourceEntry != right.SourceEntry)
+                return false;
+
+            if (left.SourceId != right.SourceId)
+                return false;
+
+            return true;
+        }
+
+        public static bool operator !=(ConditionId left, ConditionId right)
+        {
+            return !(left == right);
+        }
     }
 
     public class ConditionSourceInfo
@@ -648,7 +728,14 @@ namespace Game.Conditions
             mConditionTargets[0] = target0;
             mConditionTargets[1] = target1;
             mConditionTargets[2] = target2;
-            mConditionMap = target0 != null ? target0.GetMap() : null;
+            if (target0 != null)
+                mConditionMap = target0.GetMap();
+            else if (target1 != null)
+                mConditionMap = target1.GetMap();
+            else if (target2 != null)
+                mConditionMap = target2.GetMap();
+            else
+                mConditionMap = null;
             mLastFailedCondition = null;
         }
 
@@ -657,7 +744,7 @@ namespace Game.Conditions
             mConditionMap = map;
             mLastFailedCondition = null;
         }
-        
+
         public WorldObject[] mConditionTargets = new WorldObject[SharedConst.MaxConditionTargets]; // an array of targets available for conditions
         public Map mConditionMap;
         public Condition mLastFailedCondition;

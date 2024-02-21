@@ -42,10 +42,10 @@ namespace Game.Loots
             return AllowedForPlayer(player, loot, itemid, needs_quest, follow_loot_rules, false, conditions);
         }
 
-        public static bool AllowedForPlayer(Player player, Loot loot, uint itemid, bool needs_quest, bool follow_loot_rules, bool strictUsabilityCheck, List<Condition> conditions)
+        public static bool AllowedForPlayer(Player player, Loot loot, uint itemid, bool needs_quest, bool follow_loot_rules, bool strictUsabilityCheck, ConditionsReference conditions)
         {
             // DB conditions check
-            if (!Global.ConditionMgr.IsObjectMeetToConditions(player, conditions))
+            if (!conditions.Meets(player))
                 return false;
 
             ItemTemplate pProto = Global.ObjectMgr.GetItemTemplate(itemid);
@@ -105,7 +105,7 @@ namespace Game.Loots
         {
             return allowedGUIDs.Contains(looter);
         }
-        
+
         public LootSlotType? GetUiTypeForPlayer(Player player, Loot loot)
         {
             if (is_looted)
@@ -180,7 +180,7 @@ namespace Game.Loots
         public uint randomBonusListId;
         public List<uint> BonusListIDs = new();
         public ItemContext context;
-        public List<Condition> conditions = new();                               // additional loot condition
+        public ConditionsReference conditions;                               // additional loot condition
         public List<ObjectGuid> allowedGUIDs = new();
         public ObjectGuid rollWinnerGUID;                                   // Stores the guid of person who won loot, if his bags are full only he can see the item in loot list!
         public byte count;
@@ -721,8 +721,13 @@ namespace Game.Loots
                 --unlootedCount;
 
                 Item pItem = player.StoreNewItem(dest, lootItem.itemid, true, lootItem.randomBonusListId, null, lootItem.context, lootItem.BonusListIDs);
-                player.SendNewItem(pItem, lootItem.count, false, createdByPlayer, broadcast);
-                player.ApplyItemLootedSpell(pItem, true);
+                if (pItem != null)
+                {
+                    player.SendNewItem(pItem, lootItem.count, false, createdByPlayer, broadcast, GetDungeonEncounterId());
+                    player.ApplyItemLootedSpell(pItem, true);
+                }
+                else
+                    player.ApplyItemLootedSpell(Global.ObjectMgr.GetItemTemplate(lootItem.itemid));
             }
 
             return allLooted;
@@ -933,7 +938,7 @@ namespace Game.Loots
         {
             return _allowedLooters.Contains(looter);
         }
-        
+
         public void GenerateMoneyLoot(uint minAmount, uint maxAmount)
         {
             if (maxAmount > 0)
@@ -994,7 +999,7 @@ namespace Game.Loots
                 return true;
 
             foreach (LootItem item in items)
-                if (!item.is_looted && item.follow_loot_rules && !item.freeforall && item.conditions.Empty())
+                if (!item.is_looted && item.follow_loot_rules && !item.freeforall && item.conditions.IsEmpty())
                     return true;
 
             return false;
@@ -1075,7 +1080,7 @@ namespace Game.Loots
 
         public bool IsLooted() { return gold == 0 && unlootedCount == 0; }
         public bool IsChanged() { return _changed; }
-        
+
         public void AddLooter(ObjectGuid guid) { PlayersLooting.Add(guid); }
         public void RemoveLooter(ObjectGuid guid) { PlayersLooting.Remove(guid); }
 

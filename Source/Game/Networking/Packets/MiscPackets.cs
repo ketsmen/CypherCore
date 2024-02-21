@@ -108,6 +108,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(FirstCraftOperationID.HasValue);
             _worldPacket.WriteBit(NextRechargeTime.HasValue);
             _worldPacket.WriteBit(RechargeCycleStartTime.HasValue);
+            _worldPacket.WriteBit(OverflownCurrencyID.HasValue);
             _worldPacket.FlushBits();
 
             if (WeeklyQuantity.HasValue)
@@ -139,6 +140,9 @@ namespace Game.Networking.Packets
 
             if (RechargeCycleStartTime.HasValue)
                 _worldPacket.WriteInt64(RechargeCycleStartTime.Value);
+
+            if (OverflownCurrencyID.HasValue)
+                _worldPacket.WriteInt32(OverflownCurrencyID.Value);
         }
 
         public uint Type;
@@ -155,6 +159,7 @@ namespace Game.Networking.Packets
         public uint? FirstCraftOperationID;
         public long? NextRechargeTime;
         public long? RechargeCycleStartTime;
+        public int? OverflownCurrencyID;    // what currency was originally changed but couldn't be incremented because of a cap
         public bool SuppressChatLog;
     }
 
@@ -389,7 +394,7 @@ namespace Game.Networking.Packets
         public bool IsTournamentRealm;
         public bool XRealmPvpAlert;
         public bool BlockExitingLoadingScreen;     // when set to true, sending SMSG_UPDATE_OBJECT with CreateObject Self bit = true will not hide loading screen
-                                                    // instead it will be done after this packet is sent again with false in this bit and SMSG_UPDATE_OBJECT Values for player
+                                                   // instead it will be done after this packet is sent again with false in this bit and SMSG_UPDATE_OBJECT Values for player
         public uint? RestrictedAccountMaxLevel;
         public ulong? RestrictedAccountMaxMoney;
         public uint? InstanceGroupSize;
@@ -792,7 +797,7 @@ namespace Game.Networking.Packets
 
         public EnableBarberShop() : base(ServerOpcodes.EnableBarberShop) { }
 
-        public override void Write() 
+        public override void Write()
         {
             _worldPacket.WriteUInt8(CustomizationScope);
         }
@@ -1151,9 +1156,9 @@ namespace Game.Networking.Packets
             Enable = _worldPacket.HasBit();
         }
 
-       public bool Enable;
+        public bool Enable;
     }
-    
+
     class AccountHeirloomUpdate : ServerPacket
     {
         public AccountHeirloomUpdate() : base(ServerOpcodes.AccountHeirloomUpdate, ConnectionType.Instance) { }
@@ -1265,14 +1270,26 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt32(TotalTime);
-            _worldPacket.WriteUInt32(TimeLeft);
+            _worldPacket.WriteInt64(TotalTime);
+            _worldPacket.WriteInt64(TimeLeft);
             _worldPacket.WriteInt32((int)Type);
         }
 
-        public uint TotalTime;
-        public uint TimeLeft;
-        public TimerType Type;
+        public long TotalTime;
+        public long TimeLeft;
+        public CountdownTimerType Type;
+    }
+
+    class QueryCountdownTimer : ClientPacket
+    {
+        public CountdownTimerType TimerType;
+
+        public QueryCountdownTimer(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            TimerType = (CountdownTimerType)_worldPacket.ReadInt32();
+        }
     }
 
     class ConversationLineStarted : ClientPacket
@@ -1352,7 +1369,7 @@ namespace Game.Networking.Packets
             _worldPacket.FlushBits();
         }
     }
-    
+
     class DisplayGameError : ServerPacket
     {
         public DisplayGameError(GameError error) : base(ServerOpcodes.DisplayGameError)
@@ -1436,23 +1453,23 @@ namespace Game.Networking.Packets
 
         public ObjectGuid SourceGuid;
     }
-    
+
     //Structs
     struct PhaseShiftDataPhase
     {
         public PhaseShiftDataPhase(uint phaseFlags, uint id)
         {
-            PhaseFlags = (ushort)phaseFlags;
+            PhaseFlags = phaseFlags;
             Id = (ushort)id;
         }
 
         public void Write(WorldPacket data)
         {
-            data.WriteUInt16(PhaseFlags);
+            data.WriteUInt32(PhaseFlags);
             data.WriteUInt16(Id);
         }
 
-        public ushort PhaseFlags;
+        public uint PhaseFlags;
         public ushort Id;
     }
 

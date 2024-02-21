@@ -66,7 +66,7 @@ namespace Game.DataStorage
         public int MaxAvgItemLevel;
         public ushort MinAvgEquippedItemLevel;
         public ushort MaxAvgEquippedItemLevel;
-        public byte PhaseUseFlags;
+        public int PhaseUseFlags;
         public ushort PhaseID;
         public uint PhaseGroupID;
         public int Flags;
@@ -176,6 +176,13 @@ namespace Game.DataStorage
         public uint Id;
         public uint ItemID;
         public byte ItemLevelDelta;
+    }
+
+    public sealed class PvpStatRecord
+    {
+        public LocalizedString Description;
+        public uint Id;
+        public uint MapID;
     }
 
     public sealed class PvpSeasonRecord

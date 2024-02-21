@@ -30,7 +30,7 @@ namespace Game.Entities
         public float SpeedWalk;
         public float SpeedRun;
         public float Scale;
-        public CreatureEliteType Rank;
+        public CreatureClassifications Classification;
         public uint DmgSchool;
         public uint BaseAttackTime;
         public uint RangeAttackTime;
@@ -55,8 +55,7 @@ namespace Game.Entities
         public int WidgetSetID;
         public int WidgetSetUnitConditionID;
         public bool RegenHealth;
-        public ulong MechanicImmuneMask;
-        public uint SpellSchoolImmuneMask;
+        public int CreatureImmunitiesId;
         public CreatureFlagsExtra FlagsExtra;
         public uint ScriptID;
         public string StringId;
@@ -165,7 +164,7 @@ namespace Game.Entities
 
             stats.CreatureType = (int)CreatureType;
             stats.CreatureFamily = (int)Family;
-            stats.Classification = (int)Rank;
+            stats.Classification = (int)Classification;
 
             for (uint i = 0; i < SharedConst.MaxCreatureKillCredit; ++i)
                 stats.ProxyCreatureID[i] = KillCredit[i];
@@ -195,6 +194,10 @@ namespace Game.Entities
             var items = Global.ObjectMgr.GetCreatureQuestItemList(Entry, difficulty);
             if (items != null)
                 stats.QuestItems.AddRange(items);
+
+            var currencies = Global.ObjectMgr.GetCreatureQuestCurrencyList(Entry);
+            if (currencies != null)
+                stats.QuestCurrencies.AddRange(currencies);
 
             if (locale != Locale.enUS)
             {
@@ -259,7 +262,7 @@ namespace Game.Entities
 
     public class CreatureData : SpawnData
     {
-        public uint displayid;
+        public CreatureModel display;
         public sbyte equipmentId;
         public float WanderDistance;
         public uint currentwaypoint;
@@ -343,11 +346,12 @@ namespace Game.Entities
         public uint? CreatureIDVisibleToSummoner;
         public uint? GroundMountDisplayID;
         public uint? FlyingMountDisplayID;
+        public List<uint> DespawnOnQuestsRemoved;
     }
 
     public class CreatureAddon
     {
-        public uint path_id;
+        public uint PathId;
         public uint mount;
         public byte standState;
         public byte animTier;

@@ -11,7 +11,7 @@ namespace Framework.Database
             PrepareStatement(WorldStatements.DEL_LINKED_RESPAWN_MASTER, "DELETE FROM linked_respawn WHERE linkedGuid = ? AND linkType = ?");
             PrepareStatement(WorldStatements.REP_LINKED_RESPAWN, "REPLACE INTO linked_respawn (guid, linkedGuid, linkType) VALUES (?, ?, ?)");
             PrepareStatement(WorldStatements.SEL_CREATURE_TEXT, "SELECT CreatureID, GroupID, ID, Text, Type, Language, Probability, Emote, Duration, Sound, SoundPlayType, BroadcastTextId, TextRange FROM creature_text");
-            PrepareStatement(WorldStatements.SEL_SMART_SCRIPTS, "SELECT entryorguid, source_type, id, link, event_type, event_phase_mask, event_chance, event_flags, event_param1, event_param2, event_param3, event_param4, event_param5, event_param_string, action_type, action_param1, action_param2, action_param3, action_param4, action_param5, action_param6, action_param7, target_type, target_param1, target_param2, target_param3, target_param4, target_x, target_y, target_z, target_o FROM smart_scripts ORDER BY entryorguid, source_type, id, link");
+            PrepareStatement(WorldStatements.SEL_SMART_SCRIPTS, "SELECT entryorguid, source_type, id, link, Difficulties, event_type, event_phase_mask, event_chance, event_flags, event_param1, event_param2, event_param3, event_param4, event_param5, event_param_string, action_type, action_param1, action_param2, action_param3, action_param4, action_param5, action_param6, action_param7, target_type, target_param1, target_param2, target_param3, target_param4, target_x, target_y, target_z, target_o FROM smart_scripts ORDER BY entryorguid, source_type, id, link");
             PrepareStatement(WorldStatements.DEL_GAMEOBJECT, "DELETE FROM gameobject WHERE guid = ?");
             PrepareStatement(WorldStatements.DEL_EVENT_GAMEOBJECT, "DELETE FROM game_event_gameobject WHERE guid = ?");
             PrepareStatement(WorldStatements.INS_GRAVEYARD_ZONE, "INSERT INTO graveyard_zone (ID, GhostZone) VALUES (?, ?)");
@@ -28,40 +28,25 @@ namespace Framework.Database
             PrepareStatement(WorldStatements.UPD_CREATURE_WANDER_DISTANCE, "UPDATE creature SET wander_distance = ?, MovementType = ? WHERE guid = ?");
             PrepareStatement(WorldStatements.UPD_CREATURE_SPAWN_TIME_SECS, "UPDATE creature SET spawntimesecs = ? WHERE guid = ?");
             PrepareStatement(WorldStatements.INS_CREATURE_FORMATION, "INSERT INTO creature_formations (leaderGUID, memberGUID, dist, angle, groupAI) VALUES (?, ?, ?, ?, ?)");
-            PrepareStatement(WorldStatements.INS_WAYPOINT_DATA, "INSERT INTO waypoint_data (id, point, position_x, position_y, position_z, orientation) VALUES (?, ?, ?, ?, ?, ?)");
-            PrepareStatement(WorldStatements.DEL_WAYPOINT_DATA, "DELETE FROM waypoint_data WHERE id = ? AND point = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_DATA_POINT, "UPDATE waypoint_data SET point = point - 1 WHERE id = ? AND point > ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_DATA_POSITION, "UPDATE waypoint_data SET position_x = ?, position_y = ?, position_z = ?, orientation = ? where id = ? AND point = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_DATA_WPGUID, "UPDATE waypoint_data SET wpguid = ? WHERE id = ? and point = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_MAX_ID, "SELECT MAX(id) FROM waypoint_data");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_MAX_POINT, "SELECT MAX(point) FROM waypoint_data WHERE id = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_BY_ID, "SELECT point, position_x, position_y, position_z, orientation, move_type, delay, action, action_chance FROM waypoint_data WHERE id = ? ORDER BY point");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_POS_BY_ID, "SELECT point, position_x, position_y, position_z, orientation FROM waypoint_data WHERE id = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_POS_FIRST_BY_ID, "SELECT position_x, position_y, position_z, orientation FROM waypoint_data WHERE point = 1 AND id = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_POS_LAST_BY_ID, "SELECT position_x, position_y, position_z, orientation FROM waypoint_data WHERE id = ? ORDER BY point DESC LIMIT 1");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_BY_WPGUID, "SELECT id, point FROM waypoint_data WHERE wpguid = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_ALL_BY_WPGUID, "SELECT id, point, delay, move_type, action, action_chance FROM waypoint_data WHERE wpguid = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_DATA_ALL_WPGUID, "UPDATE waypoint_data SET wpguid = 0");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_BY_POS, "SELECT id, point FROM waypoint_data WHERE (abs(position_x - ?) <= ?) and (abs(position_y - ?) <= ?) and (abs(position_z - ?) <= ?)");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_WPGUID_BY_ID, "SELECT wpguid FROM waypoint_data WHERE id = ? and wpguid <> 0");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_DATA_ACTION, "SELECT DISTINCT action FROM waypoint_data");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_SCRIPTS_MAX_ID, "SELECT MAX(guid) FROM waypoint_scripts");
-            PrepareStatement(WorldStatements.INS_CREATURE_ADDON, "INSERT INTO creature_addon(guid, path_id) VALUES (?, ?)");
-            PrepareStatement(WorldStatements.UPD_CREATURE_ADDON_PATH, "UPDATE creature_addon SET path_id = ? WHERE guid = ?");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_BY_PATHID, "SELECT PathId, MoveType, Flags FROM waypoint_path WHERE PathId = ?");
+            PrepareStatement(WorldStatements.INS_WAYPOINT_PATH_NODE, "INSERT INTO waypoint_path_node (PathId, NodeId, PositionX, PositionY, PositionZ, Orientation) VALUES (?, ?, ?, ?, ?, ?)");
+            PrepareStatement(WorldStatements.DEL_WAYPOINT_PATH_NODE, "DELETE FROM waypoint_path_node WHERE PathId = ? AND NodeId = ?");
+            PrepareStatement(WorldStatements.UPD_WAYPOINT_PATH_NODE, "UPDATE waypoint_path_node SET NodeId = NodeId - 1 WHERE PathId = ? AND NodeId > ?");
+            PrepareStatement(WorldStatements.UPD_WAYPOINT_PATH_NODE_POSITION, "UPDATE waypoint_path_node SET PositionX = ?, PositionY = ?, PositionZ = ?, Orientation = ? WHERE PathId = ? AND NodeId = ?");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_MAX_PATHID, "SELECT MAX(PathId) FROM waypoint_path_node");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_MAX_NODEID, "SELECT MAX(NodeId) FROM waypoint_path_node WHERE PathId = ?");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_BY_PATHID, "SELECT PathId, NodeId, PositionX, PositionY, PositionZ, Orientation, Delay FROM waypoint_path_node WHERE PathId = ? ORDER BY NodeId");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_POS_BY_PATHID, "SELECT NodeId, PositionX, PositionY, PositionZ, Orientation FROM waypoint_path_node WHERE PathId = ?");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_POS_FIRST_BY_PATHID, "SELECT PositionX, PositionY, PositionZ, Orientation FROM waypoint_path_node WHERE NodeId = 1 AND PathId = ?");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_POS_LAST_BY_PATHID, "SELECT PositionX, PositionY, PositionZ, Orientation FROM waypoint_path_node WHERE PathId = ? ORDER BY NodeId DESC LIMIT 1");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_BY_POS, "SELECT PathId, NodeId FROM waypoint_path_node WHERE (abs(PositionX - ?) <= ?) and (abs(PositionY - ?) <= ?) and (abs(PositionZ - ?) <= ?)");
+            PrepareStatement(WorldStatements.INS_CREATURE_ADDON, "INSERT INTO creature_addon(guid, PathId) VALUES (?, ?)");
+            PrepareStatement(WorldStatements.UPD_CREATURE_ADDON_PATH, "UPDATE creature_addon SET PathId = ? WHERE guid = ?");
             PrepareStatement(WorldStatements.DEL_CREATURE_ADDON, "DELETE FROM creature_addon WHERE guid = ?");
             PrepareStatement(WorldStatements.SEL_CREATURE_ADDON_BY_GUID, "SELECT guid FROM creature_addon WHERE guid = ?");
-            PrepareStatement(WorldStatements.INS_WAYPOINT_SCRIPT, "INSERT INTO waypoint_scripts (guid) VALUES (?)");
-            PrepareStatement(WorldStatements.DEL_WAYPOINT_SCRIPT, "DELETE FROM waypoint_scripts WHERE guid = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_SCRIPT_ID, "UPDATE waypoint_scripts SET id = ? WHERE guid = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_SCRIPT_X, "UPDATE waypoint_scripts SET x = ? WHERE guid = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_SCRIPT_Y, "UPDATE waypoint_scripts SET y = ? WHERE guid = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_SCRIPT_Z, "UPDATE waypoint_scripts SET z = ? WHERE guid = ?");
-            PrepareStatement(WorldStatements.UPD_WAYPOINT_SCRIPT_O, "UPDATE waypoint_scripts SET o = ? WHERE guid = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_SCRIPT_ID_BY_GUID, "SELECT id FROM waypoint_scripts WHERE guid = ?");
             PrepareStatement(WorldStatements.DEL_CREATURE, "DELETE FROM creature WHERE guid = ?");
             PrepareStatement(WorldStatements.SEL_COMMANDS, "SELECT name, help FROM command");
-            PrepareStatement(WorldStatements.SEL_CREATURE_TEMPLATE, "SELECT entry, KillCredit1, KillCredit2, name, femaleName, subname, TitleAlt, IconName, RequiredExpansion, VignetteID, faction, npcflag, speed_walk, speed_run, scale, `rank`, dmgschool, BaseAttackTime, RangeAttackTime, BaseVariance, RangeVariance, unit_class, unit_flags, unit_flags2, unit_flags3, family, trainer_class, type, VehicleId, AIName, MovementType, ctm.Ground, ctm.Swim, ctm.Flight, ctm.Rooted, ctm.Chase, ctm.Random, ctm.InteractionPauseTimer, ExperienceModifier, RacialLeader, movementId, WidgetSetID, WidgetSetUnitConditionID, RegenHealth, mechanic_immune_mask, spell_school_immune_mask, flags_extra, ScriptName, StringId FROM creature_template ct LEFT JOIN creature_template_movement ctm ON ct.entry = ctm.CreatureId WHERE entry = ? OR 1 = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_SCRIPT_BY_ID, "SELECT guid, delay, command, datalong, datalong2, dataint, x, y, z, o FROM waypoint_scripts WHERE id = ?");
+            PrepareStatement(WorldStatements.SEL_CREATURE_TEMPLATE, "SELECT entry, KillCredit1, KillCredit2, name, femaleName, subname, TitleAlt, IconName, RequiredExpansion, VignetteID, faction, npcflag, speed_walk, speed_run, scale, Classification, dmgschool, BaseAttackTime, RangeAttackTime, BaseVariance, RangeVariance, unit_class, unit_flags, unit_flags2, unit_flags3, family, trainer_class, type, VehicleId, AIName, MovementType, ctm.Ground, ctm.Swim, ctm.Flight, ctm.Rooted, ctm.Chase, ctm.Random, ctm.InteractionPauseTimer, ExperienceModifier, RacialLeader, movementId, WidgetSetID, WidgetSetUnitConditionID, RegenHealth, CreatureImmunitiesId, flags_extra, ScriptName, StringId FROM creature_template ct LEFT JOIN creature_template_movement ctm ON ct.entry = ctm.CreatureId WHERE entry = ? OR 1 = ?");
             PrepareStatement(WorldStatements.SEL_CREATURE_BY_ID, "SELECT guid FROM creature WHERE id = ?");
             PrepareStatement(WorldStatements.SEL_GAMEOBJECT_NEAREST, "SELECT guid, id, position_x, position_y, position_z, map, (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) AS order_ FROM gameobject WHERE map = ? AND (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) <= ? ORDER BY order_");
             PrepareStatement(WorldStatements.SEL_CREATURE_NEAREST, "SELECT guid, id, position_x, position_y, position_z, map, (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) AS order_ FROM creature WHERE map = ? AND (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) <= ? ORDER BY order_");
@@ -104,40 +89,25 @@ namespace Framework.Database
         UPD_CREATURE_WANDER_DISTANCE,
         UPD_CREATURE_SPAWN_TIME_SECS,
         INS_CREATURE_FORMATION,
-        INS_WAYPOINT_DATA,
-        DEL_WAYPOINT_DATA,
-        UPD_WAYPOINT_DATA_POINT,
-        UPD_WAYPOINT_DATA_POSITION,
-        UPD_WAYPOINT_DATA_WPGUID,
-        UPD_WAYPOINT_DATA_ALL_WPGUID,
-        SEL_WAYPOINT_DATA_MAX_ID,
-        SEL_WAYPOINT_DATA_BY_ID,
-        SEL_WAYPOINT_DATA_POS_BY_ID,
-        SEL_WAYPOINT_DATA_POS_FIRST_BY_ID,
-        SEL_WAYPOINT_DATA_POS_LAST_BY_ID,
-        SEL_WAYPOINT_DATA_BY_WPGUID,
-        SEL_WAYPOINT_DATA_ALL_BY_WPGUID,
-        SEL_WAYPOINT_DATA_MAX_POINT,
-        SEL_WAYPOINT_DATA_BY_POS,
-        SEL_WAYPOINT_DATA_WPGUID_BY_ID,
-        SEL_WAYPOINT_DATA_ACTION,
-        SEL_WAYPOINT_SCRIPTS_MAX_ID,
+        SEL_WAYPOINT_PATH_BY_PATHID,
+        INS_WAYPOINT_PATH_NODE,
+        DEL_WAYPOINT_PATH_NODE,
+        UPD_WAYPOINT_PATH_NODE,
+        UPD_WAYPOINT_PATH_NODE_POSITION,
+        SEL_WAYPOINT_PATH_NODE_MAX_PATHID,
+        SEL_WAYPOINT_PATH_NODE_BY_PATHID,
+        SEL_WAYPOINT_PATH_NODE_POS_BY_PATHID,
+        SEL_WAYPOINT_PATH_NODE_POS_FIRST_BY_PATHID,
+        SEL_WAYPOINT_PATH_NODE_POS_LAST_BY_PATHID,
+        SEL_WAYPOINT_PATH_NODE_MAX_NODEID,
+        SEL_WAYPOINT_PATH_NODE_BY_POS,
         UPD_CREATURE_ADDON_PATH,
         INS_CREATURE_ADDON,
         DEL_CREATURE_ADDON,
         SEL_CREATURE_ADDON_BY_GUID,
-        INS_WAYPOINT_SCRIPT,
-        DEL_WAYPOINT_SCRIPT,
-        UPD_WAYPOINT_SCRIPT_ID,
-        UPD_WAYPOINT_SCRIPT_X,
-        UPD_WAYPOINT_SCRIPT_Y,
-        UPD_WAYPOINT_SCRIPT_Z,
-        UPD_WAYPOINT_SCRIPT_O,
-        SEL_WAYPOINT_SCRIPT_ID_BY_GUID,
         DEL_CREATURE,
         SEL_COMMANDS,
         SEL_CREATURE_TEMPLATE,
-        SEL_WAYPOINT_SCRIPT_BY_ID,
         SEL_CREATURE_BY_ID,
         SEL_GAMEOBJECT_NEAREST,
         SEL_CREATURE_NEAREST,

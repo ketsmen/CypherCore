@@ -358,7 +358,15 @@ namespace Game.Entities
             // checked and error show at loading templates
             var factionTemplate = CliDB.FactionTemplateStorage.LookupByKey(cInfo.Faction);
             if (factionTemplate != null)
+            {
                 SetPvP(factionTemplate.Flags.HasAnyFlag((ushort)FactionTemplateFlags.PVP));
+                if (IsTaxi())
+                {
+                    uint taxiNodesId = Global.ObjectMgr.GetNearestTaxiNode(GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId(),
+                        (factionTemplate.FactionGroup & (byte)FactionMasks.Alliance) != 0 ? Team.Alliance : Team.Horde);
+                    SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.TaxiNodesID), (int)taxiNodesId);
+                }
+            }
 
             // updates spell bars for vehicles and set player's faction - should be called here, to overwrite faction that is set from the new template
             if (IsVehicle())
@@ -389,7 +397,7 @@ namespace Game.Entities
 
             LoadCreaturesAddon();
             LoadCreaturesSparringHealth();
-            LoadTemplateImmunities();
+            LoadTemplateImmunities(cInfo.CreatureImmunitiesId);
             GetThreatManager().EvaluateSuppressed();
 
             //We must update last scriptId or it looks like we reloaded a script, breaking some things such as gossip temporarily
@@ -406,8 +414,9 @@ namespace Game.Entities
 
             // Apply all other side effects of flag changes
             SetTemplateRooted(flags.HasFlag(CreatureStaticFlags.Sessile));
+            m_updateFlag.NoBirthAnim = flags.HasFlag(CreatureStaticFlags4.NoBirthAnim);
         }
-        
+
         public override void Update(uint diff)
         {
             if (IsAIEnabled() && triggerJustAppeared && m_deathState != DeathState.Dead)
@@ -546,6 +555,10 @@ namespace Game.Entities
 
                     AIUpdateTick(diff);
 
+                    DoMeleeAttackIfReady();
+
+                    // creature can be dead after UpdateAI call
+                    // CORPSE/DEAD state will processed at next tick (in other case death timer will be updated unexpectedly)
                     if (!IsAlive())
                         break;
 
@@ -825,22 +838,25 @@ namespace Game.Entities
             if (cinfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.DungeonBoss) && map.IsDungeon())
                 m_respawnDelay = 0; // special value, prevents respawn for dungeon bosses unless overridden
 
-            switch (cinfo.Rank)
+            switch (GetCreatureClassification())
             {
-                case CreatureEliteType.Rare:
-                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayRare);
-                    break;
-                case CreatureEliteType.Elite:
+                case CreatureClassifications.Elite:
                     m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayElite);
                     break;
-                case CreatureEliteType.RareElite:
+                case CreatureClassifications.RareElite:
                     m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayRareelite);
                     break;
-                case CreatureEliteType.WorldBoss:
-                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayWorldboss);
+                case CreatureClassifications.Obsolete:
+                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayObsolete);
                     break;
-                default:
-                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayNormal);
+                case CreatureClassifications.Rare:
+                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayRare);
+                    break;
+                case CreatureClassifications.Trivial:
+                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayTrivial);
+                    break;
+                case CreatureClassifications.MinusMob:
+                    m_corpseDelay = WorldConfig.GetUIntValue(WorldCfg.CorpseDecayMinusMob);
                     break;
             }
 
@@ -1107,7 +1123,7 @@ namespace Game.Entities
 
         public override string GetDebugInfo()
         {
-            return $"{base.GetDebugInfo()}\nAIName: {GetAIName()} ScriptName: {GetScriptName()} WaypointPath: {GetWaypointPath()} SpawnId: {GetSpawnId()}";
+            return $"{base.GetDebugInfo()}\nAIName: {GetAIName()} ScriptName: {GetScriptName()} WaypointPath: {GetWaypointPathId()} SpawnId: {GetSpawnId()}";
         }
 
         public override void ExitVehicle(Position exitPosition = null)
@@ -1132,14 +1148,14 @@ namespace Game.Entities
             SummonCreature(npcEntry, GetPosition(), TempSummonType.TimedDespawn, TimeSpan.FromSeconds(1), 0, 0);
         }
 
-        public bool HasFlag(CreatureStaticFlags flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags2 flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags3 flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags4 flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags5 flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags6 flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags7 flag)  { return _staticFlags.HasFlag(flag); }
-        public bool HasFlag(CreatureStaticFlags8 flag)  { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags2 flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags3 flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags4 flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags5 flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags6 flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags7 flag) { return _staticFlags.HasFlag(flag); }
+        public bool HasFlag(CreatureStaticFlags8 flag) { return _staticFlags.HasFlag(flag); }
 
         public uint GetGossipMenuId()
         {
@@ -1150,7 +1166,7 @@ namespace Game.Entities
         {
             _gossipMenuId = gossipMenuId;
         }
-        
+
         public uint GetTrainerId()
         {
             if (_trainerId.HasValue)
@@ -1202,7 +1218,7 @@ namespace Game.Entities
         }
 
         public bool IsTapListNotClearedOnEvade() { return m_dontClearTapListOnEvade; }
-        
+
         public void SetTappedBy(Unit unit, bool withGroup = true)
         {
             // set the player whose group should receive the right
@@ -1285,7 +1301,7 @@ namespace Game.Entities
         public bool CanHaveLoot() { return !_staticFlags.HasFlag(CreatureStaticFlags.NoLoot); }
 
         public void SetCanHaveLoot(bool canHaveLoot) { _staticFlags.ApplyFlag(CreatureStaticFlags.NoLoot, !canHaveLoot); }
-        
+
         public void SaveToDB()
         {
             // this should only be used when the creature has already been loaded
@@ -1347,7 +1363,10 @@ namespace Game.Entities
             Cypher.Assert(data.SpawnId == m_spawnId);
 
             data.Id = GetEntry();
-            data.displayid = displayId;
+            if (displayId != 0)
+                data.display = new(displayId, SharedConst.DefaultPlayerDisplayScale, 1.0f);
+            else
+                data.display = null;
             data.equipmentId = (sbyte)GetCurrentEquipmentId();
 
             if (GetTransport() == null)
@@ -1447,12 +1466,12 @@ namespace Game.Entities
         void UpdateLevelDependantStats()
         {
             CreatureTemplate cInfo = GetCreatureTemplate();
-            CreatureEliteType rank = IsPet() ? 0 : cInfo.Rank;
+            CreatureClassifications classification = IsPet() ? CreatureClassifications.Normal : cInfo.Classification;
             uint level = GetLevel();
             CreatureBaseStats stats = Global.ObjectMgr.GetCreatureBaseStats(level, cInfo.UnitClass);
 
             // health
-            float healthmod = GetHealthMod(rank);
+            float healthmod = GetHealthMod(classification);
 
             uint basehp = (uint)GetMaxHealthByLevel(level);
             uint health = (uint)(basehp * healthmod);
@@ -1515,22 +1534,26 @@ namespace Game.Entities
             }
         }
 
-        public float GetHealthMod(CreatureEliteType Rank)
+        public float GetHealthMod(CreatureClassifications classification)
         {
-            switch (Rank)                                           // define rates for each elite rank
+            switch (classification)                                           // define rates for each elite rank
             {
-                case CreatureEliteType.Normal:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureNormalHp);
-                case CreatureEliteType.Elite:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteEliteHp);
-                case CreatureEliteType.RareElite:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareeliteHp);
-                case CreatureEliteType.WorldBoss:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteWorldbossHp);
-                case CreatureEliteType.Rare:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareHp);
+                case CreatureClassifications.Normal:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpNormal);
+                case CreatureClassifications.Elite:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpElite);
+                case CreatureClassifications.RareElite:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpRareelite);
+                case CreatureClassifications.Obsolete:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpObsolete);
+                case CreatureClassifications.Rare:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpRare);
+                case CreatureClassifications.Trivial:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpTrivial);
+                case CreatureClassifications.MinusMob:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpMinusmob);
                 default:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareeliteHp);
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureHpElite);
             }
         }
 
@@ -1545,41 +1568,49 @@ namespace Game.Entities
             }
         }
 
-        public static float _GetDamageMod(CreatureEliteType Rank)
+        public static float GetDamageMod(CreatureClassifications classification)
         {
-            switch (Rank)                                           // define rates for each elite rank
+            switch (classification)
             {
-                case CreatureEliteType.Normal:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureNormalDamage);
-                case CreatureEliteType.Elite:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteEliteDamage);
-                case CreatureEliteType.RareElite:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareeliteDamage);
-                case CreatureEliteType.WorldBoss:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteWorldbossDamage);
-                case CreatureEliteType.Rare:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareDamage);
+                case CreatureClassifications.Normal:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageNormal);
+                case CreatureClassifications.Elite:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageElite);
+                case CreatureClassifications.RareElite:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageRareelite);
+                case CreatureClassifications.Obsolete:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageObsolete);
+                case CreatureClassifications.Rare:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageRare);
+                case CreatureClassifications.Trivial:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageTrivial);
+                case CreatureClassifications.MinusMob:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageMinusmob);
                 default:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteEliteDamage);
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureDamageElite);
             }
         }
 
-        public float GetSpellDamageMod(CreatureEliteType Rank)
+        public float GetSpellDamageMod(CreatureClassifications classification)
         {
-            switch (Rank)                                           // define rates for each elite rank
+            switch (classification)                                           // define rates for each elite rank
             {
-                case CreatureEliteType.Normal:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureNormalSpelldamage);
-                case CreatureEliteType.Elite:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteEliteSpelldamage);
-                case CreatureEliteType.RareElite:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareeliteSpelldamage);
-                case CreatureEliteType.WorldBoss:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteWorldbossSpelldamage);
-                case CreatureEliteType.Rare:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteRareSpelldamage);
+                case CreatureClassifications.Normal:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageNormal);
+                case CreatureClassifications.Elite:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageElite);
+                case CreatureClassifications.RareElite:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageRareelite);
+                case CreatureClassifications.Obsolete:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageObsolete);
+                case CreatureClassifications.Rare:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageRare);
+                case CreatureClassifications.Trivial:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageTrivial);
+                case CreatureClassifications.MinusMob:
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageMinusmob);
                 default:
-                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureEliteEliteSpelldamage);
+                    return WorldConfig.GetFloatValue(WorldCfg.RateCreatureSpelldamageElite);
             }
         }
 
@@ -1633,7 +1664,7 @@ namespace Game.Entities
 
             return true;
         }
-        
+
         bool CreateFromProto(ulong guidlow, uint entry, CreatureData data = null, uint vehId = 0)
         {
             SetZoneScript();
@@ -1718,7 +1749,7 @@ namespace Game.Entities
                 curhealth = m_creatureData.curhealth;
                 if (curhealth != 0)
                 {
-                    curhealth = (uint)(curhealth * GetHealthMod(GetCreatureTemplate().Rank));
+                    curhealth = (uint)(curhealth * GetHealthMod(GetCreatureTemplate().Classification));
                     if (curhealth < 1)
                         curhealth = 1;
                 }
@@ -1740,7 +1771,7 @@ namespace Game.Entities
         }
 
         public bool IsTemplateRooted() { return _staticFlags.HasFlag(CreatureStaticFlags.Sessile); }
-        
+
         public void SetTemplateRooted(bool rooted)
         {
             _staticFlags.ApplyFlag(CreatureStaticFlags.Sessile, rooted);
@@ -2147,38 +2178,47 @@ namespace Game.Entities
                 ForcedDespawn((uint)msTimeToDespawn.TotalMilliseconds, forceRespawnTimer);
         }
 
-        public void LoadTemplateImmunities()
+        public void LoadTemplateImmunities(int creatureImmunitiesId)
         {
             // uint32 max used for "spell id", the immunity system will not perform SpellInfo checks against invalid spells
             // used so we know which immunities were loaded from template
             uint placeholderSpellId = uint.MaxValue;
 
-            // unapply template immunities (in case we're updating entry)
-            for (uint i = 0; i < (int)Mechanics.Max; ++i)
-                ApplySpellImmune(placeholderSpellId, SpellImmunity.Mechanic, i, false);
-
-            for (var i = (int)SpellSchools.Normal; i < (int)SpellSchools.Max; ++i)
-                ApplySpellImmune(placeholderSpellId, SpellImmunity.School, 1u << i, false);
-
-            // don't inherit immunities for hunter pets
-            if (GetOwnerGUID().IsPlayer() && IsHunterPet())
-                return;
-
-            ulong mechanicMask = GetCreatureTemplate().MechanicImmuneMask;
-            if (mechanicMask != 0)
+            void applyCreatureImmunities(CreatureImmunities immunities, bool apply)
             {
-                for (uint i = 0 + 1; i < (int)Mechanics.Max; ++i)
-                {
-                    if ((mechanicMask & (1ul << ((int)i - 1))) != 0)
-                        ApplySpellImmune(placeholderSpellId, SpellImmunity.Mechanic, i, true);
-                }
+                for (var i = 0; i < immunities.School.Count; ++i)
+                    if (immunities.School[i])
+                        ApplySpellImmune(placeholderSpellId, SpellImmunity.School, 1u << i, apply);
+
+                for (int i = 0; i < immunities.DispelType.Count; ++i)
+                    if (immunities.DispelType[i])
+                        ApplySpellImmune(placeholderSpellId, SpellImmunity.Dispel, (uint)i, apply);
+
+                for (var i = 0; i < immunities.Mechanic.Count; ++i)
+                    if (immunities.Mechanic[i])
+                        ApplySpellImmune(placeholderSpellId, SpellImmunity.Mechanic, (uint)i, apply);
+
+                foreach (SpellEffectName effect in immunities.Effect)
+                    ApplySpellImmune(placeholderSpellId, SpellImmunity.Effect, effect, apply);
+
+                foreach (AuraType aura in immunities.Aura)
+                    ApplySpellImmune(placeholderSpellId, SpellImmunity.State, aura, apply);
             }
 
-            uint schoolMask = GetCreatureTemplate().SpellSchoolImmuneMask;
-            if (schoolMask != 0)
-                for (var i = (int)SpellSchools.Normal; i <= (int)SpellSchools.Max; ++i)
-                    if ((schoolMask & (1 << i)) != 0)
-                        ApplySpellImmune(placeholderSpellId, SpellImmunity.School, 1u << i, true);
+            // unapply template immunities (in case we're updating entry)
+            CreatureImmunities immunities = Global.SpellMgr.GetCreatureImmunities(_creatureImmunitiesId);
+            if (immunities != null)
+                applyCreatureImmunities(immunities, false);
+
+            // apply new immunities
+            immunities = Global.SpellMgr.GetCreatureImmunities(creatureImmunitiesId);
+            if (immunities != null)
+            {
+                _creatureImmunitiesId = creatureImmunitiesId;
+                applyCreatureImmunities(immunities, true);
+            }
+            else
+                _creatureImmunitiesId = 0;
         }
 
         public override bool IsImmunedToSpellEffect(SpellInfo spellInfo, SpellEffectInfo spellEffectInfo, WorldObject caster, bool requireImmunityPurgesEffectAttribute = false)
@@ -2194,8 +2234,7 @@ namespace Game.Entities
             if (IsPet())
                 return false;
 
-            var rank = GetCreatureTemplate().Rank;
-            return rank != CreatureEliteType.Elite && rank != CreatureEliteType.RareElite;
+            return HasClassification(CreatureClassifications.Elite) || HasClassification(CreatureClassifications.RareElite);
         }
 
         public bool IsWorldBoss()
@@ -2500,8 +2539,8 @@ namespace Game.Entities
                 SetVisibilityDistanceOverride(creatureAddon.visibilityDistanceType);
 
             //Load Path
-            if (creatureAddon.path_id != 0)
-                _waypointPathId = creatureAddon.path_id;
+            if (creatureAddon.PathId != 0)
+                _waypointPathId = creatureAddon.PathId;
 
             if (creatureAddon.auras != null)
             {
@@ -2689,11 +2728,18 @@ namespace Game.Entities
                 if (_loot != null && _loot.loot_type == LootType.Skinning && _loot.IsLooted())
                     return true;
 
+                bool hasSkinningLoot = false;
                 foreach (var (_, loot) in m_personalLoot)
-                    if (loot.loot_type != LootType.Skinning || !loot.IsLooted())
-                        return false;
+                {
+                    if (loot.loot_type == LootType.Skinning)
+                    {
+                        if (!loot.IsLooted())
+                            return false;
+                        hasSkinningLoot = true;
+                    }
+                }
 
-                return true;
+                return hasSkinningLoot;
             }
 
             if (isFullySkinned())
@@ -2966,7 +3012,10 @@ namespace Game.Entities
             return base.GetName(locale);
         }
 
-        public virtual byte GetPetAutoSpellSize() { return 4; }
+        public virtual int GetPetAutoSpellSize()
+        {
+            return SharedConst.MaxSpellCharm;
+        }
 
         public virtual uint GetPetAutoSpellOnPos(byte pos)
         {
@@ -3295,7 +3344,7 @@ namespace Game.Entities
             return (CreatureAI)i_AI;
         }
 
-        public T GetAI<T>() where T : CreatureAI
+        public new T GetAI<T>() where T : CreatureAI
         {
             return (T)i_AI;
         }
@@ -3308,7 +3357,7 @@ namespace Game.Entities
         public void SetCanMelee(bool canMelee) { _staticFlags.ApplyFlag(CreatureStaticFlags.NoMelee, !canMelee); }
 
         public bool CanIgnoreLineOfSightWhenCastingOnMe() { return _staticFlags.HasFlag(CreatureStaticFlags4.IgnoreLosWhenCastingOnMe); }
-        
+
         public sbyte GetOriginalEquipmentId() { return m_originalEquipmentId; }
         public byte GetCurrentEquipmentId() { return m_equipmentId; }
         public void SetCurrentEquipmentId(byte id) { m_equipmentId = id; }
@@ -3316,7 +3365,7 @@ namespace Game.Entities
         public CreatureTemplate GetCreatureTemplate() { return m_creatureInfo; }
         public CreatureData GetCreatureData() { return m_creatureData; }
         public CreatureDifficulty GetCreatureDifficulty() { return m_creatureDifficulty; }
-        
+
         public override bool LoadFromDB(ulong spawnId, Map map, bool addToMap, bool allowDuplicate)
         {
             if (!allowDuplicate)
@@ -3438,6 +3487,9 @@ namespace Game.Entities
         public override MovementGeneratorType GetDefaultMovementType() { return DefaultMovementType; }
         public void SetDefaultMovementType(MovementGeneratorType mgt) { DefaultMovementType = mgt; }
 
+        public CreatureClassifications GetCreatureClassification() { return GetCreatureTemplate().Classification; }
+        public bool HasClassification(CreatureClassifications classification) { return GetCreatureTemplate().Classification == classification; }
+
         public long GetRespawnTime() { return m_respawnTime; }
         public void SetRespawnTime(uint respawn) { m_respawnTime = respawn != 0 ? GameTime.GetGameTime() + respawn : 0; }
 
@@ -3458,7 +3510,7 @@ namespace Game.Entities
 
         bool CanRegenerateHealth() { return !_staticFlags.HasFlag(CreatureStaticFlags5.NoHealthRegen) && _regenerateHealth; }
         public void SetRegenerateHealth(bool value) { _staticFlags.ApplyFlag(CreatureStaticFlags5.NoHealthRegen, !value); }
-        
+
         public void SetHomePosition(float x, float y, float z, float o)
         {
             m_homePosition.Relocate(x, y, z, o);
@@ -3481,7 +3533,7 @@ namespace Game.Entities
         public void GetTransportHomePosition(out float x, out float y, out float z, out float ori) { m_transportHomePosition.GetPosition(out x, out y, out z, out ori); }
         public Position GetTransportHomePosition() { return m_transportHomePosition; }
 
-        public uint GetWaypointPath() { return _waypointPathId; }
+        public uint GetWaypointPathId() { return _waypointPathId; }
         public void LoadPath(uint pathid) { _waypointPathId = pathid; }
 
         public (uint nodeId, uint pathId) GetCurrentWaypointInfo() { return _currentWaypointNodeInfo; }

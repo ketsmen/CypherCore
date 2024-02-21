@@ -1337,7 +1337,7 @@ namespace Game.Maps
     {
         GridMapTypeMask i_mapTypeMask;
         List<WorldObject> i_objects;
-        PhaseShift i_phaseShift;
+        public PhaseShift i_phaseShift;
         ICheck<WorldObject> i_check;
 
         public WorldObjectListSearcher(WorldObject searcher, List<WorldObject> objects, ICheck<WorldObject> check, GridMapTypeMask mapTypeMask = GridMapTypeMask.All)
@@ -2523,6 +2523,9 @@ namespace Game.Maps
                 return false;
 
             if (_args.IgnoreNotOwnedPrivateObjects && !go.CheckPrivateObjectOwnerVisibility(_obj))
+                return false;
+
+            if (_args.GameObjectType.HasValue && go.GetGoType() != _args.GameObjectType)
                 return false;
 
             _customizer.Update(go);

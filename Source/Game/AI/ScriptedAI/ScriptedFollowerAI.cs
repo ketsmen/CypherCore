@@ -19,7 +19,7 @@ namespace Game.AI
         PostEvent = 0x10                      //can be set at complete and allow post event to run
     }
 
-    class FollowerAI : ScriptedAI
+    public class FollowerAI : ScriptedAI
     {
         ObjectGuid _leaderGUID;
         uint _updateFollowTimer;
@@ -158,10 +158,7 @@ namespace Game.AI
 
         void UpdateFollowerAI(uint diff)
         {
-            if (!UpdateVictim())
-                return;
-
-            DoMeleeAttackIfReady();
+            UpdateVictim();
         }
 
         public void StartFollow(Player player, uint factionForFollower = 0, Quest quest = null)

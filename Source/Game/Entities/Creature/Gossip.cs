@@ -249,7 +249,7 @@ namespace Game.Misc
 
             NpcText text = Global.ObjectMgr.GetNpcText(titleTextId);
             if (text != null)
-                packet.TextID = (int)text.Data.SelectRandomElementByWeight(data => data.Probability).BroadcastTextID;
+                packet.BroadcastTextID = (int)text.Data.SelectRandomElementByWeight(data => data.Probability).BroadcastTextID;
 
             foreach (var (index, item) in _gossipMenu.GetMenuItems())
             {
@@ -789,7 +789,7 @@ namespace Game.Misc
         public uint BoxBroadcastTextId;
         public int? SpellID;
         public int? OverrideIconID;
-        public List<Condition> Conditions = new();
+        public ConditionsReference Conditions;
     }
 
     public class GossipMenuAddon
@@ -817,6 +817,6 @@ namespace Game.Misc
     {
         public uint MenuId;
         public uint TextId;
-        public List<Condition> Conditions = new();
+        public ConditionsReference Conditions;
     }
 }

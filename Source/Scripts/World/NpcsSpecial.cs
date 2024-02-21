@@ -207,8 +207,7 @@ namespace Scripts.World.NpcsSpecial
                     ResetFlagTimer -= diff;
             }
 
-            if (UpdateVictim())
-                DoMeleeAttackIfReady();
+            UpdateVictim();
         }
 
         public override void ReceiveEmote(Player player, TextEmotes emote)
@@ -620,7 +619,7 @@ namespace Scripts.World.NpcsSpecial
                     Creature patient = me.SummonCreature(patientEntry, point, TempSummonType.TimedDespawnOutOfCombat, TimeSpan.FromSeconds(5));
                     if (patient != null)
                     {
-                        //303, this flag appear to be required for client side item.spell to work (TargetMath.SingleFriend)
+                        //303, this flag appear to be required for client side item.spell to work (TargetSingleFriend)
                         patient.SetUnitFlag(UnitFlags.PlayerControlled);
 
                         Patients.Add(patient.GetGUID());

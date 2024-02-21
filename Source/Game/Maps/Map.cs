@@ -423,6 +423,9 @@ namespace Game.Maps
                 return false; //Should delete object
             }
 
+            if (IsAlwaysActive())
+                obj.SetActive(true);
+
             var cell = new Cell(cellCoord);
             if (obj.IsActiveObject())
                 EnsureGridLoadedForActiveObject(cell, obj);
@@ -2371,6 +2374,19 @@ namespace Game.Maps
             return _toggledSpawnGroupIds.Contains(groupId) != !data.flags.HasAnyFlag(SpawnGroupFlags.ManualSpawn);
         }
 
+        public void InitSpawnGroupState()
+        {
+            var spawnGroups = Global.ObjectMgr.GetSpawnGroupsForMap(GetId());
+            foreach (uint spawnGroupId in spawnGroups)
+            {
+                SpawnGroupTemplateData spawnGroupTemplate = GetSpawnGroupData(spawnGroupId);
+                if (spawnGroupTemplate.flags.HasAnyFlag(SpawnGroupFlags.System))
+                    continue;
+
+                SetSpawnGroupActive(spawnGroupId, Global.ConditionMgr.IsMapMeetingNotGroupedConditions(ConditionSourceType.SpawnGroup, spawnGroupId, this));
+            }
+        }
+
         public void UpdateSpawnGroupConditions()
         {
             var spawnGroups = Global.ObjectMgr.GetSpawnGroupsForMap(GetId());
@@ -2591,7 +2607,7 @@ namespace Game.Maps
                     }
                     break;
                 case TypeId.GameObject:
-                    GameObject gameObject = obj.ToGameObject(); ;
+                    GameObject gameObject = obj.ToGameObject();
                     if (gameObject != null && gameObject.GetSpawnId() != 0)
                     {
                         respawnLocation = new();
@@ -3211,6 +3227,17 @@ namespace Game.Maps
 
         public TerrainInfo GetTerrain() { return m_terrain; }
 
+        // custom PathGenerator include and exclude filter flags
+        // these modify what kind of terrain types are available in current instance
+        // for example this can be used to mark offmesh connections as enabled/disabled
+        public ushort GetForceEnabledNavMeshFilterFlags() { return m_forceEnabledNavMeshFilterFlags; }
+        public void SetForceEnabledNavMeshFilterFlag(ushort flag) { m_forceEnabledNavMeshFilterFlags |= flag; }
+        public void RemoveForceEnabledNavMeshFilterFlag(ushort flag) { m_forceEnabledNavMeshFilterFlags &= (ushort)~flag; }
+
+        public ushort GetForceDisabledNavMeshFilterFlags() { return m_forceDisabledNavMeshFilterFlags; }
+        public void SetForceDisabledNavMeshFilterFlag(ushort flag) { m_forceDisabledNavMeshFilterFlags |= flag; }
+        public void RemoveForceDisabledNavMeshFilterFlag(ushort flag) { m_forceDisabledNavMeshFilterFlags &= (ushort)~flag; }
+
         public uint GetInstanceId()
         {
             return i_InstanceId;
@@ -3253,18 +3280,60 @@ namespace Game.Maps
             return i_mapRecord != null && i_mapRecord.IsRaid();
         }
 
+        public bool IsLFR() => i_spawnMode switch
+        {
+            Difficulty.LFR or Difficulty.LFRNew or Difficulty.LFR15thAnniversary => true,
+            _ => false
+        };
+
+        public bool IsNormal() => i_spawnMode switch
+        {
+            Difficulty.Normal or Difficulty.Raid10N or Difficulty.Raid25N or Difficulty.NormalRaid or Difficulty.NormalIsland or Difficulty.NormalWarfront => true,
+            _ => false
+        };
+
         public bool IsHeroic()
         {
             DifficultyRecord difficulty = CliDB.DifficultyStorage.LookupByKey(i_spawnMode);
+            if (difficulty != null && difficulty.Flags.HasFlag(DifficultyFlags.DisplayHeroic))
+                return true;
+
+            // compatibility purposes of old difficulties
+            return i_spawnMode switch
+            {
+                Difficulty.Raid10HC or Difficulty.Raid25HC or Difficulty.Heroic or Difficulty.Scenario3ManHC => true,
+                _ => false
+            };
+        }
+
+        public bool IsMythic()
+        {
+            var difficulty = CliDB.DifficultyStorage.LookupByKey(i_spawnMode);
             if (difficulty != null)
-                return difficulty.Flags.HasAnyFlag(DifficultyFlags.Heroic);
+                return difficulty.Flags.HasFlag(DifficultyFlags.DisplayMythic);
+
             return false;
+        }
+
+        public bool IsMythicPlus()
+        {
+            return IsDungeon() && i_spawnMode == Difficulty.MythicKeystone;
+        }
+
+        public bool IsHeroicOrHigher()
+        {
+            return IsHeroic() || IsMythic() || IsMythicPlus();
         }
 
         public bool Is25ManRaid()
         {
             // since 25man difficulties are 1 and 3, we can check them like that
             return IsRaid() && (i_spawnMode == Difficulty.Raid25N || i_spawnMode == Difficulty.Raid25HC);
+        }
+
+        public bool IsTimewalking()
+        {
+            return (IsDungeon() && i_spawnMode == Difficulty.Timewalking) || (IsRaid() && i_spawnMode == Difficulty.TimewalkingRaid);
         }
 
         public bool IsBattleground()
@@ -3290,6 +3359,15 @@ namespace Game.Maps
         public bool IsGarrison()
         {
             return i_mapRecord != null && i_mapRecord.IsGarrison();
+        }
+
+        /// <summary>
+        /// Currently, this means that every entity added to this map will be marked as active
+        /// </summary>
+        /// <returns></returns>
+        bool IsAlwaysActive()
+        {
+            return IsBattlegroundOrArena();
         }
 
         private bool GetEntrancePos(out uint mapid, out float x, out float y)
@@ -4672,6 +4750,8 @@ namespace Game.Maps
         protected List<WorldObject> m_activeNonPlayers = new();
         protected List<Player> m_activePlayers = new();
         TerrainInfo m_terrain;
+        ushort m_forceEnabledNavMeshFilterFlags;
+        ushort m_forceDisabledNavMeshFilterFlags;
 
         SortedMultiMap<long, ScriptAction> m_scriptSchedule = new();
 
@@ -4721,8 +4801,8 @@ namespace Game.Maps
             // this make sure it gets unloaded if for some reason no player joins
             m_unloadTimer = (uint)Math.Max(WorldConfig.GetIntValue(WorldCfg.InstanceUnloadDelay), 1);
 
-            Global.WorldStateMgr.SetValue(WorldStates.TeamInInstanceAlliance, instanceTeam == TeamId.Alliance ? 1 : 0, false, this);
-            Global.WorldStateMgr.SetValue(WorldStates.TeamInInstanceHorde, instanceTeam == TeamId.Horde ? 1 : 0, false, this);
+            Global.WorldStateMgr.SetValue(WorldStates.TeamInInstanceAlliance, instanceTeam == BatttleGroundTeamId.Alliance ? 1 : 0, false, this);
+            Global.WorldStateMgr.SetValue(WorldStates.TeamInInstanceHorde, instanceTeam == BatttleGroundTeamId.Horde ? 1 : 0, false, this);
 
             if (i_instanceLock != null)
             {
@@ -4889,7 +4969,6 @@ namespace Game.Maps
             }
 
             InstanceLockData lockData = i_instanceLock.GetInstanceInitializationData();
-            i_data.SetCompletedEncountersMask(lockData.CompletedEncountersMask);
             i_data.SetEntranceLocation(lockData.EntranceWorldSafeLocId);
             if (!lockData.Data.IsEmpty())
             {
@@ -4901,7 +4980,7 @@ namespace Game.Maps
         }
 
         public Group GetOwningGroup() { return i_owningGroupRef.GetTarget(); }
-        
+
         public void TrySetOwningGroup(Group group)
         {
             if (!i_owningGroupRef.IsValid())
@@ -4911,7 +4990,7 @@ namespace Game.Maps
         public InstanceResetResult Reset(InstanceResetMethod method)
         {
             // raids can be reset if no boss was killed
-            if (method != InstanceResetMethod.Expire && i_instanceLock != null && !i_instanceLock.IsNew())
+            if (method != InstanceResetMethod.Expire && i_instanceLock != null && !i_instanceLock.IsNew() && i_data != null)
                 return InstanceResetResult.CannotReset;
 
             if (HavePlayers())
@@ -4934,20 +5013,25 @@ namespace Game.Maps
                         raidInstanceMessage.DifficultyID = GetDifficultyID();
                         raidInstanceMessage.Write();
 
-                        PendingRaidLock pendingRaidLock = new();
-                        pendingRaidLock.TimeUntilLock = 60000;
-                        pendingRaidLock.CompletedMask = i_instanceLock.GetData().CompletedEncountersMask;
-                        pendingRaidLock.Extending = true;
-                        pendingRaidLock.WarningOnly = GetEntry().IsFlexLocking();
-                        pendingRaidLock.Write();
-
-                        foreach (Player player in GetPlayers())
-                        {
+                        foreach (Player player in GetPlayers())                        
                             player.SendPacket(raidInstanceMessage);
-                            player.SendPacket(pendingRaidLock);
+                        
+                        if (i_data != null)
+                        {
+                            PendingRaidLock pendingRaidLock = new();
+                            pendingRaidLock.TimeUntilLock = 60000;
+                            pendingRaidLock.CompletedMask = i_instanceLock.GetData().CompletedEncountersMask;
+                            pendingRaidLock.Extending = true;
+                            pendingRaidLock.WarningOnly = GetEntry().IsFlexLocking();
+                            pendingRaidLock.Write();
 
-                            if (!pendingRaidLock.WarningOnly)
-                                player.SetPendingBind(GetInstanceId(), 60000);
+                            foreach (Player player in GetPlayers())
+                            {
+                                player.SendPacket(pendingRaidLock);
+
+                                if (!pendingRaidLock.WarningOnly)
+                                    player.SetPendingBind(GetInstanceId(), 60000);
+                            }
                         }
                         break;
                     }
@@ -4982,7 +5066,7 @@ namespace Game.Maps
                 SQLTransaction trans = new();
 
                 if (entries.IsInstanceIdBound())
-                    Global.InstanceLockMgr.UpdateSharedInstanceLock(trans, new InstanceLockUpdateEvent(GetInstanceId(), i_data.GetSaveData(), 
+                    Global.InstanceLockMgr.UpdateSharedInstanceLock(trans, new InstanceLockUpdateEvent(GetInstanceId(), i_data.GetSaveData(),
                         instanceCompletedEncounters, updateSaveDataEvent.DungeonEncounter, i_data.GetEntranceLocationForCompletedEncounters(instanceCompletedEncounters)));
 
                 foreach (var player in GetPlayers())
@@ -5018,7 +5102,7 @@ namespace Game.Maps
                 DB.Characters.CommitTransaction(trans);
             }
         }
-        
+
         public void UpdateInstanceLock(UpdateAdditionalSaveDataEvent updateSaveDataEvent)
         {
             if (i_instanceLock != null)
@@ -5097,13 +5181,13 @@ namespace Game.Maps
         public int GetTeamIdInInstance()
         {
             if (Global.WorldStateMgr.GetValue(WorldStates.TeamInInstanceAlliance, this) != 0)
-                return TeamId.Alliance;
+                return BatttleGroundTeamId.Alliance;
             if (Global.WorldStateMgr.GetValue(WorldStates.TeamInInstanceHorde, this) != 0)
-                return TeamId.Horde;
-            return TeamId.Neutral;
+                return BatttleGroundTeamId.Horde;
+            return BatttleGroundTeamId.Neutral;
         }
 
-        public Team GetTeamInInstance() { return GetTeamIdInInstance() == TeamId.Alliance ? Team.Alliance : Team.Horde; }
+        public Team GetTeamInInstance() { return GetTeamIdInInstance() == BatttleGroundTeamId.Alliance ? Team.Alliance : Team.Horde; }
 
         public uint GetScriptId()
         {
@@ -5209,7 +5293,7 @@ namespace Game.Maps
             MapDifficultyXConditionId = mapDifficultyXConditionId;
         }
     }
-    
+
     public struct ScriptAction
     {
         public ObjectGuid ownerGUID;

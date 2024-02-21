@@ -56,7 +56,7 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockCaverns.RomoggBonec
             Talk(TextIds.YellDeath);
 
             Creature raz = instance.GetCreature(DataTypes.RazTheCrazed);
-            if (raz)
+            if (raz != null)
                 raz.GetAI().SetData(MiscConst.TypeRaz, MiscConst.DataRomoggDead);
         }
 
@@ -102,7 +102,7 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockCaverns.RomoggBonec
             if (!UpdateVictim())
                 return;
 
-            _scheduler.Update(diff, () => DoMeleeAttackIfReady());
+            _scheduler.Update(diff);
         }
     }
 }

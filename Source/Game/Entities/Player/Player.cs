@@ -138,7 +138,6 @@ namespace Game.Entities
             PlayerTalkClass.ClearMenus();
             ItemSetEff.Clear();
 
-            _declinedname = null;
             m_runes = null;
             m_achievementSys = null;
             reputationMgr = null;
@@ -359,6 +358,10 @@ namespace Game.Entities
             base.Update(diff);
             SetCanDelayTeleport(false);
 
+            // Unit::Update updates the spell history and spell states. We can now check if we can launch another pending cast.
+            if (CanExecutePendingSpellCastRequest())
+                ExecutePendingSpellCastRequest();
+
             long now = GameTime.GetGameTime();
 
             UpdatePvPFlag(now);
@@ -416,71 +419,9 @@ namespace Game.Entities
                 }
             }
 
-            m_achievementSys.UpdateTimedCriteria(diff);
+            m_achievementSys.UpdateTimedCriteria(TimeSpan.FromMilliseconds(diff));
 
-            if (HasUnitState(UnitState.MeleeAttacking) && !HasUnitState(UnitState.Casting | UnitState.Charging))
-            {
-                Unit victim = GetVictim();
-                if (victim != null)
-                {
-                    // default combat reach 10
-                    // TODO add weapon, skill check
-
-                    if (IsAttackReady(WeaponAttackType.BaseAttack))
-                    {
-                        if (!IsWithinMeleeRange(victim))
-                        {
-                            SetAttackTimer(WeaponAttackType.BaseAttack, 100);
-                            if (m_swingErrorMsg != 1)               // send single time (client auto repeat)
-                            {
-                                SendAttackSwingNotInRange();
-                                m_swingErrorMsg = 1;
-                            }
-                        }
-                        //120 degrees of radiant range, if player is not in boundary radius
-                        else if (!IsWithinBoundaryRadius(victim) && !HasInArc(2 * MathFunctions.PI / 3, victim))
-                        {
-                            SetAttackTimer(WeaponAttackType.BaseAttack, 100);
-                            if (m_swingErrorMsg != 2)               // send single time (client auto repeat)
-                            {
-                                SendAttackSwingBadFacingAttack();
-                                m_swingErrorMsg = 2;
-                            }
-                        }
-                        else
-                        {
-                            m_swingErrorMsg = 0;                    // reset swing error state
-
-                            // prevent base and off attack in same time, delay attack at 0.2 sec
-                            if (HaveOffhandWeapon())
-                                if (GetAttackTimer(WeaponAttackType.OffAttack) < SharedConst.AttackDisplayDelay)
-                                    SetAttackTimer(WeaponAttackType.OffAttack, SharedConst.AttackDisplayDelay);
-
-                            // do attack
-                            AttackerStateUpdate(victim, WeaponAttackType.BaseAttack);
-                            ResetAttackTimer(WeaponAttackType.BaseAttack);
-                        }
-                    }
-
-                    if (!IsInFeralForm() && HaveOffhandWeapon() && IsAttackReady(WeaponAttackType.OffAttack))
-                    {
-                        if (!IsWithinMeleeRange(victim))
-                            SetAttackTimer(WeaponAttackType.OffAttack, 100);
-                        else if (!IsWithinBoundaryRadius(victim) && !HasInArc(2 * MathFunctions.PI / 3, victim))
-                            SetAttackTimer(WeaponAttackType.BaseAttack, 100);
-                        else
-                        {
-                            // prevent base and off attack in same time, delay attack at 0.2 sec
-                            if (GetAttackTimer(WeaponAttackType.BaseAttack) < SharedConst.AttackDisplayDelay)
-                                SetAttackTimer(WeaponAttackType.BaseAttack, SharedConst.AttackDisplayDelay);
-
-                            // do attack
-                            AttackerStateUpdate(victim, WeaponAttackType.OffAttack);
-                            ResetAttackTimer(WeaponAttackType.OffAttack);
-                        }
-                    }
-                }
-            }
+            DoMeleeAttackIfReady();
 
             if (HasPlayerFlag(PlayerFlags.Resting))
                 _restMgr.Update(diff);
@@ -643,6 +584,9 @@ namespace Game.Entities
                     return;
                 }
 
+                // clear all pending spell cast requests when dying
+                CancelPendingCastRequest();
+
                 // drunken state is cleared on death
                 SetDrunkValue(0);
 
@@ -662,7 +606,7 @@ namespace Game.Entities
                 UpdateCriteria(CriteriaType.DieInInstance, 1);
 
                 // reset all death criterias
-                ResetCriteria(CriteriaFailEvent.Death, 0);
+                FailCriteria(CriteriaFailEvent.Death, 0);
             }
 
             base.SetDeathState(s);
@@ -747,9 +691,6 @@ namespace Game.Entities
                     GetName(), viewpoint.GetEntry(), viewpoint.GetTypeId());
                 SetViewpoint(viewpoint, false);
             }
-
-            RemovePlayerLocalFlag(PlayerLocalFlags.OverrideTransportServerTime);
-            SetTransportServerTime(0);
         }
 
         void ScheduleDelayedOperation(PlayerDelayedOperations operation)
@@ -816,7 +757,7 @@ namespace Game.Entities
             _session.SendPacket(data);
         }
 
-        public DeclinedName GetDeclinedNames() { return _declinedname; }
+        public DeclinedNames GetDeclinedNames() { return m_playerData.DeclinedNames.HasValue() ? m_playerData.DeclinedNames.GetValue() : null; }
 
         public void CreateGarrison(uint garrSiteId)
         {
@@ -1040,7 +981,7 @@ namespace Game.Entities
             if (!m_activePlayerData.PetStable.HasValue())
                 return ObjectGuid.Empty;
 
-            return m_activePlayerData.PetStable.GetValue().StableMaster;              
+            return m_activePlayerData.PetStable.GetValue().StableMaster;
         }
 
         public void SetStableMaster(ObjectGuid stableMaster)
@@ -1051,7 +992,7 @@ namespace Game.Entities
             StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
             SetUpdateFieldValue(stableInfo.ModifyValue(stableInfo.StableMaster), stableMaster);
         }
-        
+
         // last used pet number (for BG's)
         public uint GetLastPetNumber() { return m_lastpetnumber; }
         public void SetLastPetNumber(uint petnumber) { m_lastpetnumber = petnumber; }
@@ -1059,7 +1000,7 @@ namespace Game.Entities
         public void SetTemporaryUnsummonedPetNumber(uint petnumber) { m_temporaryUnsummonedPetNumber = petnumber; }
 
         public ReactStates? GetTemporaryPetReactState() { return m_temporaryPetReactState; }
-        
+
         public void DisablePetControlsOnMount(ReactStates reactState, CommandStates commandState)
         {
             Pet pet = GetPet();
@@ -2172,6 +2113,9 @@ namespace Game.Entities
                     }
 
                     SendPacket(transferPending);
+
+                    RemovePlayerLocalFlag(PlayerLocalFlags.OverrideTransportServerTime);
+                    SetTransportServerTime(0);
                 }
 
                 // remove from old map now
@@ -2620,7 +2564,7 @@ namespace Game.Entities
 
             foreach (var gossipMenuItem in menuItemBounds)
             {
-                if (!ConditionMgr.IsObjectMeetToConditions(this, source, gossipMenuItem.Conditions))
+                if (!gossipMenuItem.Conditions.Meets(this, source))
                     continue;
 
                 bool canTalk = true;
@@ -2667,11 +2611,12 @@ namespace Game.Entities
                         case GossipOptionNpc.Binder:
                         case GossipOptionNpc.Banker:
                         case GossipOptionNpc.PetitionVendor:
-                        case GossipOptionNpc.TabardVendor:
+                        case GossipOptionNpc.GuildTabardVendor:
                         case GossipOptionNpc.Auctioneer:
                         case GossipOptionNpc.Mailbox:
                         case GossipOptionNpc.Transmogrify:
                         case GossipOptionNpc.AzeriteRespec:
+                        case GossipOptionNpc.PersonalTabardVendor:
                             break;                                         // No checks
                         case GossipOptionNpc.CemeterySelect:
                             canTalk = false;                               // Deprecated
@@ -2887,7 +2832,7 @@ namespace Game.Entities
                     {
                         PlayerInteractionType.None, PlayerInteractionType.Vendor, PlayerInteractionType.TaxiNode,
                         PlayerInteractionType.Trainer, PlayerInteractionType.SpiritHealer, PlayerInteractionType.Binder,
-                        PlayerInteractionType.Banker, PlayerInteractionType.PetitionVendor, PlayerInteractionType.TabardVendor,
+                        PlayerInteractionType.Banker, PlayerInteractionType.PetitionVendor, PlayerInteractionType.GuildTabardVendor,
                         PlayerInteractionType.BattleMaster, PlayerInteractionType.Auctioneer, PlayerInteractionType.TalentMaster,
                         PlayerInteractionType.StableMaster, PlayerInteractionType.None, PlayerInteractionType.GuildBanker,
                         PlayerInteractionType.None, PlayerInteractionType.None, PlayerInteractionType.None,
@@ -2902,7 +2847,8 @@ namespace Game.Entities
                         PlayerInteractionType.LegendaryCrafting, PlayerInteractionType.NewPlayerGuide, PlayerInteractionType.LegendaryCrafting,
                         PlayerInteractionType.Renown, PlayerInteractionType.BlackMarketAuctioneer, PlayerInteractionType.PerksProgramVendor,
                         PlayerInteractionType.ProfessionsCraftingOrder, PlayerInteractionType.Professions, PlayerInteractionType.ProfessionsCustomerOrder,
-                        PlayerInteractionType.TraitSystem, PlayerInteractionType.BarbersChoice, PlayerInteractionType.MajorFactionRenown
+                        PlayerInteractionType.TraitSystem, PlayerInteractionType.BarbersChoice, PlayerInteractionType.MajorFactionRenown,
+                        PlayerInteractionType.PersonalTabardVendor
                     };
 
                     PlayerInteractionType interactionType = GossipOptionNpcToInteractionType[(int)gossipOptionNpc];
@@ -2943,7 +2889,7 @@ namespace Game.Entities
                 if (menu.TextId == 0)
                     continue;
 
-                if (ConditionMgr.IsObjectMeetToConditions(this, source, menu.Conditions))
+                if (menu.Conditions.Meets(this, source))
                     textId = menu.TextId;
             }
 
@@ -2967,9 +2913,9 @@ namespace Game.Entities
                     {
                         var menuBounds = ObjectMgr.GetGossipMenusMapBounds(menuId);
 
-                        foreach (var itr in menuBounds)
+                        foreach (var menu in menuBounds)
                         {
-                            if (!ConditionMgr.IsObjectMeetToConditions(this, source, itr.Conditions))
+                            if (!menu.Conditions.Meets(this, source))
                                 continue;
 
                             menuIdToShow = menuId;
@@ -2988,28 +2934,34 @@ namespace Game.Entities
 
         public bool CanJoinConstantChannelInZone(ChatChannelsRecord channel, AreaTableRecord zone)
         {
-            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.ZoneDep) && zone.GetFlags().HasFlag(AreaFlags.NoChatChannels))
+            if (channel.GetFlags().HasFlag(ChatChannelFlags.ZoneBased) && zone.GetFlags().HasFlag(AreaFlags.NoChatChannels))
                 return false;
 
-            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.CityOnly) && !zone.GetFlags().HasFlag(AreaFlags.AllowTradeChannel))
+            if (channel.GetFlags().HasFlag(ChatChannelFlags.OnlyInCities) && !zone.GetFlags().HasFlag(AreaFlags.AllowTradeChannel))
                 return false;
 
-            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.GuildReq) && GetGuildId() != 0)
+            if (channel.GetFlags().HasFlag(ChatChannelFlags.GuildRecruitment) && GetGuildId() != 0)
                 return false;
 
-            if (channel.Flags.HasAnyFlag(ChannelDBCFlags.NoClientJoin))
+            if (channel.GetRuleset() == ChatChannelRuleset.Disabled)
+                return false;
+
+            if (channel.GetFlags().HasFlag(ChatChannelFlags.Regional))
                 return false;
 
             return true;
         }
+
         public void JoinedChannel(Channel c)
         {
             m_channels.Add(c);
         }
+
         public void LeftChannel(Channel c)
         {
             m_channels.Remove(c);
         }
+
         public void CleanupChannels()
         {
             while (!m_channels.Empty())
@@ -3026,6 +2978,7 @@ namespace Game.Entities
             }
             Log.outDebug(LogFilter.ChatSystem, "Player {0}: channels cleaned up!", GetName());
         }
+
         void UpdateLocalChannels(uint newZone)
         {
             if (GetSession().PlayerLoading() && !IsBeingTeleportedFar())
@@ -3041,7 +2994,7 @@ namespace Game.Entities
 
             foreach (var channelEntry in CliDB.ChatChannelsStorage.Values)
             {
-                if (!channelEntry.Flags.HasAnyFlag(ChannelDBCFlags.Initial))
+                if (!channelEntry.GetFlags().HasFlag(ChatChannelFlags.AutoJoin))
                     continue;
 
                 Channel usedChannel = null;
@@ -3060,9 +3013,9 @@ namespace Game.Entities
 
                 if (CanJoinConstantChannelInZone(channelEntry, current_zone))
                 {
-                    if (!channelEntry.Flags.HasAnyFlag(ChannelDBCFlags.Global))
+                    if (!channelEntry.GetFlags().HasFlag(ChatChannelFlags.ZoneBased))
                     {
-                        if (channelEntry.Flags.HasAnyFlag(ChannelDBCFlags.CityOnly) && usedChannel != null)
+                        if (channelEntry.GetFlags().HasFlag(ChatChannelFlags.LinkedChannel) && usedChannel != null)
                             continue;                            // Already on the channel, as city channel names are not changing
 
                         joinChannel = cMgr.GetSystemChannel(channelEntry.Id, current_zone);
@@ -3594,7 +3547,7 @@ namespace Game.Entities
 
             if (!IsInCombat())
             {
-                if (powerType.GetFlags().HasFlag(PowerTypeFlags.UseRegenInterrupt) && m_regenInterruptTimestamp + TimeSpan.FromMicroseconds(powerType.RegenInterruptTimeMS) < GameTime.Now())
+                if (powerType.GetFlags().HasFlag(PowerTypeFlags.UseRegenInterrupt) && m_regenInterruptTimestamp + TimeSpan.FromMicroseconds(powerType.RegenInterruptTimeMS) >= GameTime.Now())
                     return;
 
                 addvalue = (powerType.RegenPeace + m_unitData.PowerRegenFlatModifier[(int)powerIndex]) * 0.001f * RegenTimer;
@@ -4034,6 +3987,20 @@ namespace Game.Entities
             int fatigueTimer = (int)MirrorTimerType.Fatigue;
             int fireTimer = (int)MirrorTimerType.Fire;
 
+            uint getEnvironmentalDamage(EnviromentalDamage damageType)
+            {
+                byte damagePercent = 10;
+                if (damageType == EnviromentalDamage.Drowning || damageType == EnviromentalDamage.Exhausted)
+                    damagePercent *= 2;
+
+                uint damage = (uint)(GetMaxHealth() * damagePercent / 100);
+
+                // Randomize damage
+                damage += RandomHelper.URand(0, Math.Pow(10, Math.Max(0, (int)Math.Log10(damage) - 1)));
+
+                return damage;
+            }
+
             // In water
             if (m_MirrorTimerFlags.HasAnyFlag(PlayerUnderwaterState.InWater))
             {
@@ -4051,8 +4018,7 @@ namespace Game.Entities
                     {
                         m_MirrorTimer[breathTimer] += 1 * Time.InMilliseconds;
                         // Calculate and deal damage
-                        // @todo Check this formula
-                        uint damage = (uint)(GetMaxHealth() / 5 + RandomHelper.URand(0, GetLevel() - 1));
+                        uint damage = getEnvironmentalDamage(EnviromentalDamage.Drowning);
                         EnvironmentalDamage(EnviromentalDamage.Drowning, damage);
                     }
                     else if (!m_MirrorTimerFlagsLast.HasAnyFlag(PlayerUnderwaterState.InWater))      // Update time in client if need
@@ -4088,7 +4054,7 @@ namespace Game.Entities
                         m_MirrorTimer[fatigueTimer] += 1 * Time.InMilliseconds;
                         if (IsAlive())                                            // Calculate and deal damage
                         {
-                            uint damage = (uint)(GetMaxHealth() / 5 + RandomHelper.URand(0, GetLevel() - 1));
+                            uint damage = getEnvironmentalDamage(EnviromentalDamage.Exhausted);
                             EnvironmentalDamage(EnviromentalDamage.Exhausted, damage);
                         }
                         else if (HasPlayerFlag(PlayerFlags.Ghost))       // Teleport ghost to graveyard
@@ -4120,8 +4086,7 @@ namespace Game.Entities
                     {
                         m_MirrorTimer[fireTimer] += 1 * Time.InMilliseconds;
                         // Calculate and deal damage
-                        // @todo Check this formula
-                        uint damage = RandomHelper.URand(600, 700);
+                        uint damage = getEnvironmentalDamage(EnviromentalDamage.Lava);
                         if (m_MirrorTimerFlags.HasAnyFlag(PlayerUnderwaterState.InLava))
                             EnvironmentalDamage(EnviromentalDamage.Lava, damage);
                         // need to skip Slime damage in Undercity,
@@ -4294,9 +4259,9 @@ namespace Game.Entities
         }
 
         ObjectGuid GetSpiritHealerGUID() { return _areaSpiritHealerGUID; }
-        
+
         public bool CanAcceptAreaSpiritHealFrom(Unit spiritHealer) { return spiritHealer.GetGUID() == _areaSpiritHealerGUID; }
-        
+
         public void SetAreaSpiritHealer(Creature creature)
         {
             if (creature == null)
@@ -4330,7 +4295,7 @@ namespace Game.Entities
             areaSpiritHealerTime.TimeLeft = (uint)timeLeft;
             SendPacket(areaSpiritHealerTime);
         }
-        
+
         public void KillPlayer()
         {
             if (IsFlying() && GetTransport() == null)
@@ -5100,7 +5065,8 @@ namespace Game.Entities
                 RemoveAurasDueToSpell(auraOutside);
                 RemoveAurasDueToSpell(auraInside);
                 RemovePlayerFlag(PlayerFlags.WarModeActive);
-                RemovePvpFlag(UnitPVPStateFlags.PvP);
+                if (!HasPlayerFlag(PlayerFlags.InPVP))
+                    RemovePvpFlag(UnitPVPStateFlags.PvP);
                 RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.WarModeLeave);
             }
         }
@@ -5151,13 +5117,13 @@ namespace Game.Entities
                 return (uint)rEntry.Alliance;
 
             Log.outError(LogFilter.Player, "Race ({0}) not found in DBC: wrong DBC files?", race);
-            return TeamId.Neutral;
+            return BatttleGroundTeamId.Neutral;
         }
         public Team GetTeam() { return m_team; }
-        public int GetTeamId() { return m_team == Team.Alliance ? TeamId.Alliance : TeamId.Horde; }
+        public int GetTeamId() { return m_team == Team.Alliance ? BatttleGroundTeamId.Alliance : BatttleGroundTeamId.Horde; }
 
         public Team GetEffectiveTeam() { return HasPlayerFlagEx(PlayerFlagsEx.MercenaryMode) ? (GetTeam() == Team.Alliance ? Team.Horde : Team.Alliance) : GetTeam(); }
-        public int GetEffectiveTeamId() { return GetEffectiveTeam() == Team.Alliance ? TeamId.Alliance : TeamId.Horde; }
+        public int GetEffectiveTeamId() { return GetEffectiveTeam() == Team.Alliance ? BatttleGroundTeamId.Alliance : BatttleGroundTeamId.Horde; }
 
         //Money
         public ulong GetMoney() { return m_activePlayerData.Coinage; }
@@ -5234,7 +5200,7 @@ namespace Game.Entities
             if (guildId != 0)
             {
                 SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.GuildGUID), ObjectGuid.Create(HighGuid.Guild, guildId));
-                SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.GuildClubMemberID), GetGUID().GetCounter());
+                SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_playerData.GuildClubMemberID), GetGUID().GetCounter());
                 SetPlayerFlag(PlayerFlags.GuildLevelEnabled);
             }
             else
@@ -5353,8 +5319,11 @@ namespace Game.Entities
                 DB.Characters.CommitTransaction(trans);
             }
 
+            StartCriteria(CriteriaStartEvent.ReachLevel, level);
             UpdateCriteria(CriteriaType.ReachLevel);
             UpdateCriteria(CriteriaType.ActivelyReachLevel, level);
+            if (level > oldLevel)
+                UpdateCriteria(CriteriaType.GainLevels, level - oldLevel);
 
             PushQuests();
 
@@ -5471,7 +5440,7 @@ namespace Game.Entities
                 return null;
 
             // not unfriendly/hostile
-            if (creature.GetReactionTo(this) <= ReputationRank.Unfriendly)
+            if (!creature.HasUnitFlag2(UnitFlags2.InteractWhileHostile) && creature.GetReactionTo(this) <= ReputationRank.Unfriendly)
                 return null;
 
             // not too far, taken from CGGameUI::SetInteractTarget
@@ -5596,7 +5565,9 @@ namespace Game.Entities
 
             // SMSG_WORLD_SERVER_INFO
             WorldServerInfo worldServerInfo = new();
-            worldServerInfo.InstanceGroupSize = GetMap().GetMapDifficulty().MaxPlayers;         // @todo
+            var mapDifficulty = GetMap().GetMapDifficulty();
+            if (mapDifficulty != null)
+                worldServerInfo.InstanceGroupSize = mapDifficulty.MaxPlayers;
             worldServerInfo.IsTournamentRealm = false;             // @todo
             worldServerInfo.RestrictedAccountMaxLevel = null; // @todo
             worldServerInfo.RestrictedAccountMaxMoney = null; // @todo
@@ -6332,8 +6303,6 @@ namespace Game.Entities
             SendPacket(new ResetWeeklyCurrency());
         }
 
-        public void AddExploredZones(uint pos, ulong mask) { SetUpdateFieldFlagValue(ref m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.ExploredZones, (int)pos), mask); }
-        public void RemoveExploredZones(uint pos, ulong mask) { RemoveUpdateFieldFlagValue(ref m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.ExploredZones, (int)pos), mask); }
         void CheckAreaExploreAndOutdoor()
         {
             if (!IsAlive())
@@ -6357,20 +6326,13 @@ namespace Game.Entities
                 return;
             }
 
-            int offset = areaEntry.AreaBit / ActivePlayerData.ExploredZonesBits;
-            if (offset >= PlayerConst.ExploredZonesSize)
-            {
-                Log.outError(LogFilter.Player, "Wrong area flag {0} in map data for (X: {1} Y: {2}) point to field PLAYER_EXPLORED_ZONES_1 + {3} ( {4} must be < {5} ).",
-                    areaId, GetPositionX(), GetPositionY(), offset, offset, PlayerConst.ExploredZonesSize);
-                return;
-            }
+            int offset = (areaEntry.AreaBit / PlayerConst.ExploredZonesBits);
+            ulong val = 1ul << (areaEntry.AreaBit % PlayerConst.ExploredZonesBits);
 
-            ulong val = 1ul << (areaEntry.AreaBit % ActivePlayerData.ExploredZonesBits);
-            ulong currFields = m_activePlayerData.ExploredZones[offset];
-
-            if (!Convert.ToBoolean(currFields & val))
+            if (offset >= m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size()
+                || (m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][offset] & val) == 0)
             {
-                SetUpdateFieldFlagValue(ref m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.ExploredZones, (int)offset), val);
+                AddExploredZones(offset, val);
 
                 UpdateCriteria(CriteriaType.RevealWorldMapOverlay, GetAreaId());
 
@@ -6416,6 +6378,38 @@ namespace Game.Entities
                 }
             }
         }
+
+        public void AddExploredZones(int pos, ulong mask)
+        {
+            SetUpdateFieldFlagValue(m_values
+                .ModifyValue(m_activePlayerData)
+                .ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex), pos, mask);
+        }
+
+        public void RemoveExploredZones(int pos, ulong mask)
+        {
+            RemoveUpdateFieldFlagValue(m_values
+                .ModifyValue(m_activePlayerData)
+                .ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex), pos, mask);
+        }
+
+        public bool HasExploredZone(uint areaId)
+        {
+            var area = CliDB.AreaTableStorage.LookupByKey(areaId);
+            if (area == null)
+                return false;
+
+            if (area.AreaBit < 0)
+                return false;
+
+            int playerIndexOffset = area.AreaBit / PlayerConst.ExploredZonesBits;
+            if (playerIndexOffset >= m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size())
+                return false;
+
+            ulong mask = 1ul << (area.AreaBit % PlayerConst.ExploredZonesBits);
+            return (m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][playerIndexOffset] & mask) != 0;
+        }
+
         void SendExplorationExperience(uint Area, uint Experience)
         {
             SendPacket(new ExplorationExperience(Experience, Area));
@@ -7015,7 +7009,7 @@ namespace Game.Entities
             // change but I couldn't find a suitable alternative. OK to use class because only DK
             // can use this taxi.
             uint mount_display_id;
-            if (node.Flags.HasAnyFlag(TaxiNodeFlags.UseFavoriteMount) && preferredMountDisplay != 0)
+            if (node.GetFlags().HasFlag(TaxiNodeFlags.UsePlayerFavoriteMount) && preferredMountDisplay != 0)
                 mount_display_id = preferredMountDisplay;
             else
                 mount_display_id = ObjectMgr.GetTaxiMountDisplayId(sourcenode, GetTeam(), npc == null || (sourcenode == 315 && GetClass() == Class.Deathknight));
@@ -7670,17 +7664,25 @@ namespace Game.Entities
         public void RemoveAuraVision(PlayerFieldByte2Flags flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.AuraVision), (byte)flags); }
 
         public void SetTransportServerTime(int transportServerTime) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.TransportServerTime), transportServerTime); }
-        
+
         public void SetRequiredMountCapabilityFlag(byte flag) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.RequiredMountCapabilityFlags), flag); }
         public void ReplaceAllRequiredMountCapabilityFlags(byte flags) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.RequiredMountCapabilityFlags), flags); }
-        
+
         public bool CanTameExoticPets() { return IsGameMaster() || HasAuraType(AuraType.AllowTamePetType); }
 
-        void SendAttackSwingCantAttack() { SendPacket(new AttackSwingError(AttackSwingErr.CantAttack)); }
-        public void SendAttackSwingCancelAttack() { SendPacket(new CancelCombat()); }
-        void SendAttackSwingDeadTarget() { SendPacket(new AttackSwingError(AttackSwingErr.DeadTarget)); }
-        public void SendAttackSwingNotInRange() { SendPacket(new AttackSwingError(AttackSwingErr.NotInRange)); }
-        void SendAttackSwingBadFacingAttack() { SendPacket(new AttackSwingError(AttackSwingErr.BadFacing)); }
+        public void SendAttackSwingCancelAttack()
+        {
+            SendPacket(new CancelCombat());
+        }
+
+        public void SetAttackSwingError(AttackSwingErr? err)
+        {
+            if (err.HasValue && err.Value != m_swingErrorMsg)
+                SendPacket(new AttackSwingError(err.Value));
+
+            m_swingErrorMsg = err;
+        }
+
         public void SendAutoRepeatCancel(Unit target)
         {
             CancelAutoRepeat cancelAutoRepeat = new();
@@ -7853,5 +7855,15 @@ namespace Game.Entities
 
         //Clears the Menu
         public void ClearGossipMenu() { PlayerTalkClass.ClearMenus(); }
+
+        public void SetPersonalTabard(int style, int color, int borderStyle, int borderColor, int backgroundColor)
+        {
+            CustomTabardInfo personalTabard = m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.PersonalTabard);
+            SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.EmblemStyle), style);
+            SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.EmblemColor), color);
+            SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.BorderStyle), borderStyle);
+            SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.BorderColor), borderColor);
+            SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.BackgroundColor), backgroundColor);
+        }
     }
 }

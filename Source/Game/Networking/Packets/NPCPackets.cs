@@ -45,7 +45,7 @@ namespace Game.Networking.Packets
         public PlayerInteractionType InteractionType;
         public bool Success = true;
     }
-    
+
     public class GossipMessagePkt : ServerPacket
     {
         public GossipMessagePkt() : base(ServerOpcodes.GossipMessage) { }
@@ -58,7 +58,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteInt32(GossipOptions.Count);
             _worldPacket.WriteInt32(GossipText.Count);
             _worldPacket.WriteBit(TextID.HasValue);
-            _worldPacket.WriteBit(TextID2.HasValue);
+            _worldPacket.WriteBit(BroadcastTextID.HasValue);
             _worldPacket.FlushBits();
 
             foreach (ClientGossipOptions options in GossipOptions)
@@ -67,8 +67,8 @@ namespace Game.Networking.Packets
             if (TextID.HasValue)
                 _worldPacket.WriteInt32(TextID.Value);
 
-            if (TextID2.HasValue)
-                _worldPacket.WriteInt32(TextID2.Value);
+            if (BroadcastTextID.HasValue)
+                _worldPacket.WriteInt32(BroadcastTextID.Value);
 
             foreach (ClientGossipText text in GossipText)
                 text.Write(_worldPacket);
@@ -78,8 +78,8 @@ namespace Game.Networking.Packets
         public int FriendshipFactionID;
         public ObjectGuid GossipGUID;
         public List<ClientGossipText> GossipText = new();
-        public int? TextID;
-        public int? TextID2;
+        public int? TextID; // in classic variants this still holds npc_text id
+        public int? BroadcastTextID;
         public uint GossipID;
     }
 
@@ -122,7 +122,7 @@ namespace Game.Networking.Packets
         public int GossipNpcOptionID;
         public int? FriendshipFactionID;
     }
-    
+
     public class GossipComplete : ServerPacket
     {
         public bool SuppressSound;
@@ -230,6 +230,20 @@ namespace Game.Networking.Packets
         public ObjectGuid Healer;
     }
 
+    class TabardVendorActivate : ClientPacket
+    {
+        public ObjectGuid Vendor;
+        public int Type;
+
+        public TabardVendorActivate(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            Vendor = _worldPacket.ReadPackedGuid();
+            Type = _worldPacket.ReadInt32();
+        }
+    }
+
     class TrainerBuySpell : ClientPacket
     {
         public TrainerBuySpell(WorldPacket packet) : base(packet) { }
@@ -238,7 +252,7 @@ namespace Game.Networking.Packets
         {
             TrainerGUID = _worldPacket.ReadPackedGuid();
             TrainerID = _worldPacket.ReadUInt32();
-            SpellID= _worldPacket.ReadUInt32();
+            SpellID = _worldPacket.ReadUInt32();
         }
 
         public ObjectGuid TrainerGUID;
@@ -289,7 +303,7 @@ namespace Game.Networking.Packets
         public uint PetNumber;
         public byte DestSlot;
     }
-    
+
     //Structs
     public struct TreasureItem
     {
@@ -406,7 +420,7 @@ namespace Game.Networking.Packets
             data.WriteBit(DoNotFilterOnVendor);
             data.WriteBit(Refundable);
             data.FlushBits();
-            
+
             Item.Write(data);
         }
 

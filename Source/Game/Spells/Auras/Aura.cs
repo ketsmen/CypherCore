@@ -143,7 +143,7 @@ namespace Game.Spells
 
             bool effectNeedsAmount(AuraEffect effect) => effect != null && (GetEffectsToApply() & (1 << (int)effect.GetEffIndex())) != 0 && Aura.EffectTypeNeedsSendingAmount(effect.GetAuraType());
 
-            if (GetBase().GetSpellInfo().HasAttribute(SpellAttr8.AuraSendAmount) || GetBase().GetAuraEffects().Any(effectNeedsAmount))
+            if (GetBase().GetSpellInfo().HasAttribute(SpellAttr8.AuraPointsOnClient) || GetBase().GetAuraEffects().Any(effectNeedsAmount))
                 _flags |= AuraFlags.Scalable;
         }
 
@@ -817,7 +817,18 @@ namespace Game.Spells
         {
             m_maxDuration = CalcMaxDuration();
 
+            // Pandemic Mechanic
+            if (m_spellInfo.HasAttribute(SpellAttr13.PeriodicRefreshExtendsDuration))
+            {
+                // Pandemic doesn't reset periodic timer
+                resetPeriodicTimer = false;
+
+                int pandemicDuration = MathFunctions.CalculatePct(m_maxDuration, 30.0f);
+                m_maxDuration = Math.Max(GetDuration(), Math.Min(pandemicDuration, GetDuration()) + m_maxDuration);
+            }
+
             RefreshDuration();
+
             Unit caster = GetCaster();
             for (byte i = 0; i < SpellConst.MaxEffects; ++i)
             {
@@ -1715,6 +1726,20 @@ namespace Game.Spells
 
                 if (GetSpellInfo().HasAttribute(SpellAttr12.OnlyProcFromClassAbilities) && !spell.GetSpellInfo().HasAttribute(SpellAttr13.AllowClassAbilityProcs))
                     return 0;
+
+                if (eventInfo.GetTypeMask().HasFlag(ProcFlags.TakenHitMask))
+                {
+                    if (spell.GetSpellInfo().HasAttribute(SpellAttr3.SuppressTargetProcs)
+                        && !GetSpellInfo().HasAttribute(SpellAttr7.CanProcFromSuppressedTargetProcs))
+                        return 0;
+                }
+                else
+                {
+                    if (spell.GetSpellInfo().HasAttribute(SpellAttr3.SuppressCasterProcs)
+                        && !spell.GetSpellInfo().HasAttribute(SpellAttr12.EnableProcsFromSuppressedCasterProcs)
+                        && !GetSpellInfo().HasAttribute(SpellAttr12.CanProcFromSuppressedCasterProcs))
+                        return 0;
+                }
             }
 
             // check don't break stealth attr present
@@ -2705,6 +2730,9 @@ namespace Game.Spells
 
         public override void FillTargetMap(ref Dictionary<Unit, uint> targets, Unit caster)
         {
+            if (GetSpellInfo().HasAttribute(SpellAttr7.DisableAuraWhileDead) && !GetUnitOwner().IsAlive())
+                return;
+
             Unit refe = caster;
             if (refe == null)
                 refe = GetUnitOwner();
@@ -2737,7 +2765,7 @@ namespace Game.Spells
                 if (GetUnitOwner().HasUnitState(UnitState.Isolated))
                     continue;
 
-                List<Unit> units = new();
+                List<WorldObject> units = new();
                 var condList = spellEffectInfo.ImplicitTargetConditions;
 
                 float radius = spellEffectInfo.CalcRadius(refe);
@@ -2793,20 +2821,25 @@ namespace Game.Spells
 
                 if (selectionType != SpellTargetCheckTypes.Default)
                 {
-                    WorldObjectSpellAreaTargetCheck check = new(radius, GetUnitOwner(), refe, GetUnitOwner(), GetSpellInfo(), selectionType, condList, SpellTargetObjectTypes.Unit);
-                    UnitListSearcher searcher = new(GetUnitOwner(), units, check);
-                    Cell.VisitAllObjects(GetUnitOwner(), searcher, radius + extraSearchRadius);
+                    var containerTypeMask = Spell.GetSearcherTypeMask(GetSpellInfo(), spellEffectInfo, SpellTargetObjectTypes.Unit, condList);
+                    if (containerTypeMask != 0)
+                    {
+                        WorldObjectSpellAreaTargetCheck check = new(radius, GetUnitOwner(), refe, GetUnitOwner(), GetSpellInfo(), selectionType, condList, SpellTargetObjectTypes.Unit);
+                        WorldObjectListSearcher searcher = new(GetUnitOwner(), units, check, containerTypeMask);
+                        searcher.i_phaseShift = PhasingHandler.GetAlwaysVisiblePhaseShift();
+                        Spell.SearchTargets(searcher, containerTypeMask, GetUnitOwner(), GetUnitOwner(), radius + extraSearchRadius);
 
-                    // by design WorldObjectSpellAreaTargetCheck allows not-in-world units (for spells) but for auras it is not acceptable
-                    units.RemoveAll(unit => !unit.IsSelfOrInSameMap(GetUnitOwner()));
+                        // by design WorldObjectSpellAreaTargetCheck allows not-in-world units (for spells) but for auras it is not acceptable
+                        units.RemoveAll(unit => !unit.IsSelfOrInSameMap(GetUnitOwner()));
+                    }
                 }
 
-                foreach (Unit unit in units)
+                foreach (WorldObject unit in units)
                 {
-                    if (!targets.ContainsKey(unit))
-                        targets[unit] = 0;
+                    if (!targets.ContainsKey(unit.ToUnit()))
+                        targets[unit.ToUnit()] = 0;
 
-                    targets[unit] |= 1u << (int)spellEffectInfo.EffectIndex;
+                    targets[unit.ToUnit()] |= 1u << (int)spellEffectInfo.EffectIndex;
                 }
             }
         }

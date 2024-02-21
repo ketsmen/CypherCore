@@ -127,14 +127,15 @@ namespace Game.Entities
                 if (!Global.ConditionMgr.IsObjectMeetingNotGroupedConditions(ConditionSourceType.ConversationLine, line.Id, creator))
                     continue;
 
+                var  convoLine = CliDB.ConversationLineStorage.LookupByKey(line.Id); // never null for conversationTemplate->Lines
+
                 ConversationLine lineField = new();
                 lineField.ConversationLineID = line.Id;
+                lineField.BroadcastTextID = convoLine.BroadcastTextID;
                 lineField.UiCameraID = line.UiCameraID;
                 lineField.ActorIndex = line.ActorIdx;
                 lineField.Flags = line.Flags;
                 lineField.ChatType = line.ChatType;
-
-                ConversationLineRecord convoLine = CliDB.ConversationLineStorage.LookupByKey(line.Id); // never null for conversationTemplate->Lines
 
                 for (Locale locale = Locale.enUS; locale < Locale.Total; locale = locale + 1)
                 {
@@ -167,14 +168,24 @@ namespace Game.Entities
 
         public bool Start()
         {
-            foreach (ConversationLine line in m_conversationData.Lines.GetValue())
+            ConversationTemplate conversationTemplate = Global.ConversationDataStorage.GetConversationTemplate(GetEntry()); // never null, already checked in ::Create / ::CreateConversation
+            if (!conversationTemplate.Flags.HasFlag(ConversationFlags.AllowWithoutSpawnedActor))
             {
-                ConversationActorField actor = line.ActorIndex < m_conversationData.Actors.Size() ? m_conversationData.Actors[line.ActorIndex] : null;
-                if (actor == null || (actor.CreatureID == 0 && actor.ActorGUID.IsEmpty() && actor.NoActorObject == 0))
+                foreach (ConversationLine line in m_conversationData.Lines.GetValue())
                 {
-                    Log.outError(LogFilter.Conversation, $"Failed to create conversation (Id: {GetEntry()}) due to missing actor (Idx: {line.ActorIndex}).");
-                    return false;
+                    ConversationActorField actor = line.ActorIndex < m_conversationData.Actors.Size() ? m_conversationData.Actors[line.ActorIndex] : null;
+                    if (actor == null || (actor.CreatureID == 0 && actor.ActorGUID.IsEmpty() && actor.NoActorObject == 0))
+                    {
+                        Log.outError(LogFilter.Conversation, $"Failed to create conversation (Id: {GetEntry()}) due to missing actor (Idx: {line.ActorIndex}).");
+                        return false;
+                    }
                 }
+            }
+
+            if (IsInWorld)
+            {
+                Log.outError(LogFilter.Conversation, $"Attempted to start conversation (Id: {GetEntry()}) multiple times.");
+                return true; // returning true to not cause delete in Conversation::CreateConversation if convo is already started in ConversationScript::OnConversationCreate
             }
 
             if (!GetMap().AddToMap(this))
@@ -341,8 +352,8 @@ namespace Game.Entities
         TimeSpan GetDuration() { return _duration; }
         public uint GetTextureKitId() { return _textureKitId; }
 
-        public ObjectGuid GetCreatorGuid() { return _creatorGuid; }
-        public override ObjectGuid GetOwnerGUID() { return GetCreatorGuid(); }
+        public override ObjectGuid GetCreatorGUID() { return _creatorGuid; }
+        public override ObjectGuid GetOwnerGUID() { return GetCreatorGUID(); }
         public override uint GetFaction() { return 0; }
 
         public override float GetStationaryX() { return _stationaryPosition.GetPositionX(); }

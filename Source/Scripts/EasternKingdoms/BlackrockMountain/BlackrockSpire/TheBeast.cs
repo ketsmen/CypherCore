@@ -38,7 +38,7 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockSpire.Thebeast
             _scheduler.Schedule(TimeSpan.FromSeconds(3), task =>
             {
                 Unit target = SelectTarget(SelectTargetMethod.Random, 0, 100, true);
-                if (target)
+                if (target != null)
                     DoCast(target, SpellIds.Immolate);
                 task.Repeat(TimeSpan.FromSeconds(8));
             });
@@ -59,7 +59,7 @@ namespace Scripts.EasternKingdoms.BlackrockMountain.BlackrockSpire.Thebeast
             if (!UpdateVictim())
                 return;
 
-            _scheduler.Update(diff, () => DoMeleeAttackIfReady());
+            _scheduler.Update(diff);
         }
     }
 }

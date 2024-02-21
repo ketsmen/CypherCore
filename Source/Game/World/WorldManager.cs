@@ -437,7 +437,7 @@ namespace Game
             Global.DB2Mgr.LoadHotfixBlob(m_availableDbcLocaleMask);
 
             Log.outInfo(LogFilter.ServerLoading, "Loading hotfix info...");
-            Global.DB2Mgr.LoadHotfixData();
+            Global.DB2Mgr.LoadHotfixData(m_availableDbcLocaleMask);
 
             Log.outInfo(LogFilter.ServerLoading, "Loading hotfix optional data...");
             Global.DB2Mgr.LoadHotfixOptionalData(m_availableDbcLocaleMask);
@@ -450,6 +450,11 @@ namespace Game
 
             //Load weighted graph on taxi nodes path
             TaxiPathGraph.Initialize();
+
+            // always use declined names in the russian client
+            var category = CliDB.CfgCategoriesStorage.LookupByKey(WorldConfig.GetUIntValue(WorldCfg.RealmZone));
+            if (category != null && category.GetCreateCharsetMask().HasFlag(CfgCategoriesCharsets.Russian))
+                WorldConfig.SetValue(WorldCfg.DeclinedNamesUsed, true);
 
             MultiMap<uint, uint> mapData = new();
             foreach (MapRecord mapEntry in CliDB.MapStorage.Values)
@@ -673,6 +678,9 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Quest Items...");
             Global.ObjectMgr.LoadCreatureQuestItems();
 
+            Log.outInfo(LogFilter.ServerLoading, "Loading Creature Quest Currencies...");
+            Global.ObjectMgr.LoadCreatureQuestCurrencies();
+
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Linked Respawn...");
             Global.ObjectMgr.LoadLinkedRespawn();                             // must be after LoadCreatures(), LoadGameObjects()
 
@@ -703,6 +711,9 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Game Event Data...");               // must be after loading pools fully
             Global.GameEventMgr.LoadFromDB();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading creature summoned data...");
+            Global.ObjectMgr.LoadCreatureSummonedData();                     // must be after LoadCreatureTemplates() and LoadQuests()
 
             Log.outInfo(LogFilter.ServerLoading, "Loading NPCSpellClick Data..."); // must be after LoadQuests
             Global.ObjectMgr.LoadNPCSpellClickSpells();
@@ -742,9 +753,6 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading LFG entrance positions..."); // Must be after areatriggers
             Global.LFGMgr.LoadLFGDungeons();
-
-            Log.outInfo(LogFilter.ServerLoading, "Loading Dungeon boss data...");
-            Global.ObjectMgr.LoadInstanceEncounters();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading LFG rewards...");
             Global.LFGMgr.LoadRewards();
@@ -901,7 +909,7 @@ namespace Game
             Global.ObjectMgr.LoadVendors();                                  // must be after load CreatureTemplate and ItemTemplate
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Waypoints...");
-            Global.WaypointMgr.Load();
+            Global.WaypointMgr.LoadPaths();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Formations...");
             FormationMgr.LoadCreatureFormations();
@@ -966,7 +974,6 @@ namespace Game
             // Load and initialize scripts
             Global.ObjectMgr.LoadSpellScripts();                              // must be after load Creature/Gameobject(Template/Data)
             Global.ObjectMgr.LoadEventScripts();                              // must be after load Creature/Gameobject(Template/Data)
-            Global.ObjectMgr.LoadWaypointScripts();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading spell script names...");
             Global.ObjectMgr.LoadSpellScriptNames();
@@ -1258,8 +1265,8 @@ namespace Game
 
         public void SetForcedWarModeFactionBalanceState(int team, int reward = 0)
         {
-            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeHordeBuffValue, 10 + (team == TeamId.Alliance ? reward : 0), false, null);
-            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeAllianceBuffValue, 10 + (team == TeamId.Horde ? reward : 0), false, null);
+            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeHordeBuffValue, 10 + (team == BatttleGroundTeamId.Alliance ? reward : 0), false, null);
+            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeAllianceBuffValue, 10 + (team == BatttleGroundTeamId.Horde ? reward : 0), false, null);
         }
 
         public void DisableForcedWarModeFactionBalanceState()
@@ -1578,13 +1585,13 @@ namespace Game
         }
 
         // Send a packet to all players (or players selected team) in the zone (except self if mentioned)
-        public bool SendZoneMessage(uint zone, ServerPacket packet, WorldSession self = null, uint team = 0)
+        public bool SendZoneMessage(uint zone, ServerPacket packet, WorldSession self = null, Team team = 0)
         {
             bool foundPlayerToSend = false;
             foreach (var session in m_sessions.Values)
             {
                 if (session != null && session.GetPlayer() != null && session.GetPlayer().IsInWorld &&
-                    session.GetPlayer().GetZoneId() == zone && session != self && (team == 0 || (uint)session.GetPlayer().GetTeam() == team))
+                    session.GetPlayer().GetZoneId() == zone && session != self && (team == 0 || session.GetPlayer().GetTeam() == team))
                 {
                     session.SendPacket(packet);
                     foundPlayerToSend = true;
@@ -1595,7 +1602,7 @@ namespace Game
         }
 
         // Send a System Message to all players in the zone (except self if mentioned)
-        public void SendZoneText(uint zone, string text, WorldSession self = null, uint team = 0)
+        public void SendZoneText(uint zone, string text, WorldSession self = null, Team team = 0)
         {
             ChatPkt data = new();
             data.Initialize(ChatMsg.System, Language.Universal, null, null, text);
@@ -1902,9 +1909,13 @@ namespace Game
 
         public void SendServerMessage(ServerMessageType messageID, string stringParam = "", Player player = null)
         {
+            ServerMessagesRecord serverMessage = CliDB.ServerMessagesStorage.LookupByKey(messageID);
+            if (serverMessage == null)
+                return;
+
             ChatServerMessage packet = new();
             packet.MessageID = (int)messageID;
-            if (messageID <= ServerMessageType.String)
+            if (serverMessage.Text[player != null ? player.GetSession().GetSessionDbcLocale() : GetDefaultDbcLocale()].Contains("%s"))
                 packet.StringParam = stringParam;
 
             if (player != null)
@@ -2016,17 +2027,6 @@ namespace Game
                     player.DailyReset();
             }
 
-            StringBuilder questIds = new StringBuilder("DELETE cq, cqo FROM character_queststatus cq LEFT JOIN character_queststatus_objectives cqo ON cq.quest = cqo.quest WHERE cq.quest IN (");
-            foreach (var (questId, quest) in Global.ObjectMgr.GetQuestTemplates())
-            {
-                if (quest.IsDaily() && quest.HasFlagEx(QuestFlagsEx.RemoveOnPeriodicReset))
-                    questIds.Append($"{questId},");
-            }
-            questIds.Append("0)");
-
-            DB.Characters.Execute(questIds.ToString());
-
-
             // reselect pools
             Global.QuestPoolMgr.ChangeDailyQuests();
 
@@ -2069,16 +2069,6 @@ namespace Game
                     player.ResetWeeklyQuestStatus();
             }
 
-            StringBuilder questIds = new StringBuilder("DELETE cq, cqo FROM character_queststatus cq LEFT JOIN character_queststatus_objectives cqo ON cq.quest = cqo.quest WHERE cq.quest IN (");
-            foreach (var (questId, quest) in Global.ObjectMgr.GetQuestTemplates())
-            {
-                if (quest.IsWeekly() && quest.HasFlagEx(QuestFlagsEx.RemoveOnWeeklyReset))
-                    questIds.Append($"{questId},");
-            }
-            questIds.Append("0)");
-
-            DB.Characters.Execute(questIds.ToString());
-
             // reselect pools
             Global.QuestPoolMgr.ChangeWeeklyQuests();
 
@@ -2100,8 +2090,7 @@ namespace Game
             if (time.Day == 1)
                 return t;
 
-            var newDate = new DateTime(time.Year, time.Month + 1, 1, 0, 0, 0, time.Kind);
-            return Time.DateTimeToUnixTime(newDate);
+            return Time.DateTimeToUnixTime(time.AddMonths(1));
         }
 
         public void ResetMonthlyQuests()
@@ -2488,9 +2477,9 @@ namespace Game
                         if (raceFaction != null)
                         {
                             if ((raceFaction.FactionGroup & (byte)FactionMasks.Alliance) != 0)
-                                warModeEnabledFaction[TeamId.Alliance] += result.Read<long>(1);
+                                warModeEnabledFaction[BatttleGroundTeamId.Alliance] += result.Read<long>(1);
                             else if ((raceFaction.FactionGroup & (byte)FactionMasks.Horde) != 0)
-                                warModeEnabledFaction[TeamId.Horde] += result.Read<long>(1);
+                                warModeEnabledFaction[BatttleGroundTeamId.Horde] += result.Read<long>(1);
                         }
                     }
 
@@ -2498,19 +2487,19 @@ namespace Game
             }
 
 
-            int dominantFaction = TeamId.Alliance;
+            int dominantFaction = BatttleGroundTeamId.Alliance;
             int outnumberedFactionReward = 0;
 
             if (warModeEnabledFaction.Any(val => val != 0))
             {
-                long dominantFactionCount = warModeEnabledFaction[TeamId.Alliance];
-                if (warModeEnabledFaction[TeamId.Alliance] < warModeEnabledFaction[TeamId.Horde])
+                long dominantFactionCount = warModeEnabledFaction[BatttleGroundTeamId.Alliance];
+                if (warModeEnabledFaction[BatttleGroundTeamId.Alliance] < warModeEnabledFaction[BatttleGroundTeamId.Horde])
                 {
-                    dominantFactionCount = warModeEnabledFaction[TeamId.Horde];
-                    dominantFaction = TeamId.Horde;
+                    dominantFactionCount = warModeEnabledFaction[BatttleGroundTeamId.Horde];
+                    dominantFaction = BatttleGroundTeamId.Horde;
                 }
 
-                double total = warModeEnabledFaction[TeamId.Alliance] + warModeEnabledFaction[TeamId.Horde];
+                double total = warModeEnabledFaction[BatttleGroundTeamId.Alliance] + warModeEnabledFaction[BatttleGroundTeamId.Horde];
                 double pct = dominantFactionCount / total;
 
                 if (pct >= WorldConfig.GetFloatValue(WorldCfg.CallToArms20Pct))
@@ -2521,8 +2510,8 @@ namespace Game
                     outnumberedFactionReward = 5;
             }
 
-            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeHordeBuffValue, 10 + (dominantFaction == TeamId.Alliance ? outnumberedFactionReward : 0), false, null);
-            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeAllianceBuffValue, 10 + (dominantFaction == TeamId.Horde ? outnumberedFactionReward : 0), false, null);
+            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeHordeBuffValue, 10 + (dominantFaction == BatttleGroundTeamId.Alliance ? outnumberedFactionReward : 0), false, null);
+            Global.WorldStateMgr.SetValueAndSaveInDb(WorldStates.WarModeAllianceBuffValue, 10 + (dominantFaction == BatttleGroundTeamId.Horde ? outnumberedFactionReward : 0), false, null);
         }
 
         public uint GetVirtualRealmAddress()

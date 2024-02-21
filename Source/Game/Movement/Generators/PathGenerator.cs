@@ -868,6 +868,9 @@ namespace Game.Movement
 
         void UpdateFilter()
         {
+            _filter.setIncludeFlags((ushort)(_filter.getIncludeFlags() | _source.GetMap().GetForceEnabledNavMeshFilterFlags()));
+            _filter.setExcludeFlags((ushort)(_filter.getExcludeFlags() | _source.GetMap().GetForceDisabledNavMeshFilterFlags()));
+
             // allow creatures to cheat and use different movement types if they are moved
             // forcefully into terrain they can't normally move in
             Unit _sourceUnit = _source.ToUnit();
@@ -890,23 +893,17 @@ namespace Game.Movement
 
         NavTerrainFlag GetNavTerrain(float x, float y, float z)
         {
-            LiquidData data;
-            ZLiquidStatus liquidStatus = _source.GetMap().GetLiquidStatus(_source.GetPhaseShift(), x, y, z, LiquidHeaderTypeFlags.AllLiquids, out data, _source.GetCollisionHeight());
+            ZLiquidStatus liquidStatus = _source.GetMap().GetLiquidStatus(_source.GetPhaseShift(), x, y, z, LiquidHeaderTypeFlags.AllLiquids, out LiquidData data, _source.GetCollisionHeight());
             if (liquidStatus == ZLiquidStatus.NoWater)
                 return NavTerrainFlag.Ground;
 
-            data.type_flags &= ~LiquidHeaderTypeFlags.DarkWater;
-            switch (data.type_flags)
-            {
-                case LiquidHeaderTypeFlags.Water:
-                case LiquidHeaderTypeFlags.Ocean:
-                    return NavTerrainFlag.Water;
-                case LiquidHeaderTypeFlags.Magma:
-                case LiquidHeaderTypeFlags.Slime:
-                    return NavTerrainFlag.MagmaSlime;
-                default:
-                    return NavTerrainFlag.Ground;
-            }
+            if (data.type_flags.HasFlag(LiquidHeaderTypeFlags.Water | LiquidHeaderTypeFlags.Ocean))
+                return NavTerrainFlag.Water;
+
+            if (data.type_flags.HasFlag(LiquidHeaderTypeFlags.Magma | LiquidHeaderTypeFlags.Slime))
+                return NavTerrainFlag.MagmaSlime;
+
+            return NavTerrainFlag.Ground;
         }
 
         bool InRange(Vector3 p1, Vector3 p2, float r, float h)

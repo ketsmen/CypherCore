@@ -1,6 +1,8 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using System;
+
 namespace Framework.Constants
 {
     public enum GossipOption
@@ -40,7 +42,7 @@ namespace Framework.Constants
         Binder = 5,    // Golden interaction wheel
         Banker = 6,    // Brown bag (with gold coin in lower corner)
         PetitionVendor = 7,    // White chat bubble (with "..." inside)
-        TabardVendor = 8,    // White tabard
+        GuildTabardVendor = 8,    // White tabard
         Battlemaster = 9,    // Two crossed swords
         Auctioneer = 10,   // Stack of gold coins
         TalentMaster = 11,   // White chat bubble
@@ -86,6 +88,8 @@ namespace Framework.Constants
         TraitSystem = 51,
         BarbersChoice = 52,
         MajorFactionRenown = 53,
+        PersonalTabardVendor = 54,
+
         Max
     }
 
@@ -161,5 +165,14 @@ namespace Framework.Constants
     {
         None = 0x0,
         QuestLabelPrepend = 0x1
+    }
+
+    [Flags]
+    public enum ConversationFlags
+    {
+        None = 0x00,
+        MultipleConversationType = 0x01, // NYI purpose unknown
+        IsTalkingHeadConversation = 0x02, // implicitly implemented when conversation_actors.ActivePlayerObject == 0 && conversation_actors.NoActorObject == 0 && conversation_actors.ConversationActorGuid == 0
+        AllowWithoutSpawnedActor = 0x04,
     }
 }

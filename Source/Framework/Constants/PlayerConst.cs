@@ -19,7 +19,10 @@ namespace Framework.Constants
         public const int MaxMasterySpells = 2;
 
         public const int ReqPrimaryTreeTalents = 31;
-        public const int ExploredZonesSize = 192;
+
+        public const int ExploredZonesSize = 240;
+        public const int ExploredZonesBits = sizeof(ulong) * 8;
+
         public const ulong MaxMoneyAmount = 99999999999UL;
         public const int MaxActionButtons = 180;
         public const int MaxActionButtonActionValue = 0x00FFFFFF + 1;
@@ -60,6 +63,8 @@ namespace Framework.Constants
         public const uint WarmodeEnlistedSpellOutside = 269083;
 
         public const uint SpellExperienceEliminated = 206662;
+        public const uint SpellApprenticeRiding = 33389;
+        public const uint SpellJourneymanRiding = 33391;
 
         public const uint CurrencyMaxCapAncientMana = 2000;
 
@@ -891,5 +896,18 @@ namespace Framework.Constants
         BonusAward = 0x01,
         DroppedFromDeath = 0x02,
         FromAccountServer = 0x04
+    }
+
+    public enum TabardVendorType
+    {
+        Guild = 0,
+        Personal = 1,
+    }
+
+    public enum PlayerDataFlag
+    {
+        ExploredZonesIndex = 1,
+        CharacterIndex = 2,
+        AccountIndex = 3
     }
 }

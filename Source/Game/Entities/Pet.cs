@@ -295,23 +295,6 @@ namespace Game.Entities
                 petStable.SetCurrentActivePetIndex((uint)activePetIndex);
             }
 
-            // Send fake summon spell cast - this is needed for correct cooldown application for spells
-            // Example: 46584 - without this cooldown (which should be set always when pet is loaded) isn't set clientside
-            // @todo pets should be summoned from real cast instead of just faking it?
-            if (petInfo.CreatedBySpellId != 0)
-            {
-                SpellGo spellGo = new();
-                SpellCastData castData = spellGo.Cast;
-
-                castData.CasterGUID = owner.GetGUID();
-                castData.CasterUnit = owner.GetGUID();
-                castData.CastID = ObjectGuid.Create(HighGuid.Cast, SpellCastSource.Normal, owner.GetMapId(), petInfo.CreatedBySpellId, map.GenerateLowGuid(HighGuid.Cast));
-                castData.SpellID = (int)petInfo.CreatedBySpellId;
-                castData.CastFlags = SpellCastFlags.Unk9;
-                castData.CastTime = Time.GetMSTime();
-                owner.SendMessageToSet(spellGo, true);
-            }
-
             owner.SetMinion(this, true);
 
             if (!isTemporarySummon)
@@ -387,7 +370,7 @@ namespace Game.Entities
                         owner.DisablePetControlsOnMount(ReactStates.Passive, CommandStates.Follow);
 
                     // must be after SetMinion (owner guid check)
-                    LoadTemplateImmunities();
+                    LoadTemplateImmunities(0);
                     m_loading = false;
                 });
 
@@ -1514,7 +1497,7 @@ namespace Game.Entities
 
         public override bool IsLoading() { return m_loading; }
 
-        public override byte GetPetAutoSpellSize() { return (byte)m_autospells.Count; }
+        public override int GetPetAutoSpellSize() { return m_autospells.Count; }
         public override uint GetPetAutoSpellOnPos(byte pos)
         {
             if (pos >= m_autospells.Count)

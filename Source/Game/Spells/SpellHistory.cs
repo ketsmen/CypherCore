@@ -537,7 +537,7 @@ namespace Game.Spells
             }
 
             if (cooldownEntry.CooldownEnd <= now)
-            {                
+            {
                 _categoryCooldowns.Remove(cooldownEntry.CategoryId);
                 _spellCooldowns.Remove(cooldownEntry.SpellId);
             }
@@ -697,7 +697,7 @@ namespace Game.Spells
         {
             return GetRemainingCategoryCooldown(spellInfo.GetCategory());
         }
-        
+
         public void LockSpellSchool(SpellSchoolMask schoolMask, TimeSpan lockoutTime)
         {
             DateTime now = GameTime.GetSystemTime();
@@ -900,7 +900,7 @@ namespace Game.Spells
             if (_owner.HasAuraType(AuraType.ChargeRecoveryAffectedByHaste))
                 recoveryTimeF *= _owner.m_unitData.ModSpellHaste;
 
-            if (_owner.HasAuraType(AuraType.ChargeRecoveryAffectedByHasteRegen))
+            if (_owner.HasAuraTypeWithMiscvalue(AuraType.ChargeRecoveryAffectedByHasteRegen, (int)chargeCategoryId))
                 recoveryTimeF *= _owner.m_unitData.ModHasteRegen;
 
             return (int)Math.Floor(recoveryTimeF);
@@ -919,6 +919,18 @@ namespace Game.Spells
         public void CancelGlobalCooldown(SpellInfo spellInfo)
         {
             _globalCooldowns[spellInfo.StartRecoveryCategory] = new DateTime();
+        }
+
+        public TimeSpan GetRemainingGlobalCooldown(SpellInfo spellInfo)
+        {
+            if (!_globalCooldowns.TryGetValue(spellInfo.StartRecoveryCategory, out DateTime end))
+                return TimeSpan.Zero;
+
+            DateTime now = GameTime.GetDateAndTime();
+            if (end < now)
+                return TimeSpan.Zero;
+
+            return end - now;
         }
 
         public Player GetPlayerOwner()
@@ -952,7 +964,7 @@ namespace Game.Spells
                 player.SendPacket(setSpellCharges);
             }
         }
-        
+
         void GetCooldownDurations(SpellInfo spellInfo, uint itemId, ref uint categoryId)
         {
             TimeSpan notUsed = TimeSpan.Zero;

@@ -6,6 +6,7 @@ using Framework.Dynamic;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Maps;
+using Game.Miscellaneous;
 using Game.Networking.Packets;
 using Game.Scripting;
 using Game.Spells;
@@ -76,10 +77,10 @@ namespace Scripts.Spells.Generic
             uint spellId = SharedConst.GetFirstSchoolInMask(eventInfo.GetSchoolMask()) switch
             {
                 SpellSchools.Fire => SpellGenAdaptiveWardingFire,
-                SpellSchools.Nature                   => SpellGenAdaptiveWardingNature,
-                SpellSchools.Frost                    => SpellGenAdaptiveWardingFrost,
-                SpellSchools.Shadow                   => SpellGenAdaptiveWardingShadow,
-                SpellSchools.Arcane                    => SpellGenAdaptiveWardingArcane,
+                SpellSchools.Nature => SpellGenAdaptiveWardingNature,
+                SpellSchools.Frost => SpellGenAdaptiveWardingFrost,
+                SpellSchools.Shadow => SpellGenAdaptiveWardingShadow,
+                SpellSchools.Arcane => SpellGenAdaptiveWardingArcane,
                 _ => 0
             };
 
@@ -189,7 +190,7 @@ namespace Scripts.Spells.Generic
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            if (!ValidateSpellEffect((spellInfo.Id, 0)) || spellInfo.GetEffect(0).IsAura(AuraType.ModPowerRegen))
+            if (!ValidateSpellEffect((spellInfo.Id, 0)) || !spellInfo.GetEffect(0).IsAura(AuraType.ModPowerRegen))
             {
                 Log.outError(LogFilter.Spells, $"Aura {GetId()} structure has been changed - first aura is no longer AuraType.ModPowerRegen");
                 return false;
@@ -1207,7 +1208,7 @@ namespace Scripts.Spells.Generic
 
         public override void Register()
         {
-            SpellInfo spell = SpellMgr.GetSpellInfo(m_scriptSpellId, Difficulty.None);
+            /*SpellInfo spell = SpellMgr.GetSpellInfo(m_scriptSpellId, Difficulty.None);
 
             // 6.x effects Removed
 
@@ -1227,7 +1228,7 @@ namespace Scripts.Spells.Generic
             {
                 AfterEffectApply.Add(new(RefreshVisualShields, 1, AuraType.Dummy, AuraEffectHandleModes.RealOrReapplyMask));
                 OnEffectRemove.Add(new(RemoveVisualShields, 1, AuraType.Dummy, AuraEffectHandleModes.ChangeAmountMask));
-            }
+            }*/
         }
     }
 
@@ -1337,35 +1338,6 @@ namespace Scripts.Spells.Generic
         {
             OnEffectHitTarget.Add(new(HandleScript, 0, SpellEffectName.Dummy));
         }
-    }
-
-    [Script]
-    class spell_gen_dungeon_credit : SpellScript
-    {
-        public override bool Load()
-        {
-            return GetCaster().GetTypeId() == TypeId.Unit;
-        }
-
-        void CreditEncounter()
-        {
-            // This hook is executed for every target, make sure we only credit instance once
-            if (_handled)
-                return;
-
-            _handled = true;
-            Unit caster = GetCaster();
-            InstanceScript instance = caster.GetInstanceScript();
-            if (instance != null)
-                instance.UpdateEncounterStateForSpellCast(GetSpellInfo().Id, caster);
-        }
-
-        public override void Register()
-        {
-            AfterHit.Add(new(CreditEncounter));
-        }
-
-        bool _handled = false;
     }
 
     [Script] // 50051 - Ethereal Pet Aura
@@ -4497,10 +4469,10 @@ namespace Scripts.Spells.Generic
 
             switch (target.GetTeamId())
             {
-                case TeamId.Alliance:
+                case BatttleGroundTeamId.Alliance:
                     amount = WorldStateMgr.GetValue(WorldStates.WarModeAllianceBuffValue, target.GetMap());
                     break;
-                case TeamId.Horde:
+                case BatttleGroundTeamId.Horde:
                     amount = WorldStateMgr.GetValue(WorldStates.WarModeHordeBuffValue, target.GetMap());
                     break;
                 default:

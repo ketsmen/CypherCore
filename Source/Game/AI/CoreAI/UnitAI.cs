@@ -4,6 +4,7 @@
 using Framework.Constants;
 using Game.Combat;
 using Game.Entities;
+using Game.Miscellaneous;
 using Game.Spells;
 using System;
 using System.Collections.Generic;
@@ -50,41 +51,6 @@ namespace Game.AI
         void SortByDistance(List<Unit> targets, bool ascending)
         {
             targets.Sort(new ObjectDistanceOrderPred(me, ascending));
-        }
-
-        public void DoMeleeAttackIfReady()
-        {
-            if (me.IsCreature() && !me.ToCreature().CanMelee())
-                return;
-
-            if (me.HasUnitState(UnitState.Casting))
-            {
-                Spell channeledSpell = me.GetCurrentSpell(CurrentSpellTypes.Channeled);
-                if (channeledSpell == null || !channeledSpell.GetSpellInfo().HasAttribute(SpellAttr5.AllowActionsDuringChannel))
-                    return;
-            }
-
-            Unit victim = me.GetVictim();
-
-            if (!me.IsWithinMeleeRange(victim))
-                return;
-
-            // Check that the victim is in front of the unit
-            if (!me.HasInArc(2 * MathF.PI / 3, victim))
-                return;
-
-            //Make sure our attack is ready and we aren't currently casting before checking distance
-            if (me.IsAttackReady())
-            {
-                me.AttackerStateUpdate(victim);
-                me.ResetAttackTimer();
-            }
-
-            if (me.HaveOffhandWeapon() && me.IsAttackReady(WeaponAttackType.OffAttack))
-            {
-                me.AttackerStateUpdate(victim, WeaponAttackType.OffAttack);
-                me.ResetAttackTimer(WeaponAttackType.OffAttack);
-            }
         }
 
         public bool DoSpellAttackIfReady(uint spellId)

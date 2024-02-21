@@ -92,6 +92,7 @@ namespace Game.DataStorage
             BattlemasterListStorage = ReadDB2<BattlemasterListRecord>("BattlemasterList.db2", HotfixStatements.SEL_BATTLEMASTER_LIST, HotfixStatements.SEL_BATTLEMASTER_LIST_LOCALE);
             BroadcastTextStorage = ReadDB2<BroadcastTextRecord>("BroadcastText.db2", HotfixStatements.SEL_BROADCAST_TEXT, HotfixStatements.SEL_BROADCAST_TEXT_LOCALE);
             BroadcastTextDurationStorage = ReadDB2<BroadcastTextDurationRecord>("BroadcastTextDuration.db2", HotfixStatements.SEL_BROADCAST_TEXT_DURATION);
+            CfgCategoriesStorage = ReadDB2<Cfg_CategoriesRecord>("Cfg_Categories.db2", HotfixStatements.SEL_CFG_CATEGORIES, HotfixStatements.SEL_CFG_CATEGORIES_LOCALE);
             CfgRegionsStorage = ReadDB2<Cfg_RegionsRecord>("Cfg_Regions.db2", HotfixStatements.SEL_CFG_REGIONS);
             ChallengeModeItemBonusOverrideStorage = ReadDB2<ChallengeModeItemBonusOverrideRecord>("ChallengeModeItemBonusOverride.db2", HotfixStatements.SEL_CHALLENGE_MODE_ITEM_BONUS_OVERRIDE);
             CharTitlesStorage = ReadDB2<CharTitlesRecord>("CharTitles.db2", HotfixStatements.SEL_CHAR_TITLES, HotfixStatements.SEL_CHAR_TITLES_LOCALE);
@@ -257,6 +258,7 @@ namespace Game.DataStorage
             PrestigeLevelInfoStorage = ReadDB2<PrestigeLevelInfoRecord>("PrestigeLevelInfo.db2", HotfixStatements.SEL_PRESTIGE_LEVEL_INFO, HotfixStatements.SEL_PRESTIGE_LEVEL_INFO_LOCALE);
             PvpDifficultyStorage = ReadDB2<PvpDifficultyRecord>("PVPDifficulty.db2", HotfixStatements.SEL_PVP_DIFFICULTY);
             PvpItemStorage = ReadDB2<PvpItemRecord>("PVPItem.db2", HotfixStatements.SEL_PVP_ITEM);
+            PvpStatStorage = ReadDB2<PvpStatRecord>("PVPStat.db2", HotfixStatements.SEL_PVP_STAT, HotfixStatements.SEL_PVP_STAT_LOCALE);
             PvpSeasonStorage = ReadDB2<PvpSeasonRecord>("PvpSeason.db2", HotfixStatements.SEL_PVP_SEASON);
             PvpTalentStorage = ReadDB2<PvpTalentRecord>("PvpTalent.db2", HotfixStatements.SEL_PVP_TALENT, HotfixStatements.SEL_PVP_TALENT_LOCALE);
             PvpTalentCategoryStorage = ReadDB2<PvpTalentCategoryRecord>("PvpTalentCategory.db2", HotfixStatements.SEL_PVP_TALENT_CATEGORY);
@@ -280,6 +282,7 @@ namespace Game.DataStorage
             SceneScriptGlobalTextStorage = ReadDB2<SceneScriptGlobalTextRecord>("SceneScriptGlobalText.db2", HotfixStatements.SEL_SCENE_SCRIPT_GLOBAL_TEXT);
             SceneScriptPackageStorage = ReadDB2<SceneScriptPackageRecord>("SceneScriptPackage.db2", HotfixStatements.SEL_SCENE_SCRIPT_PACKAGE);
             SceneScriptTextStorage = ReadDB2<SceneScriptTextRecord>("SceneScriptText.db2", HotfixStatements.SEL_SCENE_SCRIPT_TEXT);
+            ServerMessagesStorage = ReadDB2<ServerMessagesRecord>("ServerMessages.db2", HotfixStatements.SEL_SERVER_MESSAGES, HotfixStatements.SEL_SERVER_MESSAGES_LOCALE);
             SkillLineStorage = ReadDB2<SkillLineRecord>("SkillLine.db2", HotfixStatements.SEL_SKILL_LINE, HotfixStatements.SEL_SKILL_LINE_LOCALE);
             SkillLineAbilityStorage = ReadDB2<SkillLineAbilityRecord>("SkillLineAbility.db2", HotfixStatements.SEL_SKILL_LINE_ABILITY);
             SkillLineXTraitTreeStorage = ReadDB2<SkillLineXTraitTreeRecord>("SkillLineXTraitTree.db2", HotfixStatements.SEL_SKILL_LINE_X_TRAIT_TREE);
@@ -412,7 +415,7 @@ namespace Game.DataStorage
 
             foreach (var node in TaxiNodesStorage.Values)
             {
-                if (!node.Flags.HasAnyFlag(TaxiNodeFlags.Alliance | TaxiNodeFlags.Horde))
+                if (!node.IsPartOfTaxiNetwork())
                     continue;
 
                 // valid taxi network node
@@ -420,9 +423,9 @@ namespace Game.DataStorage
                 byte submask = (byte)(1 << (int)((node.Id - 1) % 8));
 
                 TaxiNodesMask[field] |= submask;
-                if (node.Flags.HasAnyFlag(TaxiNodeFlags.Horde))
+                if (node.GetFlags().HasFlag(TaxiNodeFlags.ShowOnHordeMap))
                     HordeTaxiNodesMask[field] |= submask;
-                if (node.Flags.HasAnyFlag(TaxiNodeFlags.Alliance))
+                if (node.GetFlags().HasFlag(TaxiNodeFlags.ShowOnAllianceMap))
                     AllianceTaxiNodesMask[field] |= submask;
 
                 int uiMapId;
@@ -434,13 +437,13 @@ namespace Game.DataStorage
             }
 
             // Check loaded DB2 files proper version
-            if (!AreaTableStorage.ContainsKey(14720) ||               // last area added in 10.0.7 (48520)
-                !CharTitlesStorage.ContainsKey(762) ||                // last char title added in 10.0.7 (48520)
-                !GemPropertiesStorage.ContainsKey(4059) ||            // last gem property added in 10.0.7 (48520)
-                !ItemStorage.ContainsKey(205244) ||                   // last item added in 10.0.7 (48520)
-                !ItemExtendedCostStorage.ContainsKey(8043) ||         // last item extended cost added in 10.0.7 (48520)
-                !MapStorage.ContainsKey(2616) ||                      // last map added in 10.0.7 (48520)
-                !SpellNameStorage.ContainsKey(409033))                // last spell added in 10.0.7 (48520)
+            if (!AreaTableStorage.ContainsKey(15151) ||               // last area added in 10.2.5 (53007)
+                !CharTitlesStorage.ContainsKey(805) ||                // last char title added in 10.2.5 (53007)
+                !GemPropertiesStorage.ContainsKey(4081) ||            // last gem property added in 10.2.5 (53007)
+                !ItemStorage.ContainsKey(215160) ||                   // last item added in 10.2.5 (53007)
+                !ItemExtendedCostStorage.ContainsKey(8510) ||         // last item extended cost added in 10.2.5 (53007)
+                !MapStorage.ContainsKey(2708) ||                      // last map added in 10.2.5 (53007)
+                !SpellNameStorage.ContainsKey(438878))                // last spell added in 10.2.5 (53007)
             {
                 Log.outFatal(LogFilter.ServerLoading, "You have _outdated_ DB2 files. Please extract correct versions from current using client.");
                 Environment.Exit(1);
@@ -525,6 +528,7 @@ namespace Game.DataStorage
         public static DB6Storage<BattlemasterListRecord> BattlemasterListStorage;
         public static DB6Storage<BroadcastTextRecord> BroadcastTextStorage;
         public static DB6Storage<BroadcastTextDurationRecord> BroadcastTextDurationStorage;
+        public static DB6Storage<Cfg_CategoriesRecord> CfgCategoriesStorage;
         public static DB6Storage<Cfg_RegionsRecord> CfgRegionsStorage;
         public static DB6Storage<ChallengeModeItemBonusOverrideRecord> ChallengeModeItemBonusOverrideStorage;
         public static DB6Storage<CharTitlesRecord> CharTitlesStorage;
@@ -690,6 +694,7 @@ namespace Game.DataStorage
         public static DB6Storage<PrestigeLevelInfoRecord> PrestigeLevelInfoStorage;
         public static DB6Storage<PvpDifficultyRecord> PvpDifficultyStorage;
         public static DB6Storage<PvpItemRecord> PvpItemStorage;
+        public static DB6Storage<PvpStatRecord> PvpStatStorage;
         public static DB6Storage<PvpSeasonRecord> PvpSeasonStorage;
         public static DB6Storage<PvpTalentRecord> PvpTalentStorage;
         public static DB6Storage<PvpTalentCategoryRecord> PvpTalentCategoryStorage;
@@ -713,6 +718,7 @@ namespace Game.DataStorage
         public static DB6Storage<SceneScriptGlobalTextRecord> SceneScriptGlobalTextStorage;
         public static DB6Storage<SceneScriptPackageRecord> SceneScriptPackageStorage;
         public static DB6Storage<SceneScriptTextRecord> SceneScriptTextStorage;
+        public static DB6Storage<ServerMessagesRecord> ServerMessagesStorage;
         public static DB6Storage<SkillLineRecord> SkillLineStorage;
         public static DB6Storage<SkillLineAbilityRecord> SkillLineAbilityStorage;
         public static DB6Storage<SkillLineXTraitTreeRecord> SkillLineXTraitTreeStorage;

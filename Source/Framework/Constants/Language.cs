@@ -1039,7 +1039,9 @@ namespace Framework.Constants
         CmdparserCurrencyNoExist = 1516,
         CmdparserQuestNoExist = 1517,
 
-        // 1516-1998 - Free
+        // 1516-1996 - Free
+        DebugAreatriggerEntityEntered = 1997,
+        DebugAreatriggerEntityLeft = 1998,
         DebugAreatriggerLeft = 1999,
         // Ticket Strings 2000-2030
         CommandTicketnew = 2000, // 3.3.5 Reserved
@@ -1271,14 +1273,5 @@ namespace Framework.Constants
         AchivementEarned = 29245,
         CallForHelp = 2541,
         FleeForAssist = 1150
-    }
-
-    public enum LanguageType
-    {
-        BasicLatin = 0x00,
-        ExtendenLatin = 0x01,
-        Cyrillic = 0x02,
-        EastAsia = 0x04,
-        Any = 0xFFFF
     }
 }

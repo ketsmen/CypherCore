@@ -71,8 +71,6 @@ namespace Game.AI
                 if (info != null)
                     _events.ScheduleEvent(spellId, info.cooldown, info.cooldown * 2);
             }
-            else
-                DoMeleeAttackIfReady();
         }
 
         public override void SpellInterrupted(uint spellId, uint unTimeMs)
@@ -87,10 +85,7 @@ namespace Game.AI
 
         public override void UpdateAI(uint diff)
         {
-            if (!UpdateVictim())
-                return;
-
-            DoMeleeAttackIfReady();
+            UpdateVictim();
         }
     }
 
@@ -180,57 +175,6 @@ namespace Game.AI
         }
     }
 
-    public class ArcherAI : CreatureAI
-    {
-        float _minRange;
-
-        public ArcherAI(Creature creature) : base(creature)
-        {
-            if (creature.m_spells[0] == 0)
-                Log.outError(LogFilter.ScriptsAi, $"ArcherAI set for creature with spell1=0. AI will do nothing ({me.GetGUID()})");
-
-            var spellInfo = Global.SpellMgr.GetSpellInfo(creature.m_spells[0], creature.GetMap().GetDifficultyID());
-            _minRange = spellInfo != null ? spellInfo.GetMinRange(false) : 0;
-
-            if (_minRange == 0)
-                _minRange = SharedConst.MeleeRange;
-
-            creature.m_CombatDistance = spellInfo != null ? spellInfo.GetMaxRange(false) : 0;
-            creature.m_SightDistance = creature.m_CombatDistance;
-        }
-
-        public override void AttackStart(Unit who)
-        {
-            if (who == null)
-                return;
-
-            if (me.IsWithinCombatRange(who, _minRange))
-            {
-                if (me.Attack(who, true) && !who.IsFlying())
-                    me.GetMotionMaster().MoveChase(who);
-            }
-            else
-            {
-                if (me.Attack(who, false) && !who.IsFlying())
-                    me.GetMotionMaster().MoveChase(who, me.m_CombatDistance);
-            }
-
-            if (who.IsFlying())
-                me.GetMotionMaster().MoveIdle();
-        }
-
-        public override void UpdateAI(uint diff)
-        {
-            if (!UpdateVictim())
-                return;
-
-            if (!me.IsWithinCombatRange(me.GetVictim(), _minRange))
-                DoSpellAttackIfReady(me.m_spells[0]);
-            else
-                DoMeleeAttackIfReady();
-        }
-    }
-
     public class TurretAI : CreatureAI
     {
         float _minRange;
@@ -244,6 +188,7 @@ namespace Game.AI
             _minRange = spellInfo != null ? spellInfo.GetMinRange(false) : 0;
             creature.m_CombatDistance = spellInfo != null ? spellInfo.GetMaxRange(false) : 0;
             creature.m_SightDistance = creature.m_CombatDistance;
+            creature.SetCanMelee(false);
         }
 
         public override bool CanAIAttack(Unit victim)
@@ -285,6 +230,7 @@ namespace Game.AI
             LoadConditions();
             _doDismiss = false;
             _dismissTimer = VEHICLE_DISMISS_TIME;
+            me.SetCanMelee(false);
         }
 
         public override void UpdateAI(uint diff)
@@ -366,10 +312,7 @@ namespace Game.AI
 
         public override void UpdateAI(uint diff)
         {
-            if (!UpdateVictim())
-                return;
-
-            DoMeleeAttackIfReady();
+            UpdateVictim();
         }
     }
 }

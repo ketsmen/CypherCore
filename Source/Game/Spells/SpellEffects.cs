@@ -392,6 +392,7 @@ namespace Game.Spells
             CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
             args.SetOriginalCaster(m_originalCasterGUID);
             args.SetTriggeringSpell(this);
+            args.SetCustomArg(m_customArg);
             // set basepoints for trigger with value effect
             if (effectInfo.Effect == SpellEffectName.TriggerMissileSpellWithValue)
                 for (int i = 0; i < SpellConst.MaxEffects; ++i)
@@ -996,26 +997,21 @@ namespace Game.Spells
             {
                 // create the new item and store it
                 Item pItem = player.StoreNewItem(dest, newitemid, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(newitemid), null, context, bonusListIds);
-
-                // was it successful? return error if not
-                if (pItem == null)
+                if (pItem != null)
                 {
-                    player.SendEquipError(InventoryResult.ItemNotFound);
-                    return;
-                }
+                    // set the "Crafted by ..." property of the item
+                    if (pItem.GetTemplate().HasSignature())
+                        pItem.SetCreator(player.GetGUID());
 
-                // set the "Crafted by ..." property of the item
-                if (pItem.GetTemplate().HasSignature())
-                    pItem.SetCreator(player.GetGUID());
+                    // send info to the client
+                    player.SendNewItem(pItem, num_to_add, true, true);
 
-                // send info to the client
-                player.SendNewItem(pItem, num_to_add, true, true);
-
-                if (pItem.GetQuality() > ItemQuality.Epic || (pItem.GetQuality() == ItemQuality.Epic && pItem.GetItemLevel(player) >= GuildConst.MinNewsItemLevel))
-                {
-                    Guild guild = player.GetGuild();
-                    if (guild != null)
-                        guild.AddGuildNews(GuildNews.ItemCrafted, player.GetGUID(), 0, pProto.GetId());
+                    if (pItem.GetQuality() > ItemQuality.Epic || (pItem.GetQuality() == ItemQuality.Epic && pItem.GetItemLevel(player) >= GuildConst.MinNewsItemLevel))
+                    {
+                        Guild guild = player.GetGuild();
+                        if (guild != null)
+                            guild.AddGuildNews(GuildNews.ItemCrafted, player.GetGUID(), 0, pProto.GetId());
+                    }
                 }
 
                 // we succeeded in creating at least one item, so a levelup is possible
@@ -1234,11 +1230,6 @@ namespace Game.Spells
                         return;
                     }
                 }
-                else if (goInfo.type == GameObjectTypes.CapturePoint)
-                {
-                    gameObjTarget.AssaultCapturePoint(player);
-                    return;
-                }
                 else if (goInfo.type == GameObjectTypes.FlagStand)
                 {
                     //CanUseBattlegroundObject() already called in CheckCast()
@@ -1250,11 +1241,6 @@ namespace Game.Spells
                             bg.EventPlayerClickedOnFlag(player, gameObjTarget);
                         return;
                     }
-                }
-                else if (goInfo.type == GameObjectTypes.NewFlag)
-                {
-                    gameObjTarget.Use(player);
-                    return;
                 }
                 else if (m_spellInfo.Id == 1842 && gameObjTarget.GetGoInfo().type == GameObjectTypes.Trap && gameObjTarget.GetOwner() != null)
                 {
@@ -1595,9 +1581,9 @@ namespace Game.Spells
 
                             TempSummonType summonType = TempSummonType.TimedDespawn;
                             if (duration == TimeSpan.Zero)
-                                    summonType = TempSummonType.DeadDespawn;
+                                summonType = TempSummonType.DeadDespawn;
                             else if (duration == TimeSpan.FromMilliseconds(-1))
-                                    summonType = TempSummonType.ManualDespawn;
+                                summonType = TempSummonType.ManualDespawn;
 
                             for (uint count = 0; count < numSummons; ++count)
                             {
@@ -1615,6 +1601,8 @@ namespace Game.Spells
                                 summon.SetTempSummonType(summonType);
                                 if (properties.Control == SummonCategory.Ally)
                                     summon.SetOwnerGUID(caster.GetGUID());
+                                else if (properties.Control == SummonCategory.Wild && caster.IsPlayer()) // there might be more conditions involved
+                                    summon.SetDemonCreatorGUID(caster.GetGUID());
 
                                 ExecuteLogEffectSummonObject(effectInfo.Effect, summon);
                             }
@@ -1943,22 +1931,30 @@ namespace Game.Spells
             if (effectHandleMode != SpellEffectHandleMode.HitTarget)
                 return;
 
-            if (!unitTarget.IsTypeId(TypeId.Player))
+            Player playerTarget = unitTarget?.ToPlayer();
+            if (playerTarget == null)
                 return;
 
             if (damage < 1)
                 return;
 
             uint skillid = (uint)effectInfo.MiscValue;
-            SkillRaceClassInfoRecord rcEntry = Global.DB2Mgr.GetSkillRaceClassInfo(skillid, unitTarget.GetRace(), unitTarget.GetClass());
+
+            SkillRaceClassInfoRecord rcEntry = Global.DB2Mgr.GetSkillRaceClassInfo(skillid, playerTarget.GetRace(), playerTarget.GetClass());
             if (rcEntry == null)
                 return;
 
             SkillTiersEntry tier = Global.ObjectMgr.GetSkillTier(rcEntry.SkillTierID);
             if (tier == null)
                 return;
-            ushort skillval = unitTarget.ToPlayer().GetPureSkillValue((SkillType)skillid);
-            unitTarget.ToPlayer().SetSkill(skillid, (uint)damage, Math.Max(skillval, (ushort)1), tier.Value[damage - 1]);
+
+            ushort skillval = Math.Max((ushort)1, playerTarget.GetPureSkillValue(skillid));
+            ushort maxSkillVal = (ushort)tier.GetValueForTierIndex(damage - 1);
+
+            if (rcEntry.Flags.HasAnyFlag(SkillRaceClassInfoFlags.AlwaysMaxValue))
+                skillval = maxSkillVal;
+
+            playerTarget.SetSkill(skillid, (uint)damage, skillval, maxSkillVal);
         }
 
         [SpellEffectHandler(SpellEffectName.PlayMovie)]
@@ -2592,7 +2588,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.SummonObjectWild)]
         void EffectSummonObjectWild()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             WorldObject target = focusObject;
@@ -2635,7 +2631,7 @@ namespace Game.Spells
                 {
                     Battleground bg = player.GetBattleground();
                     if (bg != null)
-                        bg.SetDroppedFlagGUID(go.GetGUID(), bg.GetPlayerTeam(player.GetGUID()) == Team.Alliance ? TeamId.Horde : TeamId.Alliance);
+                        bg.SetDroppedFlagGUID(go.GetGUID(), bg.GetPlayerTeam(player.GetGUID()) == Team.Alliance ? BatttleGroundTeamId.Horde : BatttleGroundTeamId.Alliance);
                 }
             }
 
@@ -3209,7 +3205,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.SummonObjectSlot1)]
         void EffectSummonObject()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
@@ -3241,7 +3237,7 @@ namespace Game.Spells
                 unitCaster.GetClosePoint(out x, out y, out z, SharedConst.DefaultPlayerBoundingRadius);
                 o = unitCaster.GetOrientation();
             }
-            
+
             Map map = m_caster.GetMap();
             Position pos = new(x, y, z, o);
             Quaternion rotation = Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(o, 0.0f, 0.0f));
@@ -3589,7 +3585,7 @@ namespace Game.Spells
             if (effectHandleMode == SpellEffectHandleMode.HitTarget)
             {
                 // not all charge effects used in negative spells
-                if (!m_spellInfo.IsPositive() && m_caster.IsTypeId(TypeId.Player))
+                if (m_spellInfo.HasAttribute(SpellAttr7.AttackOnChargeToUnit))
                     unitCaster.Attack(unitTarget, true);
 
                 if (effectInfo.TriggerSpell != 0)
@@ -3752,6 +3748,7 @@ namespace Game.Spells
 
             player.RemoveActiveQuest(quest_id, false);
             player.RemoveRewardedQuest(quest_id);
+            player.DespawnPersonalSummonsForQuest(quest_id);
 
             Global.ScriptMgr.OnQuestStatusChange(player, quest_id);
             Global.ScriptMgr.OnQuestStatusChange(player, quest, oldStatus, QuestStatus.None);
@@ -4079,7 +4076,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.TransDoor)]
         void EffectTransmitted()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
@@ -4121,7 +4118,7 @@ namespace Game.Spells
                 //GO is always friendly to it's creator, get range for friends
                 float min_dis = m_spellInfo.GetMinRange(true);
                 float max_dis = m_spellInfo.GetMaxRange(true);
-                float dis = (float)RandomHelper.NextDouble() * (max_dis - min_dis) + min_dis;
+                float dis = RandomHelper.NextSingle() * (max_dis - min_dis) + min_dis;
 
                 unitCaster.GetClosePoint(out fx, out fy, out fz, SharedConst.DefaultPlayerBoundingRadius, dis);
                 fo = unitCaster.GetOrientation();
@@ -4268,7 +4265,32 @@ namespace Game.Spells
             if (effectHandleMode != SpellEffectHandleMode.Hit)
                 return;
 
-            Log.outDebug(LogFilter.Spells, "WORLD: SkillEFFECT");
+            Player playerTarget = GetUnitCasterForEffectHandlers()?.ToPlayer();
+            if (playerTarget == null)
+                return;
+
+            if (damage < 1)
+                return;
+
+            uint skillid = (uint)effectInfo.MiscValue;
+            if (playerTarget.GetSkillStep(skillid) >= damage)
+                return;
+
+            var rcEntry = Global.DB2Mgr.GetSkillRaceClassInfo(skillid, playerTarget.GetRace(), playerTarget.GetClass());
+            if (rcEntry == null)
+                return;
+
+            var tier = Global.ObjectMgr.GetSkillTier(rcEntry.SkillTierID);
+            if (tier == null)
+                return;
+
+            ushort skillval = Math.Max((ushort)1, playerTarget.GetPureSkillValue(skillid));
+            ushort maxSkillVal = (ushort)tier.GetValueForTierIndex(damage - 1);
+
+            if (rcEntry.Flags.HasAnyFlag(SkillRaceClassInfoFlags.AlwaysMaxValue))
+                skillval = maxSkillVal;
+
+            playerTarget.SetSkill(skillid, (uint)damage, skillval, maxSkillVal);
         }
 
         void EffectSpiritHeal()
@@ -4356,7 +4378,7 @@ namespace Game.Spells
                     // The charges / stack amounts don't count towards the total number of auras that can be dispelled.
                     // Ie: A dispel on a target with 5 stacks of Winters Chill and a Polymorph has 1 / (1 + 1) . 50% chance to dispell
                     // Polymorph instead of 1 / (5 + 1) . 16%.
-                    bool dispelCharges = aura.GetSpellInfo().HasAttribute(SpellAttr7.DispelCharges);
+                    bool dispelCharges = aura.GetSpellInfo().HasAttribute(SpellAttr7.DispelRemovesCharges);
                     byte charges = dispelCharges ? aura.GetCharges() : aura.GetStackAmount();
                     if (charges > 0)
                         stealList.Add(new DispelableAura(aura, chance, charges));
@@ -4831,7 +4853,7 @@ namespace Game.Spells
                 if (!player.HasSpell(spell_id) || player.GetSpellHistory().HasCooldown(spell_id))
                     continue;
 
-                if (!spellInfo.HasAttribute(SpellAttr9.SummonPlayerTotem))
+                if (!spellInfo.HasAttribute(SpellAttr7.CanBeMultiCast))
                     continue;
 
                 CastSpellExtraArgs args = new(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.CastDirectly | TriggerCastFlags.DontReportCastError);
@@ -4954,7 +4976,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.SummonPersonalGameobject)]
         void EffectSummonPersonalGameObject()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             uint goId = (uint)effectInfo.MiscValue;
@@ -5041,15 +5063,16 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.CreateAreaTrigger)]
         void EffectCreateAreaTrigger()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
             if (unitCaster == null || !m_targets.HasDst())
                 return;
 
+            AreaTriggerId createPropertiesId = new((uint)effectInfo.MiscValue, false);
             int duration = GetSpellInfo().CalcDuration(GetCaster());
-            AreaTrigger.CreateAreaTrigger((uint)effectInfo.MiscValue, unitCaster, null, GetSpellInfo(), destTarget.GetPosition(), duration, m_SpellVisual, this);
+            AreaTrigger.CreateAreaTrigger(createPropertiesId, destTarget.GetPosition(), duration, unitCaster, null, m_SpellVisual, GetSpellInfo(), this);
         }
 
         [SpellEffectHandler(SpellEffectName.RemoveTalent)]
@@ -5126,7 +5149,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.CreateConversation)]
         void EffectCreateConversation()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
@@ -5484,7 +5507,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.CreateSceneObject)]
         void EffectCreateSceneObject()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
@@ -5503,7 +5526,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.CreatePersonalSceneObject)]
         void EffectCreatePrivateSceneObject()
         {
-            if (effectHandleMode != SpellEffectHandleMode.Hit)
+            if (effectHandleMode != SpellEffectHandleMode.Launch)
                 return;
 
             Unit unitCaster = GetUnitCasterForEffectHandlers();
@@ -5650,7 +5673,7 @@ namespace Game.Spells
         [SpellEffectHandler(SpellEffectName.CreatePrivateConversation)]
         void EffectCreatePrivateConversation()
         {
-            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+            if (effectHandleMode != SpellEffectHandleMode.LaunchTarget)
                 return;
 
             if (unitTarget.GetTypeId() != TypeId.Player)
@@ -5799,7 +5822,14 @@ namespace Game.Spells
                 return;
 
             newConfig.TraitSystemID = CliDB.TraitTreeStorage.LookupByKey(effectInfo.MiscValue).TraitSystemID;
-            target.CreateTraitConfig(newConfig);
+            int existingConfigForSystem = target.m_activePlayerData.TraitConfigs.FindIndexIf(config =>
+            {
+                return config.Type == (int)TraitConfigType.Generic
+                    && config.TraitSystemID == newConfig.TraitSystemID;
+            });
+
+            if (existingConfigForSystem < 0)
+                target.CreateTraitConfig(newConfig);
         }
 
         [SpellEffectHandler(SpellEffectName.ChangeActiveCombatTraitConfig)]

@@ -316,8 +316,8 @@ namespace Game.Guilds
                     }
                 }
 
+                GetAchievementMgr().SendAllTrackedCriterias(player, criteriaIds);
                 member.SetTrackedCriteriaIds(criteriaIds);
-                GetAchievementMgr().SendAllTrackedCriterias(player, member.GetTrackedCriteriaIds());
             }
         }
 
@@ -2794,7 +2794,6 @@ namespace Game.Guilds
             public uint GetTotalReputation() { return m_totalReputation; }
             public uint GetWeekReputation() { return m_weekReputation; }
 
-            public List<uint> GetTrackedCriteriaIds() { return m_trackedCriteriaIds; }
             public void SetTrackedCriteriaIds(List<uint> criteriaIds) { m_trackedCriteriaIds = criteriaIds; }
             public bool IsTrackingCriteriaId(uint criteriaId) { return m_trackedCriteriaIds.Contains(criteriaId); }
             public bool IsOnline() { return m_flags.HasFlag(GuildMemberFlags.Online); }
@@ -3539,9 +3538,14 @@ namespace Game.Guilds
 
             public bool ValidateEmblemColors()
             {
-                return CliDB.GuildColorBackgroundStorage.ContainsKey(m_backgroundColor) &&
-                       CliDB.GuildColorBorderStorage.ContainsKey(m_borderColor) &&
-                       CliDB.GuildColorEmblemStorage.ContainsKey(m_color);
+                return ValidateEmblemColors(m_style, m_color, m_borderStyle, m_borderColor, m_backgroundColor);
+            }
+            
+            public static bool ValidateEmblemColors(uint style, uint color, uint borderStyle, uint borderColor, uint backgroundColor)
+            {
+                return CliDB.GuildColorBackgroundStorage.ContainsKey(backgroundColor) &&
+                       CliDB.GuildColorBorderStorage.ContainsKey(borderColor) &&
+                       CliDB.GuildColorEmblemStorage.ContainsKey(color);
             }
 
             public bool LoadFromDB(SQLFields field)

@@ -22,14 +22,15 @@ namespace Framework.Constants
         Destory = 4                                // used on object destroy (NOT used in client packet handler)
     }
 
-    public enum CreatureEliteType
+    public enum CreatureClassifications
     {
         Normal = 0,
         Elite = 1,
         RareElite = 2,
-        WorldBoss = 3,
+        Obsolete = 3,
         Rare = 4,
-        EliteTrivial = 5                      // found in 2.2.3 for 2 mobs
+        Trivial = 5,
+        MinusMob = 6
     }
 
     [Flags]
@@ -118,7 +119,7 @@ namespace Framework.Constants
             MirrorImage | ForceMovement | DisarmOffhand |
             DisablePredStats | AllowChangingTalents | DisarmRanged |
             /* UNIT_FLAG2_REGENERATE_POWER | */ RestrictPartyInteraction |
-            PreventSpellClick | InteractWhileHostile | /* Unk2 | */
+            PreventSpellClick | /*InteractWhileHostile | */ /* Unk2 | */
             /* UNIT_FLAG2_PLAY_DEATH_ANIM | */ AllowCheatSpells | SuppressHighlightWhenTargetedOrMousedOver |
             TreatAsRaidUnitForHelpfulSpells | LargeAoi | GiganticAoi | NoActions |
             AiWillOnlySwimIfTargetSwims | DontGenerateCombatLogWhenEngagedWithNpcs | AttackerIgnoresMinimumRanges |
@@ -225,7 +226,8 @@ namespace Framework.Constants
         ContributionCollector = 0x400,
         AzeriteRespec = 0x4000,
         IslandsQueue = 0x8000,
-        SuppressNpcSoundsExceptEndOfInteraction = 0x00010000,
+        SuppressNpcSoundsExceptEndOfInteraction = 0x10000,
+        PersonalTabardDesigner = 0x200000
     }
 
     [Flags]
@@ -543,7 +545,7 @@ namespace Framework.Constants
         Unused25 = 0x2000000,
         Unused26 = 0x4000000,
         Unused27 = 0x8000000,
-        DungeonBoss = 0x10000000,        // Creature Is A Dungeon Boss (Set Dynamically, Do Not Add In Db)
+        DungeonBoss = 0x10000000,        // Creature Is A Dungeon Boss
         IgnorePathfinding = 0x20000000,        // creature ignore pathfinding
         ImmunityKnockback = 0x40000000,        // creature is immune to knockback effects
         Unused31 = 0x80000000,

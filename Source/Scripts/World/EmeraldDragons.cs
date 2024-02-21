@@ -80,7 +80,6 @@ namespace Scripts.World.Achievements
         public const uint SayTaerarSummonShades = 1;
     }
 
-    [Script]
     class emerald_dragon : WorldBossAI
     {
         public emerald_dragon(Creature creature) : base(creature) { }
@@ -135,8 +134,6 @@ namespace Scripts.World.Achievements
             Unit target = SelectTarget(SelectTargetMethod.MaxThreat, 0, -50.0f, true);
             if (target != null)
                 DoCast(target, SpellIds.SummonPlayer);
-
-            DoMeleeAttackIfReady();
         }
     }
 

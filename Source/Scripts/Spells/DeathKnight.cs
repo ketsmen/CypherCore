@@ -2,6 +2,7 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
+using Game.AI;
 using Game.Entities;
 using Game.Networking.Packets;
 using Game.Scripting;
@@ -21,6 +22,7 @@ namespace Scripts.Spells.DeathKnight
         public const uint ArmySkeletonTransform = 127527;
         public const uint ArmySpikedGhoulTransform = 127525;
         public const uint ArmySuperZombieTransform = 127526;
+        public const uint BlindingSleetSlow = 317898;
         public const uint Blood = 137008;
         public const uint BloodPlague = 55078;
         public const uint BloodShieldAbsorb = 77535;
@@ -55,8 +57,10 @@ namespace Scripts.Spells.DeathKnight
         public const uint SludgeBelcherSummon = 212027;
         public const uint DeathStrikeEnabler = 89832; // Server Side
         public const uint TighteningGrasp = 206970;
-        public const uint TighteningGraspSlow = 143375;
+        //public const uint TighteningGraspSlow = 143375; // dropped in BfA
         public const uint Unholy = 137007;
+        public const uint UnholyGroundHaste = 374271;
+        public const uint UnholyGroundTalent = 374265;
         public const uint UnholyVigor = 196263;
         public const uint VolatileShielding = 207188;
         public const uint VolatileShieldingDamage = 207194;
@@ -121,6 +125,10 @@ namespace Scripts.Spells.DeathKnight
         void CalculateAmount(AuraEffect aurEff, ref int amount, ref bool canBeRecalculated)
         {
             amount = (int)MathFunctions.CalculatePct(maxHealth, absorbPct);
+
+            Player player = GetUnitOwner().ToPlayer();
+            if (player != null)
+                MathFunctions.AddPct(ref amount, player.GetRatingBonusValue(CombatRating.VersatilityDamageDone) + player.GetTotalAuraModifier(AuraType.ModVersatility));
         }
 
         void Trigger(AuraEffect aurEff, DamageInfo dmgInfo, ref uint absorbAmount)
@@ -200,6 +208,26 @@ namespace Scripts.Spells.DeathKnight
         }
     }
 
+    [Script] // 207167 - Blinding Sleet
+    class spell_dk_blinding_sleet : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.BlindingSleetSlow);
+        }
+
+        void HandleOnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            if (GetTargetApplication().GetRemoveMode() == AuraRemoveMode.Expire)
+                GetTarget().CastSpell(GetTarget(), SpellIds.BlindingSleetSlow, true);
+        }
+
+        public override void Register()
+        {
+            AfterEffectRemove.Add(new EffectApplyHandler(HandleOnRemove, 0, AuraType.ModConfuse, AuraEffectHandleModes.Real));
+        }
+    }
+
     [Script] // 50842 - Blood Boil
     class spell_dk_blood_boil : SpellScript
     {
@@ -275,31 +303,7 @@ namespace Scripts.Spells.DeathKnight
     }
 
     [Script] // 43265 - Death and Decay
-    class spell_dk_death_and_decay : SpellScript
-    {
-        public override bool Validate(SpellInfo spellInfo)
-        {
-            return ValidateSpellInfo(SpellIds.TighteningGrasp, SpellIds.TighteningGraspSlow);
-        }
-
-        void HandleDummy()
-        {
-            if (GetCaster().HasAura(SpellIds.TighteningGrasp))
-            {
-                WorldLocation pos = GetExplTargetDest();
-                if (pos != null)
-                    GetCaster().CastSpell(pos, SpellIds.TighteningGraspSlow, true);
-            }
-        }
-
-        public override void Register()
-        {
-            OnCast.Add(new(HandleDummy));
-        }
-    }
-
-    [Script] // 43265 - Death and Decay (Aura)
-    class spell_dk_death_and_decay_AuraScript : AuraScript
+    class spell_dk_death_and_decay : AuraScript
     {
         void HandleDummyTick(AuraEffect aurEff)
         {
@@ -310,7 +314,7 @@ namespace Scripts.Spells.DeathKnight
 
         public override void Register()
         {
-            OnEffectPeriodic.Add(new(HandleDummyTick, 2, AuraType.PeriodicDummy));
+            OnEffectPeriodic.Add(new EffectPeriodicHandler(HandleDummyTick, 2, AuraType.PeriodicDummy));
         }
     }
 
@@ -864,6 +868,30 @@ namespace Scripts.Spells.DeathKnight
         public override void Register()
         {
             DoEffectCalcAmount.Add(new(CalculateAmount, 1, AuraType.ModIncreaseHealth2));
+        }
+    }
+
+    [Script] // 43265 - Death and Decay
+    class at_dk_death_and_decay : AreaTriggerAI
+    {
+        public at_dk_death_and_decay(AreaTrigger areatrigger) : base(areatrigger) { }
+
+        public override void OnUnitEnter(Unit unit)
+        {
+            Unit caster = at.GetCaster();
+            if (caster != null)
+            {
+                if (caster == unit)
+                {
+                    if (caster.HasAura(SpellIds.UnholyGroundTalent))
+                        caster.CastSpell(caster, SpellIds.UnholyGroundHaste);
+                }
+            }
+        }
+
+        public override void OnUnitExit(Unit unit)
+        {
+            unit.RemoveAurasDueToSpell(SpellIds.UnholyGroundHaste);
         }
     }
 }

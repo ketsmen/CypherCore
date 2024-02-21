@@ -42,6 +42,9 @@ namespace Game.DataStorage
             foreach (var areaGroupMember in AreaGroupMemberStorage.Values)
                 _areaGroupMembers.Add(areaGroupMember.AreaGroupID, areaGroupMember.AreaID);
 
+            foreach (AreaTableRecord areaTable in AreaTableStorage.Values)
+                Cypher.Assert(areaTable.AreaBit <= 0 || (areaTable.AreaBit / 64) < PlayerConst.ExploredZonesSize, $"PLAYER_EXPLORED_ZONES_SIZE must be at least {((areaTable.AreaBit + 63) / 64)}");
+
             foreach (ArtifactPowerRecord artifactPower in ArtifactPowerStorage.Values)
                 _artifactPowers.Add(artifactPower.ArtifactID, artifactPower);
 
@@ -226,6 +229,9 @@ namespace Game.DataStorage
 
                 _chrSpecializationsByIndex[storageIndex][chrSpec.OrderIndex] = chrSpec;
             }
+
+            foreach (ConditionalChrModelRecord conditionalChrModel in ConditionalChrModelStorage.Values)
+                _conditionalChrModelsByChrModelId[conditionalChrModel.ChrModelID] = conditionalChrModel;
 
             foreach (ConditionalContentTuningRecord conditionalContentTuning in ConditionalContentTuningStorage.Values)
                 _conditionalContentTuning.Add(conditionalContentTuning.ParentContentTuningID, conditionalContentTuning);
@@ -630,6 +636,9 @@ namespace Game.DataStorage
 
             foreach (WMOAreaTableRecord entry in WMOAreaTableStorage.Values)
                 _wmoAreaTableLookup[Tuple.Create((short)entry.WmoID, (sbyte)entry.NameSetID, entry.WmoGroupID)] = entry;
+
+            foreach (PvpStatRecord pvpStat in PvpStatStorage.Values)
+                _pvpStatIdsByMap.Add(pvpStat.MapID, pvpStat.Id);
         }
 
         public IDB2Storage GetStorage(uint type)
@@ -637,7 +646,7 @@ namespace Game.DataStorage
             return _storage.LookupByKey(type);
         }
 
-        public void LoadHotfixData()
+        public void LoadHotfixData(BitSet availableDb2Locales)
         {
             uint oldMSTime = Time.GetMSTime();
 
@@ -660,7 +669,17 @@ namespace Game.DataStorage
                 HotfixRecord.Status status = (HotfixRecord.Status)result.Read<byte>(4);
                 if (status == HotfixRecord.Status.Valid && !_storage.ContainsKey(tableHash))
                 {
-                    if (!_hotfixBlob.Any(p => p.ContainsKey((tableHash, recordId))))
+                    var key = (tableHash, recordId);
+                    for (int locale = 0; locale < (int)Locale.Total; ++locale)
+                    {
+                        if (!availableDb2Locales[locale])
+                            continue;
+
+                        if (!_hotfixBlob[locale].ContainsKey(key))
+                            availableDb2Locales[locale] = false;
+                    }
+
+                    if (!availableDb2Locales.Any())
                     {
                         Log.outError(LogFilter.Sql, $"Table `hotfix_data` references unknown DB2 store by hash 0x{tableHash:X} and has no reference to `hotfix_blob` in hotfix id {id} with RecordID: {recordId}");
                         continue;
@@ -673,7 +692,15 @@ namespace Game.DataStorage
                 hotfixRecord.ID.PushID = id;
                 hotfixRecord.ID.UniqueID = uniqueId;
                 hotfixRecord.HotfixStatus = status;
-                _hotfixData.Add(id, hotfixRecord);
+                hotfixRecord.AvailableLocalesMask = availableDb2Locales.ToBlockRange()[0];//Ulgy i know
+
+                if (!_hotfixData.ContainsKey(id))
+                    _hotfixData[id] = new();
+
+                HotfixPush push = _hotfixData[id];
+                push.Records.Add(hotfixRecord);
+                push.AvailableLocalesMask |= hotfixRecord.AvailableLocalesMask;
+
                 deletedRecords[(tableHash, recordId)] = status == HotfixRecord.Status.RecordRemoved;
 
                 ++count;
@@ -812,7 +839,7 @@ namespace Game.DataStorage
 
         public uint GetHotfixCount() { return (uint)_hotfixData.Count; }
 
-        public MultiMap<int, HotfixRecord> GetHotfixData() { return _hotfixData; }
+        public Dictionary<int, HotfixPush> GetHotfixData() { return _hotfixData; }
 
         public byte[] GetHotfixBlobData(uint tableHash, int recordId, Locale locale)
         {
@@ -1005,6 +1032,11 @@ namespace Game.DataStorage
             return _chrModelsByRaceAndGender.LookupByKey(Tuple.Create((byte)race, (byte)gender));
         }
 
+        public ConditionalChrModelRecord GetConditionalChrModel(int chrModelId)
+        {
+            return _conditionalChrModelsByChrModelId.LookupByKey(chrModelId);
+        }
+
         public string GetChrRaceName(Race race, Locale locale = Locale.enUS)
         {
             ChrRacesRecord raceEntry = ChrRacesStorage.LookupByKey(race);
@@ -1035,7 +1067,7 @@ namespace Game.DataStorage
 
             return contentTuningId;
         }
-        
+
         public ContentTuningLevels? GetContentTuningData(uint contentTuningId, uint redirectFlag, bool forItem = false)
         {
             ContentTuningRecord contentTuning = ContentTuningStorage.LookupByKey(GetRedirectedContentTuningId(contentTuningId, redirectFlag));
@@ -1079,7 +1111,7 @@ namespace Game.DataStorage
         {
             return _contentTuningLabels.Contains((contentTuningId, label));
         }
-        
+
         public string GetCreatureFamilyPetName(CreatureFamily petfamily, Locale locale)
         {
             if (petfamily == CreatureFamily.None)
@@ -1278,16 +1310,16 @@ namespace Game.DataStorage
             {
                 var mythicPlusSeason = MythicPlusSeasonStorage.LookupByKey(contentTuningXExpected.MinMythicPlusSeasonID);
                 if (mythicPlusSeason != null)
-                if (ActiveMilestoneSeason < mythicPlusSeason.MilestoneSeason)
-                    return mod;
+                    if (ActiveMilestoneSeason < mythicPlusSeason.MilestoneSeason)
+                        return mod;
             }
 
             if (contentTuningXExpected.MaxMythicPlusSeasonID != 0)
             {
                 var mythicPlusSeason = MythicPlusSeasonStorage.LookupByKey(contentTuningXExpected.MaxMythicPlusSeasonID);
                 if (mythicPlusSeason != null)
-                if (ActiveMilestoneSeason >= mythicPlusSeason.MilestoneSeason)
-                    return mod;
+                    if (ActiveMilestoneSeason >= mythicPlusSeason.MilestoneSeason)
+                        return mod;
             }
 
             var expectedStatMod = ExpectedStatModStorage.LookupByKey(contentTuningXExpected.ExpectedStatModID);
@@ -1856,7 +1888,7 @@ namespace Game.DataStorage
         {
             return _skillRaceClassInfoBySkill.LookupByKey(skill);
         }
-        
+
         public SoulbindConduitRankRecord GetSoulbindConduitRank(int soulbindConduitId, int rank)
         {
             return _soulbindConduitRanks.LookupByKey(Tuple.Create(soulbindConduitId, rank));
@@ -1886,7 +1918,7 @@ namespace Game.DataStorage
         {
             return _spellVisualMissilesBySet.LookupByKey(spellVisualMissileSetId);
         }
-        
+
         public List<TalentRecord> GetTalentsByPosition(Class class_, uint tier, uint column)
         {
             return _talentsByPosition[(int)class_][tier][column];
@@ -2207,6 +2239,11 @@ namespace Game.DataStorage
             return null;
         }
 
+        public List<uint> GetPVPStatIDsForMap(uint mapId)
+        {
+            return _pvpStatIdsByMap.LookupByKey(mapId);
+        }
+
         public bool HasItemCurrencyCost(uint itemId) { return _itemsWithCurrencyCost.Contains(itemId); }
 
         public Dictionary<uint, Dictionary<uint, MapDifficultyRecord>> GetMapDifficulties() { return _mapDifficulties; }
@@ -2219,7 +2256,7 @@ namespace Game.DataStorage
         delegate bool AllowedHotfixOptionalData(byte[] data);
 
         Dictionary<uint, IDB2Storage> _storage = new();
-        MultiMap<int, HotfixRecord> _hotfixData = new();
+        Dictionary<int, HotfixPush> _hotfixData = new();
         Dictionary<(uint tableHash, int recordId), byte[]>[] _hotfixBlob = new Dictionary<(uint tableHash, int recordId), byte[]>[(int)Locale.Total];
         MultiMap<uint, Tuple<uint, AllowedHotfixOptionalData>> _allowedHotfixOptionalData = new();
         MultiMap<(uint tableHash, int recordId), HotfixOptionalData>[] _hotfixOptionalData = new MultiMap<(uint tableHash, int recordId), HotfixOptionalData>[(int)Locale.Total];
@@ -2243,6 +2280,7 @@ namespace Game.DataStorage
         MultiMap<Tuple<byte, byte>, ChrCustomizationOptionRecord> _chrCustomizationOptionsByRaceAndGender = new();
         Dictionary<uint, MultiMap<uint, uint>> _chrCustomizationRequiredChoices = new();
         ChrSpecializationRecord[][] _chrSpecializationsByIndex = new ChrSpecializationRecord[(int)Class.Max + 1][];
+        Dictionary<int, ConditionalChrModelRecord> _conditionalChrModelsByChrModelId = new();
         MultiMap<uint, ConditionalContentTuningRecord> _conditionalContentTuning = new();
         List<(uint, int)> _contentTuningLabels = new();
         MultiMap<uint, CurrencyContainerRecord> _currencyContainers = new();
@@ -2300,6 +2338,7 @@ namespace Game.DataStorage
         MultiMap<int, UiMapAssignmentRecord>[] _uiMapAssignmentByWmoGroup = new MultiMap<int, UiMapAssignmentRecord>[(int)UiMapSystem.Max];
         List<int> _uiMapPhases = new();
         Dictionary<Tuple<short, sbyte, int>, WMOAreaTableRecord> _wmoAreaTableLookup = new();
+        MultiMap<uint, uint> _pvpStatIdsByMap = new();
     }
 
     class UiMapBounds
@@ -2467,6 +2506,7 @@ namespace Game.DataStorage
         public int RecordID;
         public HotfixId ID;
         public Status HotfixStatus = Status.Invalid;
+        public uint AvailableLocalesMask;
 
         public void Write(WorldPacket data)
         {
@@ -2509,11 +2549,17 @@ namespace Game.DataStorage
             UniqueID = data.ReadUInt32();
         }
     }
-    
+
     public class HotfixOptionalData
     {
         public uint Key;
         public byte[] Data;
+    }
+
+    public class HotfixPush
+    {
+        public List<HotfixRecord> Records = new();
+        public uint AvailableLocalesMask;
     }
 
     class ChrClassesXPowerTypesRecordComparer : IComparer<ChrClassesXPowerTypesRecord>

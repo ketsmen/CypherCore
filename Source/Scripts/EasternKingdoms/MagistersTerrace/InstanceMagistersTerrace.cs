@@ -91,11 +91,11 @@ namespace Scripts.EasternKingdoms.MagistersTerrace
 
         public static DoorData[] doorData =
         {
-            new DoorData(GameObjectIds.SunwellRaidGate2, DataTypes.SelinFireheart, DoorType.Passage),
-            new DoorData(GameObjectIds.AssemblyChamberDoor, DataTypes.SelinFireheart, DoorType.Room),
-            new DoorData(GameObjectIds.SunwellRaidGate5, DataTypes.Vexallus, DoorType.Passage),
-            new DoorData(GameObjectIds.SunwellRaidGate4, DataTypes.PriestessDelrissa, DoorType.Passage),
-            new DoorData(GameObjectIds.AsylumDoor, DataTypes.KaelthasSunstrider, DoorType.Room),
+            new DoorData(GameObjectIds.SunwellRaidGate2, DataTypes.SelinFireheart, EncounterDoorBehavior.OpenWhenDone),
+            new DoorData(GameObjectIds.AssemblyChamberDoor, DataTypes.SelinFireheart, EncounterDoorBehavior.OpenWhenNotInProgress),
+            new DoorData(GameObjectIds.SunwellRaidGate5, DataTypes.Vexallus, EncounterDoorBehavior.OpenWhenDone),
+            new DoorData(GameObjectIds.SunwellRaidGate4, DataTypes.PriestessDelrissa, EncounterDoorBehavior.OpenWhenDone),
+            new DoorData(GameObjectIds.AsylumDoor, DataTypes.KaelthasSunstrider, EncounterDoorBehavior.OpenWhenNotInProgress),
         };
 
         public static Position KalecgosSpawnPos = new Position(164.3747f, -397.1197f, 2.151798f, 1.66219f);
@@ -195,7 +195,7 @@ namespace Scripts.EasternKingdoms.MagistersTerrace
                             if (_kaelthasPreTrashGUIDs.Count == 0)
                             {
                                 Creature kaelthas = GetCreature(DataTypes.KaelthasSunstrider);
-                                if (kaelthas)
+                                if (kaelthas != null)
                                     kaelthas.GetAI().SetData(DataTypes.KaelthasIntro, (uint)EncounterState.InProgress);
                             }
                         }
@@ -223,7 +223,7 @@ namespace Scripts.EasternKingdoms.MagistersTerrace
             public override void ProcessEvent(WorldObject obj, uint eventId, WorldObject invoker)
             {
                 if (eventId == MiscConst.EventSpawnKalecgos)
-                    if (!GetCreature(DataTypes.Kalecgos) && _events.Empty())
+                    if (GetCreature(DataTypes.Kalecgos) == null && _events.Empty())
                         _events.ScheduleEvent(MiscConst.EventSpawnKalecgos, TimeSpan.FromMinutes(1));
             }
 
@@ -234,7 +234,7 @@ namespace Scripts.EasternKingdoms.MagistersTerrace
                 if (_events.ExecuteEvent() == MiscConst.EventSpawnKalecgos)
                 {
                     Creature kalecgos = instance.SummonCreature(CreatureIds.Kalecgos, MiscConst.KalecgosSpawnPos);
-                    if (kalecgos)
+                    if (kalecgos != null)
                     {
                         kalecgos.GetMotionMaster().MovePath(MiscConst.PathKalecgosFlight, false);
                         kalecgos.GetAI().Talk(MiscConst.SayKalecgosSpawn);
