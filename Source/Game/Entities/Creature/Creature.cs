@@ -383,6 +383,9 @@ namespace Game.Entities
             if (IsTrigger())
                 SetUninteractible(true);
 
+            if (HasNpcFlag(NPCFlags.SpellClick))
+                InitializeInteractSpellId();
+
             InitializeReactState();
 
             if (Convert.ToBoolean(cInfo.FlagsExtra & CreatureFlagsExtra.NoTaunt))
@@ -1148,6 +1151,16 @@ namespace Game.Entities
             SummonCreature(npcEntry, GetPosition(), TempSummonType.TimedDespawn, TimeSpan.FromSeconds(1), 0, 0);
         }
 
+        void InitializeInteractSpellId()
+        {
+            var clickBounds = Global.ObjectMgr.GetSpellClickInfoMapBounds(GetEntry());
+            // Set InteractSpellID if there is only one row in npc_spellclick_spells in db for this creature
+            if (clickBounds.Count == 1)
+                SetInteractSpellId((int)clickBounds[0].spellId);
+            else
+                SetInteractSpellId(0);
+        }
+
         public bool HasFlag(CreatureStaticFlags flag) { return _staticFlags.HasFlag(flag); }
         public bool HasFlag(CreatureStaticFlags2 flag) { return _staticFlags.HasFlag(flag); }
         public bool HasFlag(CreatureStaticFlags3 flag) { return _staticFlags.HasFlag(flag); }
@@ -1615,6 +1628,8 @@ namespace Game.Entities
         }
 
         float GetSparringHealthPct() { return _sparringHealthPct; }
+
+        void SetInteractSpellId(int interactSpellId) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.InteractSpellID), interactSpellId); }
 
         public void OverrideSparringHealthPct(List<float> healthPct)
         {
@@ -2203,6 +2218,9 @@ namespace Game.Entities
 
                 foreach (AuraType aura in immunities.Aura)
                     ApplySpellImmune(placeholderSpellId, SpellImmunity.State, aura, apply);
+
+                if (immunities.Other != SpellOtherImmunity.None)
+                    ApplySpellImmune(placeholderSpellId, SpellImmunity.Other, (byte)immunities.Other, apply);
             }
 
             // unapply template immunities (in case we're updating entry)
@@ -2568,7 +2586,10 @@ namespace Game.Entities
         {
             var templateValues = Global.ObjectMgr.GetCreatureTemplateSparringValues(GetCreatureTemplate().Entry);
             if (!templateValues.Empty())
-                _sparringHealthPct = templateValues.SelectRandom();
+            {
+                if (templateValues.Contains(_sparringHealthPct)) // only re-randomize sparring value if it was loaded from template (not when set to custom value from script)
+                    _sparringHealthPct = templateValues.SelectRandom();
+            }
         }
 
         // Send a message to LocalDefense channel for players opposition team in the zone
@@ -2579,6 +2600,47 @@ namespace Game.Entities
             ZoneUnderAttack packet = new();
             packet.AreaID = (int)GetAreaId();
             Global.WorldMgr.SendGlobalMessage(packet, null, (enemy_team == Team.Alliance ? Team.Horde : Team.Alliance));
+        }
+
+        public void SetCanMelee(bool canMelee, bool fleeFromMelee = false)
+        {
+            bool wasFleeingFromMelee = HasFlag(CreatureStaticFlags.NoMeleeFlee);
+
+            _staticFlags.ApplyFlag(CreatureStaticFlags.NoMeleeFlee, !canMelee && fleeFromMelee);
+            _staticFlags.ApplyFlag(CreatureStaticFlags4.NoMeleeApproach, !canMelee && !fleeFromMelee);
+
+            if (wasFleeingFromMelee == HasFlag(CreatureStaticFlags.NoMeleeFlee))
+                return;
+
+            Unit victim = GetVictim();
+            if (victim == null)
+                return;
+
+            var currentMovement = GetMotionMaster().GetCurrentMovementGenerator();
+            if (currentMovement == null)
+                return;
+
+            var canChangeMovement = new Func<bool>(() =>
+            {
+                if (wasFleeingFromMelee)
+                    return currentMovement.GetMovementGeneratorType() == MovementGeneratorType.Fleeing && !HasUnitFlag(UnitFlags.Fleeing);
+
+                return currentMovement.GetMovementGeneratorType() == MovementGeneratorType.Chase;
+            })();
+
+            if (!canChangeMovement)
+                return;
+
+            GetMotionMaster().Remove(currentMovement);
+            StartDefaultCombatMovement(victim);
+        }
+
+        public void StartDefaultCombatMovement(Unit victim, float? range = null, float? angle = null)
+        {
+            if (!HasFlag(CreatureStaticFlags.NoMeleeFlee) || IsSummon())
+                GetMotionMaster().MoveChase(victim, range.GetValueOrDefault(0), angle.GetValueOrDefault(0));
+            else
+                GetMotionMaster().MoveFleeing(victim);
         }
 
         public override bool HasSpell(uint spellId)
@@ -3334,7 +3396,10 @@ namespace Game.Entities
         public override void SetImmuneToPC(bool apply) { SetImmuneToPC(apply, HasReactState(ReactStates.Passive)); }
         public override void SetImmuneToNPC(bool apply) { SetImmuneToNPC(apply, HasReactState(ReactStates.Passive)); }
 
-        void SetUnkillable(bool unkillable) { _staticFlags.ApplyFlag(CreatureStaticFlags.Unkillable, unkillable); }
+        public bool IsThreatFeedbackDisabled() { return _staticFlags.HasFlag(CreatureStaticFlags3.NoThreatFeedback); }
+        public void SetNoThreatFeedback(bool noThreatFeedback) { _staticFlags.ApplyFlag(CreatureStaticFlags3.NoThreatFeedback, noThreatFeedback); }
+
+        public void SetUnkillable(bool unkillable) { _staticFlags.ApplyFlag(CreatureStaticFlags.Unkillable, unkillable); }
 
         public bool IsInEvadeMode() { return HasUnitState(UnitState.Evade); }
         public bool IsEvadingAttacks() { return IsInEvadeMode() || CanNotReachTarget(); }
@@ -3352,9 +3417,7 @@ namespace Game.Entities
         public override SpellSchoolMask GetMeleeDamageSchoolMask(WeaponAttackType attackType = WeaponAttackType.BaseAttack) { return m_meleeDamageSchoolMask; }
         public void SetMeleeDamageSchool(SpellSchools school) { m_meleeDamageSchoolMask = (SpellSchoolMask)(1 << (int)school); }
 
-        public bool CanMelee() { return !_staticFlags.HasFlag(CreatureStaticFlags.NoMelee); }
-
-        public void SetCanMelee(bool canMelee) { _staticFlags.ApplyFlag(CreatureStaticFlags.NoMelee, !canMelee); }
+        public bool CanMelee() { return !_staticFlags.HasFlag(CreatureStaticFlags.NoMeleeFlee) && !_staticFlags.HasFlag(CreatureStaticFlags4.NoMeleeApproach); }
 
         public bool CanIgnoreLineOfSightWhenCastingOnMe() { return _staticFlags.HasFlag(CreatureStaticFlags4.IgnoreLosWhenCastingOnMe); }
 

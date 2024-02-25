@@ -2717,6 +2717,8 @@ namespace Game.Entities
             bool handled = true;
             switch (gossipOptionNpc)
             {
+                case GossipOptionNpc.None:
+                    break;
                 case GossipOptionNpc.Vendor:
                     GetSession().SendListInventory(guid);
                     break;
@@ -5488,6 +5490,35 @@ namespace Game.Entities
             return go;
         }
 
+        public void UpdateNearbyCreatureNpcFlags()
+        {
+            List<Creature> creatures = GetCreatureListWithOptionsInGrid(GetVisibilityRange(), new() { IgnorePhases = false });
+
+            UpdateData udata = new(GetMapId());
+            ObjectFieldData objMask = new();
+            UnitData unitMask = new();
+            for (int i = 0; i < m_unitData.NpcFlags.GetSize(); ++i)
+                unitMask.MarkChanged(m_unitData.NpcFlags, i);
+
+            foreach (Creature creature in creatures)
+            {
+                if (!HaveAtClient(creature))
+                    continue;
+
+                // skip creatures which dont have any npcflags set
+                if (creature.GetNpcFlags() == 0 && creature.GetNpcFlags2() == 0)
+                    continue;
+
+                creature.BuildValuesUpdateForPlayerWithMask(udata, objMask.GetUpdateMask(), unitMask.GetUpdateMask(), this);
+            }
+
+            if (!udata.HasData())
+                return;
+
+            udata.BuildPacket(out UpdateObject packet);
+            SendPacket(packet);
+        }
+
         public void SendInitialPacketsBeforeAddToMap()
         {
             if (!m_teleport_options.HasAnyFlag(TeleportToOptions.Seamless))
@@ -5557,8 +5588,8 @@ namespace Game.Entities
             float TimeSpeed = 0.01666667f;
             LoginSetTimeSpeed loginSetTimeSpeed = new();
             loginSetTimeSpeed.NewSpeed = TimeSpeed;
-            loginSetTimeSpeed.GameTime = (uint)GameTime.GetGameTime();
-            loginSetTimeSpeed.ServerTime = (uint)GameTime.GetGameTime();
+            loginSetTimeSpeed.GameTime = GameTime.GetWowTime();
+            loginSetTimeSpeed.ServerTime = GameTime.GetWowTime();
             loginSetTimeSpeed.GameTimeHolidayOffset = 0; // @todo
             loginSetTimeSpeed.ServerTimeHolidayOffset = 0; // @todo
             SendPacket(loginSetTimeSpeed);
@@ -6176,7 +6207,7 @@ namespace Game.Entities
                 SendPacket(data);
 
             PacketSenderRef sender = new(data);
-            var notifier = new MessageDistDeliverer<PacketSenderRef>(this, sender, dist);
+            var notifier = new MessageDistDeliverer(this, sender, dist);
             Cell.VisitWorldObjects(this, notifier, dist);
         }
 
@@ -6186,7 +6217,7 @@ namespace Game.Entities
                 SendPacket(data);
 
             PacketSenderRef sender = new(data);
-            var notifier = new MessageDistDeliverer<PacketSenderRef>(this, sender, dist, own_team_only, null, required3dDist);
+            var notifier = new MessageDistDeliverer(this, sender, dist, own_team_only, null, required3dDist);
             Cell.VisitWorldObjects(this, notifier, dist);
         }
 
@@ -6198,7 +6229,7 @@ namespace Game.Entities
             // we use World.GetMaxVisibleDistance() because i cannot see why not use a distance
             // update: replaced by GetMap().GetVisibilityDistance()
             PacketSenderRef sender = new(data);
-            var notifier = new MessageDistDeliverer<PacketSenderRef>(this, sender, GetVisibilityRange(), false, skipped_rcvr);
+            var notifier = new MessageDistDeliverer(this, sender, GetVisibilityRange(), false, skipped_rcvr);
             Cell.VisitWorldObjects(this, notifier, GetVisibilityRange());
         }
         public override void SendMessageToSet(ServerPacket data, bool self)
@@ -6467,7 +6498,7 @@ namespace Game.Entities
             localizer.Invoke(this);
 
             // Send to players
-            MessageDistDeliverer<LocalizedDo> notifier = new(this, localizer, range, false, null, true);
+            MessageDistDeliverer notifier = new(this, localizer, range, false, null, true);
             Cell.VisitWorldObjects(this, notifier, range);
         }
 
@@ -7769,11 +7800,11 @@ namespace Game.Entities
 
             WorldPacket buffer = new();
 
-            UpdateMask mask = new(191);
+            UpdateMask mask = m_unitData.GetStaticUpdateMask();
             m_unitData.AppendAllowedFieldsMaskForFlag(mask, flags);
             m_unitData.WriteUpdate(buffer, mask, true, this, target);
 
-            UpdateMask mask2 = new(161);
+            UpdateMask mask2 = m_playerData.GetStaticUpdateMask();
             m_playerData.AppendAllowedFieldsMaskForFlag(mask2, flags);
             m_playerData.WriteUpdate(buffer, mask2, true, this, target);
 

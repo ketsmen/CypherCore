@@ -3155,19 +3155,6 @@ namespace Game.Entities
                 });
             }
 
-            // Allows those to crit
-            ApplySpellFix(new[] {
-                379,   // Earth Shield
-                71607, // Item - Bauble of True Blood 10m
-                71646, // Item - Bauble of True Blood 25m
-                71610, // Item - Althor's Abacus trigger 10m
-                71641  // Item - Althor's Abacus trigger 25m
-            }, spellInfo =>
-            {
-                // We need more spells to find a general way (if there is any)
-                spellInfo.DmgClass = SpellDmgClass.Magic;
-            });
-
             ApplySpellFix(new[] {
                 63026, // Summon Aspirant Test NPC (HACK: Target shouldn't be changed)
                 63137  // Summon Valiant Test (HACK: Target shouldn't be changed; summon position should be untied from spell destination)
@@ -4526,8 +4513,10 @@ namespace Game.Entities
                     immunities.School = new BitSet(new uint[] { school });
                     immunities.DispelType = new BitSet(new uint[] { dispelType });
                     immunities.Mechanic = new BitSet(mechanics);
-                    immunities.ImmuneAoE = result.Read<bool>(6);
-                    immunities.ImmuneChain = result.Read<bool>(7);
+                    if (result.Read<bool>(6))
+                        immunities.Other |= SpellOtherImmunity.AoETarget;
+                    if (result.Read<bool>(7))
+                        immunities.Other |= SpellOtherImmunity.ChainTarget;
 
                     if (immunities.School.ToUInt() != school)
                         Log.outError(LogFilter.Sql, $"Invalid value in `SchoolMask` {school} for creature immunities {id}, truncated");
@@ -5160,7 +5149,6 @@ namespace Game.Entities
         public BitSet Mechanic = new((int)Mechanics.Max);
         public List<SpellEffectName> Effect = new();
         public List<AuraType> Aura = new();
-        public bool ImmuneAoE;   // NYI
-        public bool ImmuneChain; // NYI
+        public SpellOtherImmunity Other;
     }
 }

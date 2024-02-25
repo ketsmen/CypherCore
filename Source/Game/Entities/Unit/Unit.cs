@@ -63,7 +63,7 @@ namespace Game.Entities
             ModMeleeHitChance = 0.0f;
             ModRangedHitChance = 0.0f;
             ModSpellHitChance = 0.0f;
-            BaseSpellCritChance = 5;
+            BaseSpellCritChance = 5.0f;
 
             for (byte i = 0; i < (int)UnitMoveType.Max; ++i)
                 m_speed_rate[i] = 1.0f;
@@ -2448,12 +2448,12 @@ namespace Game.Entities
 
         public override void BuildValuesUpdateWithFlag(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateMask valuesMask = new(14);
+            UpdateMask valuesMask = new((int)TypeId.Max);
             valuesMask.Set((int)TypeId.Unit);
 
             WorldPacket buffer = new();
 
-            UpdateMask mask = new(194);
+            UpdateMask mask = m_unitData.GetStaticUpdateMask();
             m_unitData.AppendAllowedFieldsMaskForFlag(mask, flags);
             m_unitData.WriteUpdate(buffer, mask, true, this, target);
 

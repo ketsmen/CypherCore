@@ -4187,6 +4187,8 @@ namespace Game.Spells
             spellExecuteLog.LogData.Initialize(this);
 
             m_caster.SendCombatLogMessage(spellExecuteLog);
+
+            _executeLogEffects.Clear();
         }
 
         public SpellLogEffect GetExecuteLogEffect(SpellEffectName effect)
@@ -9183,26 +9185,21 @@ namespace Game.Spells
                 if (!isInsideCylinder)
                     return false;
 
-                Creature creatureTarget = target.ToCreature();
-                if (creatureTarget != null)
+                Unit unitTarget = target.ToUnit();
+                if (unitTarget != null)
                 {
-                    CreatureImmunities immunities = Global.SpellMgr.GetCreatureImmunities(creatureTarget.GetCreatureTemplate().CreatureImmunitiesId);
-                    if (immunities != null)
+                    switch (_searchReason)
                     {
-                        switch (_searchReason)
-                        {
-                            case WorldObjectSpellAreaTargetSearchReason.Area:
-                                if (immunities.ImmuneAoE)
-                                    return false;
-                                break;
-                            case WorldObjectSpellAreaTargetSearchReason.Chain:
-                                if (immunities.ImmuneChain)
-                                    return false;
-                                break;
-                            default:
-                                break;
-                        }
-
+                        case WorldObjectSpellAreaTargetSearchReason.Area:
+                            if (!_spellInfo.HasAttribute(SpellAttr8.CanHitAoeUntargetable) && unitTarget.GetSpellOtherImmunityMask().HasFlag(SpellOtherImmunity.AoETarget))
+                                return false;
+                            break;
+                        case WorldObjectSpellAreaTargetSearchReason.Chain:
+                            if (unitTarget.GetSpellOtherImmunityMask().HasFlag(SpellOtherImmunity.ChainTarget))
+                                return false;
+                            break;
+                        default:
+                            break;
                     }
                 }
             }

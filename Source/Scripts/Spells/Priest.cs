@@ -30,11 +30,15 @@ namespace Scripts.Spells.Priest
         public const uint AtonementHeal = 81751;
         public const uint Benediction = 193157;
         public const uint Benevolence = 415416;
+        public const uint BlazeOfLight = 215768;
+        public const uint BlazeOfLightIncrease = 355851;
+        public const uint BlazeOfLightDecrease = 356084;
         public const uint BlessedHealing = 70772;
         public const uint BlessedLight = 196813;
         public const uint BodyAndSoul = 64129;
         public const uint BodyAndSoulSpeed = 65081;
         public const uint CircleOfHealing = 204883;
+        public const uint DarkIndulgence = 372972;
         public const uint DarkReprimand = 400169;
         public const uint DarkReprimandChannelDamage = 373129;
         public const uint DarkReprimandChannelHealing = 400171;
@@ -61,6 +65,7 @@ namespace Scripts.Spells.Priest
         public const uint EssenceDevourerShadowfiendHeal = 415673;
         public const uint EssenceDevourerMindbenderHeal = 415676;
         public const uint FlashHeal = 2061;
+        public const uint FromDarknessComesLightAura = 390617;
         public const uint GreaterHeal = 289666;
         public const uint FocusedMending = 372354;
         public const uint GuardianSpiritHeal = 48153;
@@ -116,6 +121,7 @@ namespace Scripts.Spells.Priest
         public const uint PrayerOfMendingAura = 41635;
         public const uint PrayerOfMendingHeal = 33110;
         public const uint PrayerOfMendingJump = 155793;
+        public const uint ProtectiveLightAura = 193065;
         public const uint PurgeTheWicked = 204197;
         public const uint PurgeTheWickedDummy = 204215;
         public const uint PurgeTheWickedPeriodic = 204213;
@@ -125,6 +131,8 @@ namespace Scripts.Spells.Priest
         public const uint RenewedHopeEffect = 197470;
         public const uint RevelInPurity = 373003;
         public const uint SayYourPrayers = 391186;
+        public const uint Schism = 424509;
+        public const uint SchismAura = 214621;
         public const uint SearingLight = 196811;
         public const uint ShadowMendDamage = 186439;
         public const uint ShadowWordDeath = 32379;
@@ -572,6 +580,32 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    [Script] // 215768 - Blaze of Light
+    class spell_pri_blaze_of_light : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.BlazeOfLightDecrease, SpellIds.BlazeOfLightIncrease);
+        }
+
+        void HandleProc(ProcEventInfo eventInfo)
+        {
+            Unit procTarget = eventInfo.GetProcTarget();
+            if (procTarget == null)
+                return;
+
+            if (GetTarget().IsValidAttackTarget(procTarget))
+                GetTarget().CastSpell(procTarget, SpellIds.BlazeOfLightDecrease, TriggerCastFlags.CastDirectly | TriggerCastFlags.IgnoreCastInProgress);
+            else
+                GetTarget().CastSpell(procTarget, SpellIds.BlazeOfLightIncrease, TriggerCastFlags.CastDirectly | TriggerCastFlags.IgnoreCastInProgress);
+        }
+
+        public override void Register()
+        {
+            OnProc.Add(new(HandleProc));
+        }
+    }
+
     [Script] // 204883 - Circle of Healing
     class spell_pri_circle_of_healing : SpellScript
     {
@@ -595,6 +629,30 @@ namespace Scripts.Spells.Priest
         public override void Register()
         {
             OnObjectAreaTargetSelect.Add(new(FilterTargets, 0, Targets.UnitDestAreaAlly));
+        }
+    }
+
+    [Script] // 8092 - Mind Blast
+    class spell_pri_dark_indulgence : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellEffect((SpellIds.DarkIndulgence, 0));
+        }
+
+        void HandleEffectHit(uint effIndex)
+        {
+            AuraEffect aurEff = GetCaster().GetAuraEffect(SpellIds.DarkIndulgence, 0);
+            if (aurEff == null)
+                return;
+
+            if (RandomHelper.randChance(aurEff.GetAmount()))
+                GetCaster().CastSpell(GetCaster(), SpellIds.PowerOfTheDarkSide, true);
+        }
+
+        public override void Register()
+        {
+            OnEffectHit.Add(new(HandleEffectHit, 0, SpellEffectName.SchoolDamage));
         }
     }
 
@@ -1055,6 +1113,20 @@ namespace Scripts.Spells.Priest
         public override void Register()
         {
             CalcHealing.Add(new(CalculateHealingBonus));
+        }
+    }
+
+    [Script] // 390615 - From Darkness Comes Light (Talent)
+    class spell_pri_from_darkness_comes_light : AuraScript
+    {
+        void HandleEffectProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            GetTarget().CastSpell(GetTarget(), SpellIds.FromDarknessComesLightAura, aurEff);
+        }
+
+        public override void Register()
+        {
+            OnEffectProc.Add(new(HandleEffectProc, 0, AuraType.Dummy));
         }
     }
 
@@ -2048,6 +2120,26 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    [Script] // 193063 - Protective Light (Aura)
+    class spell_pri_protective_light : AuraScript
+    {
+        bool CheckEffectProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetProcTarget() == GetCaster();
+        }
+
+        void HandleEffectProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            GetCaster().CastSpell(GetCaster(), SpellIds.ProtectiveLightAura, aurEff);
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new(CheckEffectProc, 0, AuraType.Dummy));
+            OnEffectProc.Add(new(HandleEffectProc, 0, AuraType.Dummy));
+        }
+    }
+
     [Script] // 405554 - Priest Holy 10.1 Class Set 2pc
     class spell_pri_holy_10_1_class_set_2pc : AuraScript
     {
@@ -2304,7 +2396,27 @@ namespace Scripts.Spells.Priest
         }
     }
 
-    [Script] // 280391 - Math.Sins of the Many
+    [Script] // 8092 - Mind Blast
+    class spell_pri_schism : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.Schism, SpellIds.SchismAura);
+        }
+
+        void HandleEffectHitTarget(uint effIndex)
+        {
+            if (GetCaster().HasAura(SpellIds.Schism))
+                GetCaster().CastSpell(GetHitUnit(), SpellIds.SchismAura, true);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new(HandleEffectHitTarget, 0, SpellEffectName.SchoolDamage));
+        }
+    }
+
+    [Script] // 280391 - Sins of the Many
     class spell_pri_Sins_of_the_many : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)

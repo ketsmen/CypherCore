@@ -1443,14 +1443,14 @@ namespace Game.Entities
         public virtual void SendMessageToSetInRange(ServerPacket data, float dist, bool self)
         {
             PacketSenderRef sender = new(data);
-            MessageDistDeliverer<PacketSenderRef> notifier = new(this, sender, dist);
+            MessageDistDeliverer notifier = new(this, sender, dist);
             Cell.VisitWorldObjects(this, notifier, dist);
         }
 
         public virtual void SendMessageToSet(ServerPacket data, Player skip)
         {
             PacketSenderRef sender = new(data);
-            var notifier = new MessageDistDeliverer<PacketSenderRef>(this, sender, GetVisibilityRange(), false, skip);
+            var notifier = new MessageDistDeliverer(this, sender, GetVisibilityRange(), false, skip);
             Cell.VisitWorldObjects(this, notifier, GetVisibilityRange());
         }
 
@@ -1462,7 +1462,7 @@ namespace Game.Entities
             if (self != null)
                 combatLogSender.Invoke(self);
 
-            MessageDistDeliverer<CombatLogSender> notifier = new(this, combatLogSender, GetVisibilityRange());
+            MessageDistDeliverer notifier = new(this, combatLogSender, GetVisibilityRange());
             Cell.VisitWorldObjects(this, notifier, GetVisibilityRange());
         }
 
@@ -2616,7 +2616,7 @@ namespace Game.Entities
                 if (!unitTarget.HasUnitFlag(UnitFlags.PlayerControlled) && unitOrOwner.IsImmuneToNPC())
                     return false;
 
-                if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.AttackIgnoreImmuneToPcFlag))
+                if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.CanAttackImmunePC))
                 {
                     if (unitOrOwner.HasUnitFlag(UnitFlags.PlayerControlled) && unitTarget.IsImmuneToPC())
                         return false;
@@ -2761,7 +2761,7 @@ namespace Game.Entities
             {
                 if (unit != null && unit.HasUnitFlag(UnitFlags.PlayerControlled))
                 {
-                    if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.AttackIgnoreImmuneToPcFlag))
+                    if (bySpell == null || !bySpell.HasAttribute(SpellAttr8.CanAttackImmunePC))
                         if (unitTarget != null && unitTarget.IsImmuneToPC())
                             return false;
                 }

@@ -563,7 +563,6 @@ namespace Game.Movement
         }
 
         public void MoveChase(Unit target, float dist, float angle = 0.0f) { MoveChase(target, new ChaseRange(dist), new ChaseAngle(angle)); }
-        public void MoveChase(Unit target, float dist) { MoveChase(target, new ChaseRange(dist)); }
         public void MoveChase(Unit target, ChaseRange? dist = null, ChaseAngle? angle = null)
         {
             // Ignore movement request if target not exist
@@ -586,15 +585,10 @@ namespace Game.Movement
             if (enemy == null)
                 return;
 
-            if (_owner.IsCreature())
-            {
-                if (time != TimeSpan.Zero)
-                    Add(new TimedFleeingMovementGenerator(enemy.GetGUID(), time));
-                else
-                    Add(new FleeingMovementGenerator<Creature>(enemy.GetGUID()));
-            }
+            if (_owner.IsCreature() && time > TimeSpan.Zero)
+                Add(new TimedFleeingMovementGenerator(enemy.GetGUID(), time));
             else
-                Add(new FleeingMovementGenerator<Player>(enemy.GetGUID()));
+                Add(new FleeingMovementGenerator(enemy.GetGUID()));
         }
 
         public void MovePoint(uint id, Position pos, bool generatePath = true, float? finalOrient = null, float? speed = null, MovementWalkRunSpeedSelectionMode speedSelectionMode = MovementWalkRunSpeedSelectionMode.Default, float? closeEnoughDistance = null)
@@ -795,7 +789,7 @@ namespace Game.Movement
                 arrivalSpellTargetGuid = arrivalCast.Target;
             }
 
-            GenericMovementGenerator movement = new(initializer, MovementGeneratorType.Effect, id, arrivalSpellId, arrivalSpellTargetGuid);
+            GenericMovementGenerator movement = new(initializer, MovementGeneratorType.Effect, id, new GenericMovementGeneratorArgs() { ArrivalSpellId = arrivalSpellId, ArrivalSpellTarget = arrivalSpellTargetGuid });
             movement.Priority = MovementGeneratorPriority.Highest;
             movement.BaseUnitState = UnitState.Jumping;
             Add(movement);
@@ -828,14 +822,14 @@ namespace Game.Movement
                 arrivalSpellTargetGuid = arrivalCast.Target;
             }
 
-            GenericMovementGenerator movement = new GenericMovementGenerator(initializer, MovementGeneratorType.Effect, id, arrivalSpellId, arrivalSpellTargetGuid);
+            GenericMovementGenerator movement = new GenericMovementGenerator(initializer, MovementGeneratorType.Effect, id, new GenericMovementGeneratorArgs() { ArrivalSpellId = arrivalSpellId, ArrivalSpellTarget = arrivalSpellTargetGuid });
             movement.Priority = MovementGeneratorPriority.Highest;
             movement.BaseUnitState = UnitState.Jumping;
             movement.AddFlag(MovementGeneratorFlags.PersistOnDeath);
             Add(movement);
         }
 
-        public void MoveCirclePath(float x, float y, float z, float radius, bool clockwise, byte stepCount)
+        public void MoveCirclePath(float x, float y, float z, float radius, bool clockwise, byte stepCount, TimeSpan? duration = null, float? speed = null, MovementWalkRunSpeedSelectionMode speedSelectionMode = MovementWalkRunSpeedSelectionMode.Default)
         {
             var initializer = (MoveSplineInit init) =>
             {
@@ -860,20 +854,33 @@ namespace Game.Movement
                     init.Path().Add(point);
                 }
 
+                init.SetCyclic();
                 if (_owner.IsFlying())
                 {
                     init.SetFly();
-                    init.SetCyclic();
                     init.SetAnimation(AnimTier.Hover);
                 }
                 else
-                {
                     init.SetWalk(true);
-                    init.SetCyclic();
+
+                switch (speedSelectionMode)
+                {
+                    case MovementWalkRunSpeedSelectionMode.ForceRun:
+                        init.SetWalk(false);
+                        break;
+                    case MovementWalkRunSpeedSelectionMode.ForceWalk:
+                        init.SetWalk(true);
+                        break;
+                    case MovementWalkRunSpeedSelectionMode.Default:
+                    default:
+                        break;
                 }
+
+                if (speed.HasValue)
+                    init.SetVelocity(speed.Value);
             };
 
-            Add(new GenericMovementGenerator(initializer, MovementGeneratorType.Effect, 0));
+            Add(new GenericMovementGenerator(initializer, MovementGeneratorType.Effect, 0, new GenericMovementGeneratorArgs() { Duration = duration }));
         }
 
         public void MoveSmoothPath(uint pointId, Vector3[] pathPoints, int pathSize, bool walk = false, bool fly = false)
@@ -1087,7 +1094,7 @@ namespace Game.Movement
 
             speedZ = (float)Math.Sqrt(2 * gravity * height);
         }
-        
+
         void ResolveDelayedActions()
         {
             while (_delayedActions.Count != 0)

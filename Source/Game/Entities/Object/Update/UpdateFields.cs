@@ -1267,7 +1267,6 @@ namespace Game.Entities
         public UpdateFieldArray<int> BonusResistanceMods = new(7, 195, 203);
         public UpdateFieldArray<int> ManaCostModifier = new(7, 195, 210);
 
-
         public UnitData() : base(0, TypeId.Unit, ChangeMaskLength) { }
 
         public void WriteCreate(WorldPacket data, UpdateFieldFlag fieldVisibilityFlags, Unit owner, Player receiver)
@@ -1408,7 +1407,7 @@ namespace Game.Entities
                 data.WriteUInt32(BaseHealth);
 
             data.WriteUInt8(SheatheState);
-            data.WriteUInt8((byte)GetViewerDependentPvpFlags(this, owner, receiver));
+            data.WriteUInt8(GetViewerDependentPvpFlags(this, owner, receiver));
             data.WriteUInt8(PetFlags);
             data.WriteUInt8(ShapeshiftForm);
             if (fieldVisibilityFlags.HasFlag(UpdateFieldFlag.Owner))
@@ -1441,7 +1440,7 @@ namespace Game.Entities
             data.WriteUInt32(WildBattlePetLevel);
             data.WriteUInt32(BattlePetCompanionExperience);
             data.WriteUInt32(BattlePetCompanionNameTimestamp);
-            data.WriteInt32(InteractSpellID);
+            data.WriteInt32(GetViewerDependentInteractSpellId(this, owner, receiver));
             data.WriteInt32(ScaleDuration);
             data.WriteInt32(LooksLikeMountID);
             data.WriteInt32(LooksLikeCreatureID);
@@ -2003,7 +2002,7 @@ namespace Game.Entities
                 }
                 if (changesMask[114])
                 {
-                    data.WriteInt32(InteractSpellID);
+                    data.WriteInt32(GetViewerDependentInteractSpellId(this, owner, receiver));
                 }
                 if (changesMask[115])
                 {
@@ -2333,8 +2332,18 @@ namespace Game.Entities
         uint GetViewerDependentNpcFlags(UnitData unitData, int i, Unit unit, Player receiver)
         {
             uint npcFlag = unitData.NpcFlags[i];
-            if (i == 0 && unit.IsCreature() && !receiver.CanSeeSpellClickOn(unit.ToCreature()))
-                npcFlag &= ~(uint)NPCFlags.SpellClick;
+            if (i == 0)
+            {
+                Creature creature = unit.ToCreature();
+                if (creature != null)
+                {
+                    if (!receiver.CanSeeGossipOn(creature))
+                        npcFlag &= ~(uint)(NPCFlags.Gossip | NPCFlags.QuestGiver);
+
+                    if (!receiver.CanSeeSpellClickOn(creature))
+                        npcFlag &= ~(uint)NPCFlags.SpellClick;
+                }
+            }
 
             return npcFlag;
         }
@@ -2387,6 +2396,28 @@ namespace Game.Entities
             }
 
             return pvpFlags;
+        }
+        int GetViewerDependentInteractSpellId(UnitData unitData, Unit unit, Player receiver)
+        {
+            int interactSpellId = unitData.InteractSpellID;
+            if ((unitData.NpcFlags[0] & (uint)NPCFlags.SpellClick) != 0 && interactSpellId == 0)
+            {
+                // this field is not set if there are multiple available spellclick spells
+                var clickBounds = Global.ObjectMgr.GetSpellClickInfoMapBounds(unit.GetEntry());
+                foreach (var spellClickInfo in clickBounds)
+                {
+                    if (!spellClickInfo.IsFitToRequirements(receiver, unit))
+                        continue;
+
+                    if (!Global.ConditionMgr.IsObjectMeetingSpellClickConditions(unit.GetEntry(), spellClickInfo.spellId, receiver, unit))
+                        continue;
+
+                    interactSpellId = (int)spellClickInfo.spellId;
+                    break;
+                }
+
+            }
+            return interactSpellId;
         }
     }
 
@@ -2868,7 +2899,7 @@ namespace Game.Entities
 
         public void WriteUpdate(WorldPacket data, UpdateFieldFlag fieldVisibilityFlags, Player owner, Player receiver)
         {
-            UpdateMask allowedMaskForTarget = new(261, [0xFFFFFFDDu, 0x00003FFFu, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0xC0000000u, 0xFFFFFFFFu, 0x00001FFFu]);
+            UpdateMask allowedMaskForTarget = new(269, [0xFFFFFFDDu, 0x00003FFFu, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0xC0000000u, 0xFFFFFFFFu, 0x00001FFFu]);
             AppendAllowedFieldsMaskForFlag(allowedMaskForTarget, fieldVisibilityFlags);
             WriteUpdate(data, _changesMask & allowedMaskForTarget, false, owner, receiver);
         }
@@ -2876,12 +2907,12 @@ namespace Game.Entities
         public void AppendAllowedFieldsMaskForFlag(UpdateMask allowedMaskForTarget, UpdateFieldFlag fieldVisibilityFlags)
         {
             if (fieldVisibilityFlags.HasFlag(UpdateFieldFlag.PartyMember))
-                allowedMaskForTarget.OR(new UpdateMask(261, new[] { 0x00000022u, 0xFFFFC000u, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x3FFFFFFFu, 0x00000000u, 0x00000000u }));
+                allowedMaskForTarget.OR(new UpdateMask(269, new[] { 0x00000022u, 0xFFFFC000u, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x3FFFFFFFu, 0x00000000u, 0x00000000u }));
         }
 
         public void FilterDisallowedFieldsMaskForFlag(UpdateMask changesMask, UpdateFieldFlag fieldVisibilityFlags)
         {
-            UpdateMask allowedMaskForTarget = new(261, new[] { 0xFFFFFFDDu, 0x00003FFFu, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0xC0000000u, 0xFFFFFFFFu, 0x00001FFFu });
+            UpdateMask allowedMaskForTarget = new(269, new[] { 0xFFFFFFDDu, 0x00003FFFu, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0xC0000000u, 0xFFFFFFFFu, 0x00001FFFu });
             AppendAllowedFieldsMaskForFlag(allowedMaskForTarget, fieldVisibilityFlags);
             changesMask.AND(allowedMaskForTarget);
         }
@@ -3042,15 +3073,15 @@ namespace Game.Entities
                 }
                 if (changesMask[19])
                 {
-                    data.WriteUInt32(Inebriation);
+                    data.WriteUInt8(Inebriation);
                 }
                 if (changesMask[20])
                 {
-                    data.WriteInt32(PvpTitle);
+                    data.WriteUInt8(PvpTitle);
                 }
                 if (changesMask[21])
                 {
-                    data.WriteUInt32(ArenaFaction);
+                    data.WriteUInt8(ArenaFaction);
                 }
                 if (changesMask[22])
                 {
@@ -3082,7 +3113,7 @@ namespace Game.Entities
                 }
                 if (changesMask[29])
                 {
-                    data.WriteInt32(CurrentBattlePetBreedQuality);
+                    data.WriteUInt8(CurrentBattlePetBreedQuality);
                 }
                 if (changesMask[30])
                 {

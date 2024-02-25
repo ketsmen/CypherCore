@@ -615,23 +615,34 @@ namespace Game.Entities
             float crit_chance = 0.0f;
             switch (spellInfo.DmgClass)
             {
+                case SpellDmgClass.None:
                 case SpellDmgClass.Magic:
                 {
+                    var getPhysicalCritChance = float () =>
+                    {
+                        return GetUnitCriticalChanceDone(attackType);
+                    };
+
+                    var getMagicCritChance = float () =>
+                    {
+                        Player thisPlayer = ToPlayer();
+                        if (thisPlayer != null)
+                            return thisPlayer.m_activePlayerData.SpellCritPercentage;
+
+                        return BaseSpellCritChance;
+                    };
+
                     if (schoolMask.HasAnyFlag(SpellSchoolMask.Normal))
-                        crit_chance = 0.0f;
-                    // For other schools
-                    else if (IsTypeId(TypeId.Player))
-                        crit_chance = ToPlayer().m_activePlayerData.SpellCritPercentage;
-                    else
-                        crit_chance = BaseSpellCritChance;
+                        crit_chance = Math.Max(crit_chance, getPhysicalCritChance());
+
+                    if (schoolMask.HasAnyFlag(~SpellSchoolMask.Normal))
+                        crit_chance = Math.Max(crit_chance, getMagicCritChance());
                     break;
                 }
                 case SpellDmgClass.Melee:
                 case SpellDmgClass.Ranged:
                     crit_chance += GetUnitCriticalChanceDone(attackType);
                     break;
-
-                case SpellDmgClass.None:
                 default:
                     return 0f;
             }
@@ -1367,6 +1378,16 @@ namespace Game.Entities
             var mechanicList = m_spellImmune[(int)SpellImmunity.Mechanic];
             foreach (var pair in mechanicList)
                 mask |= (1ul << (int)pair.Value);
+
+            return mask;
+        }
+
+        public SpellOtherImmunity GetSpellOtherImmunityMask()
+        {
+            SpellOtherImmunity mask = 0;
+            var damageList = m_spellImmune[(int)SpellImmunity.Other];
+            foreach (var pair in damageList)
+                mask |= (SpellOtherImmunity)pair.Key;
 
             return mask;
         }
