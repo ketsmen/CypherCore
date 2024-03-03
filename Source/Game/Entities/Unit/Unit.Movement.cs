@@ -217,7 +217,10 @@ namespace Game.Entities
             init.SetFacing(ori);
 
             //GetMotionMaster().LaunchMoveSpline(init, EventId.Face, MovementGeneratorPriority.Highest);
-            init.Launch();
+            UpdateSplineMovement((uint)init.Launch());
+            Creature creature = ToCreature();
+            if (creature != null)
+                creature.GetAI().MovementInform(MovementGeneratorType.Effect, EventId.Face);
         }
 
         public void SetFacingToObject(WorldObject obj, bool force = true)
@@ -232,7 +235,10 @@ namespace Game.Entities
             init.SetFacing(GetAbsoluteAngle(obj));   // when on transport, GetAbsoluteAngle will still return global coordinates (and angle) that needs transforming
 
             //GetMotionMaster().LaunchMoveSpline(init, EventId.Face, MovementGeneratorPriority.Highest);
-            init.Launch();
+            UpdateSplineMovement((uint)init.Launch());
+            Creature creature = ToCreature();
+            if (creature != null)
+                creature.GetAI().MovementInform(MovementGeneratorType.Effect, EventId.Face);
         }
 
         void SetFacingToPoint(Position point, bool force = true)
@@ -249,7 +255,10 @@ namespace Game.Entities
             init.SetFacing(point.GetPositionX(), point.GetPositionY(), point.GetPositionZ());
 
             //GetMotionMaster()->LaunchMoveSpline(std::move(init), EVENT_FACE, MOTION_PRIORITY_HIGHEST);
-            init.Launch();
+            UpdateSplineMovement((uint)init.Launch());
+            Creature creature = ToCreature();
+            if (creature != null)
+                creature.GetAI().MovementInform(MovementGeneratorType.Effect, EventId.Face);
         }
 
         public void MonsterMoveWithSpeed(float x, float y, float z, float speed, bool generatePath = false, bool forceDestination = false)
@@ -741,7 +750,7 @@ namespace Game.Entities
                 SendMessageToSet(packet, true);
             }
 
-            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root) && !ToCreature().IsTemplateRooted())
+            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
             {
                 if (IsGravityDisabled())
                     SetAnimTier(AnimTier.Fly);
@@ -1129,7 +1138,7 @@ namespace Game.Entities
                 SendMessageToSet(packet, true);
             }
 
-            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root) && !ToCreature().IsTemplateRooted())
+            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
             {
                 if (IsGravityDisabled())
                     SetAnimTier(AnimTier.Fly);
@@ -1177,12 +1186,25 @@ namespace Game.Entities
         {
             return IsWithinDistInMap(target, distance) && !HasInArc(MathFunctions.TwoPi - arc, target);
         }
-        public bool IsInAccessiblePlaceFor(Creature c)
+        public bool IsInAccessiblePlaceFor(Creature creature)
         {
-            if (IsInWater())
-                return c.CanEnterWater();
-            else
-                return c.CanWalk() || c.CanFly();
+            // Aquatic creatures are not allowed to leave liquids
+            if (!IsInWater() && creature.IsAquatic())
+                return false;
+
+            // Underwater special case. Some creatures may not go below liquid surfaces
+            if (IsUnderWater() && creature.CannotPenetrateWater())
+                return false;
+
+            // Water checks
+            if (IsInWater() && !creature.CanEnterWater())
+                return false;
+
+            // Some creatures are tied to the ocean floor and cannot chase swimming targets.
+            if (!IsOnOceanFloor() && creature.IsUnderWater() && creature.HasUnitFlag(UnitFlags.CantSwim))
+                return false;
+
+            return true;
         }
 
         public void NearTeleportTo(float x, float y, float z, float orientation, bool casting = false) { NearTeleportTo(new Position(x, y, z, orientation), casting); }
@@ -1265,7 +1287,7 @@ namespace Game.Entities
                         SetStunned(false);
                         break;
                     case UnitState.Root:
-                        if (HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2) || HasAuraType(AuraType.ModRootDisableGravity) || GetVehicle() != null || (IsCreature() && ToCreature().IsTemplateRooted()))
+                        if (HasAuraType(AuraType.ModRoot) || HasAuraType(AuraType.ModRoot2) || HasAuraType(AuraType.ModRootDisableGravity) || GetVehicle() != null || (IsCreature() && ToCreature().IsSessile()))
                             return;
 
                         ClearUnitState(state);
@@ -1832,7 +1854,7 @@ namespace Game.Entities
                     return;
             }
 
-            if (HasUnitState(UnitState.CannotTurn))
+            if (HasUnitState(UnitState.LostControl | UnitState.Focusing))
                 loc.W = GetOrientation();
 
             UpdatePosition(loc.X, loc.Y, loc.Z, loc.W);

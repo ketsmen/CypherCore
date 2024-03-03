@@ -199,7 +199,8 @@ namespace Game.Entities
 
         void _UpdateSpells(uint diff)
         {
-            _spellHistory.Update();
+            if (!_spellHistory.IsPaused())
+                _spellHistory.Update();
 
             if (GetCurrentSpell(CurrentSpellTypes.AutoRepeat) != null)
                 _UpdateAutoRepeatSpell();
@@ -435,6 +436,26 @@ namespace Game.Entities
             ChatPkt data = new();
             data.Initialize(isBossWhisper ? ChatMsg.RaidBossWhisper : ChatMsg.MonsterWhisper, Language.Universal, this, target, Global.DB2Mgr.GetBroadcastTextValue(bct, locale, GetGender()), 0, "", locale);
             target.SendPacket(data);
+        }
+
+        /// <summary>
+        /// Clears boss emotes frame
+        /// </summary>
+        /// <param name="zoneId">Only clears emotes for players in that zone id</param>
+        /// <param name="target">Only clears emotes for that player</param>
+        public void ClearBossEmotes(uint? zoneId, Player target)
+        {
+            ClearBossEmotes clearBossEmotes = new();
+
+            if (target != null)
+            {
+                target.SendPacket(clearBossEmotes);
+                return;
+            }
+
+            foreach (var player in GetMap().GetPlayers())
+                if (!zoneId.HasValue || Global.DB2Mgr.IsInArea(player.GetAreaId(), zoneId.Value))
+                    player.SendPacket(clearBossEmotes);
         }
 
         public override void UpdateObjectVisibility(bool forced = true)
@@ -2296,8 +2317,8 @@ namespace Game.Entities
 
             if (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Player))
                 return u1.ToPlayer().IsInSameGroupWith(u2.ToPlayer());
-            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)) ||
-                (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)))
+            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().IsTreatedAsRaidUnit()) ||
+                (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().IsTreatedAsRaidUnit()))
                 return true;
 
             return u1.GetTypeId() == TypeId.Unit && u2.GetTypeId() == TypeId.Unit && u1.GetFaction() == u2.GetFaction();
@@ -2315,8 +2336,8 @@ namespace Game.Entities
 
             if (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Player))
                 return u1.ToPlayer().IsInSameRaidWith(u2.ToPlayer());
-            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)) ||
-                    (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)))
+            else if ((u2.IsTypeId(TypeId.Player) && u1.IsTypeId(TypeId.Unit) && u1.ToCreature().IsTreatedAsRaidUnit()) ||
+                    (u1.IsTypeId(TypeId.Player) && u2.IsTypeId(TypeId.Unit) && u2.ToCreature().IsTreatedAsRaidUnit()))
                 return true;
 
             // else u1.GetTypeId() == u2.GetTypeId() == TYPEID_UNIT

@@ -2773,7 +2773,7 @@ namespace Game.Entities
             }
 
             // can't assist non-friendly targets
-            if (GetReactionTo(target) < ReputationRank.Neutral && target.GetReactionTo(this) < ReputationRank.Neutral && (!IsCreature() || !ToCreature().HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells)))
+            if (GetReactionTo(target) < ReputationRank.Neutral && target.GetReactionTo(this) < ReputationRank.Neutral && (!IsCreature() || !ToCreature().IsTreatedAsRaidUnit()))
                 return false;
 
             // PvP case
@@ -2809,7 +2809,7 @@ namespace Game.Entities
                     {
                         Creature creatureTarget = target.ToCreature();
                         if (creatureTarget != null)
-                            return creatureTarget.HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells) || creatureTarget.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.CanAssist);
+                            return creatureTarget.IsTreatedAsRaidUnit() || creatureTarget.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.CanAssist);
                     }
                 }
             }
@@ -3752,7 +3752,18 @@ namespace Game.Entities
 
         public float GetMapWaterOrGroundLevel(float x, float y, float z, ref float ground)
         {
-            return GetMap().GetWaterOrGroundLevel(GetPhaseShift(), x, y, z, ref ground, IsTypeMask(TypeMask.Unit) ? !ToUnit().HasAuraType(AuraType.WaterWalk) : false, GetCollisionHeight());
+            bool swimming = true;
+            Creature creature = ToCreature();
+            if (creature != null)
+                swimming = !creature.CannotPenetrateWater() && !creature.HasAuraType(AuraType.WaterWalk);
+            else
+            {
+                Unit unit = ToUnit();
+                if (unit != null)
+                    swimming = !unit.HasAuraType(AuraType.WaterWalk);
+            }
+
+            return GetMap().GetWaterOrGroundLevel(GetPhaseShift(), x, y, z, ref ground, swimming, GetCollisionHeight());
         }
 
         public float GetMapHeight(float x, float y, float z, bool vmap = true, float distanceToSearch = MapConst.DefaultHeightSearch)

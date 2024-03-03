@@ -283,7 +283,10 @@ namespace Game.Entities
             ApplyAllStaticFlags(m_creatureDifficulty.StaticFlags);
 
             _staticFlags.ApplyFlag(CreatureStaticFlags.NoXp, creatureInfo.CreatureType == CreatureType.Critter || IsPet() || IsTotem() || creatureInfo.FlagsExtra.HasFlag(CreatureFlagsExtra.NoXP));
-            _staticFlags.ApplyFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells, GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.TreatAsRaidUnit));
+
+            // TODO: migrate these in DB
+            _staticFlags.ApplyFlag(CreatureStaticFlags2.AllowMountedCombat, GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.AllowMountedCombat));
+            SetTreatAsRaidUnit(GetCreatureDifficulty().TypeFlags.HasAnyFlag(CreatureTypeFlags.TreatAsRaidUnit));
 
             return true;
         }
@@ -303,7 +306,7 @@ namespace Game.Entities
 
             SetFaction(cInfo.Faction);
 
-            ObjectManager.ChooseCreatureFlags(cInfo, out ulong npcFlags, out uint unitFlags, out uint unitFlags2, out uint unitFlags3, data);
+            ObjectManager.ChooseCreatureFlags(cInfo, out ulong npcFlags, out uint unitFlags, out uint unitFlags2, out uint unitFlags3, _staticFlags, data);
 
             if (cInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Worldevent))
                 npcFlags |= Global.GameEventMgr.GetNPCFlag(this);
@@ -396,7 +399,7 @@ namespace Game.Entities
 
             SetIsCombatDisallowed(cInfo.FlagsExtra.HasFlag(CreatureFlagsExtra.CannotEnterCombat));
 
-            InitializeMovementFlags();
+            InitializeMovementCapabilities();
 
             LoadCreaturesAddon();
             LoadCreaturesSparringHealth();
@@ -416,7 +419,6 @@ namespace Game.Entities
             _staticFlags = flags;
 
             // Apply all other side effects of flag changes
-            SetTemplateRooted(flags.HasFlag(CreatureStaticFlags.Sessile));
             m_updateFlag.NoBirthAnim = flags.HasFlag(CreatureStaticFlags4.NoBirthAnim);
         }
 
@@ -434,7 +436,7 @@ namespace Game.Entities
                 GetAI().JustAppeared();
             }
 
-            UpdateMovementFlags();
+            UpdateMovementCapabilities();
 
             switch (m_deathState)
             {
@@ -1056,10 +1058,8 @@ namespace Game.Entities
         {
             base.AtEngage(target);
 
-            if (!GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.AllowMountedCombat))
+            if (!HasFlag(CreatureStaticFlags2.AllowMountedCombat))
                 Dismount();
-
-            RefreshCanSwimFlag();
 
             if (IsPet() || IsGuardian()) // update pets' speed for catchup OOC speed
             {
@@ -1780,19 +1780,6 @@ namespace Game.Entities
             SetHealth((m_deathState == DeathState.Alive || m_deathState == DeathState.JustRespawned) ? curhealth : 0);
         }
 
-        void LoadTemplateRoot()
-        {
-            SetTemplateRooted(GetMovementTemplate().IsRooted());
-        }
-
-        public bool IsTemplateRooted() { return _staticFlags.HasFlag(CreatureStaticFlags.Sessile); }
-
-        public void SetTemplateRooted(bool rooted)
-        {
-            _staticFlags.ApplyFlag(CreatureStaticFlags.Sessile, rooted);
-            SetControlled(rooted, UnitState.Root);
-        }
-
         public override bool HasQuest(uint questId)
         {
             return Global.ObjectMgr.GetCreatureQuestRelations(GetEntry()).HasQuest(questId);
@@ -2018,7 +2005,7 @@ namespace Game.Entities
                 if (m_formation != null && m_formation.GetLeader() == this)
                     m_formation.FormationReset(true);
 
-                bool needsFalling = (IsFlying() || IsHovering()) && !IsUnderWater();
+                bool needsFalling = (IsFlying() || IsHovering()) && !IsUnderWater() && !HasUnitState(UnitState.Root);
                 SetHover(false, false);
                 SetDisableGravity(false, false);
 
@@ -2038,7 +2025,7 @@ namespace Game.Entities
                 ResetPlayerDamageReq();
 
                 SetCannotReachTarget(false);
-                UpdateMovementFlags();
+                UpdateMovementCapabilities();
 
                 ClearUnitState(UnitState.AllErasable);
 
@@ -2047,7 +2034,7 @@ namespace Game.Entities
                     CreatureData creatureData = GetCreatureData();
                     CreatureTemplate cInfo = GetCreatureTemplate();
 
-                    ObjectManager.ChooseCreatureFlags(cInfo, out ulong npcFlags, out uint unitFlags, out uint unitFlags2, out uint unitFlags3, creatureData);
+                    ObjectManager.ChooseCreatureFlags(cInfo, out ulong npcFlags, out uint unitFlags, out uint unitFlags2, out uint unitFlags3, _staticFlags, creatureData);
 
                     if (cInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Worldevent))
                         npcFlags |= Global.GameEventMgr.GetNPCFlag(this);
@@ -2497,7 +2484,7 @@ namespace Game.Entities
                 dist += GetCombatReach() + victim.GetCombatReach();
 
                 // to prevent creatures in air ignore attacks because distance is already too high...
-                if (GetMovementTemplate().IsFlightAllowed())
+                if (CanFly())
                     return victim.IsInDist2d(m_homePosition, dist);
                 else
                     return victim.IsInDist(m_homePosition, dist);
@@ -2523,20 +2510,13 @@ namespace Game.Entities
             if (creatureAddon == null)
                 return false;
 
-            if (creatureAddon.mount != 0)
+            uint mountDisplayId = _defaultMountDisplayIdOverride.GetValueOrDefault(creatureAddon.mount);
+            if (mountDisplayId != 0)
                 Mount(creatureAddon.mount);
 
             SetStandState((UnitStandStateType)creatureAddon.standState);
             ReplaceAllVisFlags((UnitVisFlags)creatureAddon.visFlags);
             SetAnimTier((AnimTier)creatureAddon.animTier, false);
-
-            //! Suspected correlation between UNIT_FIELD_BYTES_1, offset 3, value 0x2:
-            //! If no inhabittype_fly (if no MovementFlag_DisableGravity or MovementFlag_CanFly flag found in sniffs)
-            //! Check using InhabitType as movement flags are assigned dynamically
-            //! basing on whether the creature is in air or not
-            //! Set MovementFlag_Hover. Otherwise do nothing.
-            if (CanHover())
-                AddUnitMovementFlag(MovementFlag.Hover);
 
             SetSheath((SheathState)creatureAddon.sheathState);
             ReplaceAllPvpFlags((UnitPVPStateFlags)creatureAddon.pvpFlags);
@@ -2682,52 +2662,38 @@ namespace Game.Entities
 
         bool IsSpawnedOnTransport() { return m_creatureData != null && m_creatureData.MapId != GetMapId(); }
 
-        void InitializeMovementFlags()
+        public void InitializeMovementCapabilities()
         {
-            LoadTemplateRoot();
+            SetHover(GetMovementTemplate().IsHoverInitiallyEnabled());
+            SetDisableGravity(IsFloating());
+            SetControlled(IsSessile(), UnitState.Root);
 
-            // It does the same, for now
-            UpdateMovementFlags();
+            // If an amphibious creatures was swimming while engaged, disable swimming again
+            if (IsAmphibious() && !_staticFlags.HasFlag(CreatureStaticFlags.CanSwim))
+                RemoveUnitFlag(UnitFlags.CanSwim);
+
+            UpdateMovementCapabilities();
         }
 
-        public void UpdateMovementFlags()
+        public void UpdateMovementCapabilities()
         {
             // Do not update movement flags if creature is controlled by a player (charm/vehicle)
             if (m_playerMovingMe != null)
                 return;
 
-            // Creatures with CREATURE_FLAG_EXTRA_NO_MOVE_FLAGS_UPDATE should control MovementFlags in your own scripts
-            if (GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.NoMoveFlagsUpdate))
-                return;
-
             // Set the movement flags if the creature is in that mode. (Only fly if actually in air, only swim if in water, etc)
             float ground = GetFloorZ();
 
-            bool canHover = CanHover();
-            bool isInAir = (MathFunctions.fuzzyGt(GetPositionZ(), ground + (canHover ? m_unitData.HoverHeight : 0.0f) + MapConst.GroundHeightTolerance) || MathFunctions.fuzzyLt(GetPositionZ(), ground - MapConst.GroundHeightTolerance)); // Can be underground too, prevent the falling
-
-            if (GetMovementTemplate().IsFlightAllowed() && (isInAir || !GetMovementTemplate().IsGroundAllowed()) && !IsFalling())
-            {
-                if (GetMovementTemplate().Flight == CreatureFlightMovementType.CanFly)
-                    SetCanFly(true);
-                else
-                    SetDisableGravity(true);
-
-                if (!HasAuraType(AuraType.Hover) && GetMovementTemplate().Ground != CreatureGroundMovementType.Hover)
-                    SetHover(false);
-            }
-            else
-            {
-                SetCanFly(false);
-                SetDisableGravity(false);
-                if (IsAlive() && (CanHover() || HasAuraType(AuraType.Hover)))
-                    SetHover(true);
-            }
-
+            bool isInAir = (MathFunctions.fuzzyGt(GetPositionZ(), ground + GetHoverOffset() + MapConst.GroundHeightTolerance) || MathFunctions.fuzzyLt(GetPositionZ(), ground - MapConst.GroundHeightTolerance)); // Can be underground too, prevent the falling
             if (!isInAir)
                 SetFall(false);
 
-            SetSwim(CanSwim() && IsInWater());
+            // Some Amphibious creatures toggle swimming while engaged
+            if (IsAmphibious() && !HasUnitFlag(UnitFlags.CantSwim) && !HasUnitFlag(UnitFlags.CanSwim) && IsEngaged())
+                if (!IsSwimPrevented() || (GetVictim() != null && !GetVictim().IsOnOceanFloor()))
+                    SetUnitFlag(UnitFlags.CanSwim);
+
+            SetSwim(IsInWater() && CanSwim());
         }
 
         public CreatureMovementData GetMovementTemplate()
@@ -2750,29 +2716,7 @@ namespace Game.Entities
             return false;
         }
 
-        public override bool CanEnterWater()
-        {
-            if (CanSwim())
-                return true;
-
-            return GetMovementTemplate().IsSwimAllowed();
-        }
-
-        public void RefreshCanSwimFlag(bool recheck = false)
-        {
-            if (!_isMissingCanSwimFlagOutOfCombat || recheck)
-                _isMissingCanSwimFlagOutOfCombat = !HasUnitFlag(UnitFlags.CanSwim);
-
-            // Check if the creature has UNIT_FLAG_CAN_SWIM and add it if it's missing
-            // Creatures must be able to chase a target in water if they can enter water
-            if (_isMissingCanSwimFlagOutOfCombat && CanEnterWater())
-                SetUnitFlag(UnitFlags.CanSwim);
-        }
-
-        public bool HasCanSwimFlagOutOfCombat()
-        {
-            return !_isMissingCanSwimFlagOutOfCombat;
-        }
+        public override bool CanEnterWater() { return CanSwim() || IsAmphibious(); }
 
         public void AllLootRemovedFromCorpse()
         {
@@ -3122,6 +3066,14 @@ namespace Game.Entities
                 Log.outDebug(LogFilter.Unit, $"Creature::SetCannotReachTarget() called with true. Details: {GetDebugInfo()}");
         }
 
+        void SetDefaultMount(uint? mountCreatureDisplayId)
+        {
+            if (mountCreatureDisplayId.HasValue && !CliDB.CreatureDisplayInfoStorage.HasRecord(mountCreatureDisplayId.Value))
+                mountCreatureDisplayId = null;
+
+            _defaultMountDisplayIdOverride = mountCreatureDisplayId;
+        }
+
         public float GetAggroRange(Unit target)
         {
             // Determines the aggro range for creatures (usually pets), used mainly for aggressive pet target selection.
@@ -3372,9 +3324,31 @@ namespace Game.Entities
             return GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.Guard);
         }
 
-        public bool CanWalk() { return GetMovementTemplate().IsGroundAllowed(); }
-        public override bool CanFly() { return GetMovementTemplate().IsFlightAllowed() || IsFlying(); }
-        bool CanHover() { return GetMovementTemplate().Ground == CreatureGroundMovementType.Hover || IsHovering(); }
+        // Returns true if CREATURE_STATIC_FLAG_AQUATIC is set which strictly binds the creature to liquids
+        public bool IsAquatic() { return _staticFlags.HasFlag(CreatureStaticFlags.Aquatic); }
+
+        // Returns true if CREATURE_STATIC_FLAG_AMPHIBIOUS is set which allows a creature to enter and leave liquids while sticking to the ocean floor. These creatures will become able to swim when engaged
+        public bool IsAmphibious() { return _staticFlags.HasFlag(CreatureStaticFlags.Amphibious); }
+
+        // Returns true if CREATURE_STATIC_FLAG_FLOATING is set which is  disabling the gravity of the creature on spawn and reset
+        public bool IsFloating() { return _staticFlags.HasFlag(CreatureStaticFlags.Floating); }
+        public void SetFloating(bool floating) { _staticFlags.ApplyFlag(CreatureStaticFlags.Floating, floating); SetDisableGravity(floating); }
+
+        // Returns true if CREATURE_STATIC_FLAG_SESSILE is set which permanently roots the creature in place
+        public bool IsSessile() { return _staticFlags.HasFlag(CreatureStaticFlags.Sessile); }
+        public void SetSessile(bool sessile) { _staticFlags.ApplyFlag(CreatureStaticFlags.Sessile, sessile); SetControlled(sessile, UnitState.Root); }
+
+        // Returns true if CREATURE_STATIC_FLAG_3_CANNOT_PENETRATE_WATER is set which does not allow the creature to go below liquid surfaces
+        public bool CannotPenetrateWater() { return _staticFlags.HasFlag(CreatureStaticFlags3.CannotPenetrateWater); }
+        public void SetCannotPenetrateWater(bool cannotPenetrateWater) { _staticFlags.ApplyFlag(CreatureStaticFlags3.CannotPenetrateWater, cannotPenetrateWater); }
+
+        // Returns true if CREATURE_STATIC_FLAG_3_CANNOT_SWIM is set which prevents 'Amphibious' creatures from swimming when engaged
+        public bool IsSwimDisabled() { return _staticFlags.HasFlag(CreatureStaticFlags3.CannotSwim); }
+
+        // Returns true if CREATURE_STATIC_FLAG_4_PREVENT_SWIM is set which prevents 'Amphibious' creatures from swimming when engaged until the victim is no longer on the ocean floor
+        public bool IsSwimPrevented() { return _staticFlags.HasFlag(CreatureStaticFlags4.PreventSwim); }
+
+        public override bool CanFly() { return IsFlying() || HasUnitMovementFlag(MovementFlag.CanFly); }
 
         public bool IsDungeonBoss() { return (GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.DungeonBoss)); }
         public override bool IsAffectedByDiminishingReturns() { return base.IsAffectedByDiminishingReturns() || GetCreatureTemplate().FlagsExtra.HasAnyFlag(CreatureFlagsExtra.AllDiminish); }
@@ -3404,6 +3378,9 @@ namespace Game.Entities
         public bool IsInEvadeMode() { return HasUnitState(UnitState.Evade); }
         public bool IsEvadingAttacks() { return IsInEvadeMode() || CanNotReachTarget(); }
 
+        public bool IsStateRestoredOnEvade() { return !HasFlag(CreatureStaticFlags5.NoLeavecombatStateRestore); }
+        public void SetRestoreStateOnEvade(bool restoreOnEvade) { _staticFlags.ApplyFlag(CreatureStaticFlags5.NoLeavecombatStateRestore, !restoreOnEvade); }
+
         public override CreatureAI GetAI()
         {
             return (CreatureAI)i_AI;
@@ -3420,6 +3397,9 @@ namespace Game.Entities
         public bool CanMelee() { return !_staticFlags.HasFlag(CreatureStaticFlags.NoMeleeFlee) && !_staticFlags.HasFlag(CreatureStaticFlags4.NoMeleeApproach); }
 
         public bool CanIgnoreLineOfSightWhenCastingOnMe() { return _staticFlags.HasFlag(CreatureStaticFlags4.IgnoreLosWhenCastingOnMe); }
+
+        public bool IsTreatedAsRaidUnit() { return _staticFlags.HasFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells); }
+        public void SetTreatAsRaidUnit(bool treatAsRaidUnit) { _staticFlags.ApplyFlag(CreatureStaticFlags4.TreatAsRaidUnitForHelpfulSpells, treatAsRaidUnit); }
 
         public sbyte GetOriginalEquipmentId() { return m_originalEquipmentId; }
         public byte GetCurrentEquipmentId() { return m_equipmentId; }
