@@ -5,7 +5,11 @@ using Framework.Constants;
 using Framework.Database;
 using Game.BattleGrounds.Zones;
 using Game.BattleGrounds.Zones.AlteracValley;
+using Game.BattleGrounds.Zones.ArathisBasin;
 using Game.BattleGrounds.Zones.EyeofStorm;
+using Game.BattleGrounds.Zones.IsleOfConquest;
+using Game.BattleGrounds.Zones.StrandOfAncients;
+using Game.BattleGrounds.Zones.WarsongGluch;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Networking.Packets;
@@ -145,7 +149,7 @@ namespace Game.BattleGrounds
             battlefieldStatus = new BattlefieldStatusActive();
             BuildBattlegroundStatusHeader(battlefieldStatus.Hdr, player, ticketId, joinTime, queueId);
             battlefieldStatus.ShutdownTimer = bg.GetRemainingTime();
-            battlefieldStatus.ArenaFaction = (byte)(player.GetBGTeam() == Team.Horde ? BatttleGroundTeamId.Horde : BatttleGroundTeamId.Alliance);
+            battlefieldStatus.ArenaFaction = (byte)(player.GetBGTeam() == Team.Horde ? BattleGroundTeamId.Horde : BattleGroundTeamId.Alliance);
             battlefieldStatus.LeftEarly = false;
             battlefieldStatus.StartTimer = bg.GetElapsedTime();
             battlefieldStatus.Mapid = bg.GetMapId();
@@ -253,6 +257,7 @@ namespace Game.BattleGrounds
                     bg = new BgAlteracValley(bg_template);
                     break;
                 case BattlegroundTypeId.WS:
+                case BattlegroundTypeId.WgCtf:
                     bg = new BgWarsongGluch(bg_template);
                     break;
                 case BattlegroundTypeId.AB:
@@ -350,8 +355,8 @@ namespace Game.BattleGrounds
                     uint startId = result.Read<uint>(1);
                     WorldSafeLocsEntry start = Global.ObjectMgr.GetWorldSafeLoc(startId);
                     if (start != null)
-                        bgTemplate.StartLocation[BatttleGroundTeamId.Alliance] = start;
-                    else if (bgTemplate.StartLocation[BatttleGroundTeamId.Alliance] != null) // reload case
+                        bgTemplate.StartLocation[BattleGroundTeamId.Alliance] = start;
+                    else if (bgTemplate.StartLocation[BattleGroundTeamId.Alliance] != null) // reload case
                         Log.outError(LogFilter.Sql, $"Table `battleground_template` for id {bgTemplate.Id} contains a non-existing WorldSafeLocs.dbc id {startId} in field `AllianceStartLoc`. Ignoring.");
                     else
                     {
@@ -362,8 +367,8 @@ namespace Game.BattleGrounds
                     startId = result.Read<uint>(2);
                     start = Global.ObjectMgr.GetWorldSafeLoc(startId);
                     if (start != null)
-                        bgTemplate.StartLocation[BatttleGroundTeamId.Horde] = start;
-                    else if (bgTemplate.StartLocation[BatttleGroundTeamId.Horde] != null) // reload case
+                        bgTemplate.StartLocation[BattleGroundTeamId.Horde] = start;
+                    else if (bgTemplate.StartLocation[BattleGroundTeamId.Horde] != null) // reload case
                         Log.outError(LogFilter.Sql, $"Table `battleground_template` for id {bgTemplate.Id} contains a non-existing WorldSafeLocs.dbc id {startId} in field `HordeStartLoc`. Ignoring.");
                     else
                     {

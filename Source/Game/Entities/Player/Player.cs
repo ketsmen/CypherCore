@@ -667,6 +667,7 @@ namespace Game.Entities
                 StopCastingCharm();
                 StopCastingBindSight();
                 UnsummonPetTemporaryIfAny();
+                UnsummonBattlePetTemporaryIfAny();
                 SetPower(PowerType.ComboPoints, 0);
                 GetSession().DoLootReleaseAll();
                 m_lootRolls.Clear();
@@ -1077,6 +1078,35 @@ namespace Game.Entities
             NewPet.LoadPetFromDB(this, 0, m_temporaryUnsummonedPetNumber, true);
 
             m_temporaryUnsummonedPetNumber = 0;
+        }
+
+        public void UnsummonBattlePetTemporaryIfAny(bool onFlyingMount = false)
+        {
+            Creature battlepet = GetSummonedBattlePet();
+            if (battlepet == null || !battlepet.IsSummon())
+                return;
+
+            if (onFlyingMount && !battlepet.ToTempSummon().IsDismissedOnFlyingMount())
+                return;
+
+            if (battlepet.ToTempSummon().IsAutoResummoned())
+                m_temporaryUnsummonedBattlePet = battlepet.GetBattlePetCompanionGUID();
+
+            GetSession().GetBattlePetMgr().DismissPet();
+        }
+
+        public void ResummonBattlePetTemporaryUnSummonedIfAny()
+        {
+            if (m_temporaryUnsummonedBattlePet.IsEmpty())
+                return;
+
+            // not resummon in not appropriate state
+            if (IsPetNeedBeTemporaryUnsummoned())
+                return;
+
+            GetSession().GetBattlePetMgr().SummonPet(m_temporaryUnsummonedBattlePet);
+
+            m_temporaryUnsummonedBattlePet.Clear();
         }
 
         public bool IsPetNeedBeTemporaryUnsummoned()
@@ -5119,13 +5149,13 @@ namespace Game.Entities
                 return (uint)rEntry.Alliance;
 
             Log.outError(LogFilter.Player, "Race ({0}) not found in DBC: wrong DBC files?", race);
-            return BatttleGroundTeamId.Neutral;
+            return BattleGroundTeamId.Neutral;
         }
         public Team GetTeam() { return m_team; }
-        public int GetTeamId() { return m_team == Team.Alliance ? BatttleGroundTeamId.Alliance : BatttleGroundTeamId.Horde; }
+        public int GetTeamId() { return m_team == Team.Alliance ? BattleGroundTeamId.Alliance : BattleGroundTeamId.Horde; }
 
         public Team GetEffectiveTeam() { return HasPlayerFlagEx(PlayerFlagsEx.MercenaryMode) ? (GetTeam() == Team.Alliance ? Team.Horde : Team.Alliance) : GetTeam(); }
-        public int GetEffectiveTeamId() { return GetEffectiveTeam() == Team.Alliance ? BatttleGroundTeamId.Alliance : BatttleGroundTeamId.Horde; }
+        public int GetEffectiveTeamId() { return GetEffectiveTeam() == Team.Alliance ? BattleGroundTeamId.Alliance : BattleGroundTeamId.Horde; }
 
         //Money
         public ulong GetMoney() { return m_activePlayerData.Coinage; }
@@ -5442,7 +5472,10 @@ namespace Game.Entities
                 return null;
 
             // not unfriendly/hostile
-            if (!creature.HasUnitFlag2(UnitFlags2.InteractWhileHostile) && creature.GetReactionTo(this) <= ReputationRank.Unfriendly)
+            if (!creature.IsInteractionAllowedWhileHostile() && creature.GetReactionTo(this) <= ReputationRank.Unfriendly)
+                return null;
+
+            if (creature.IsInCombat() && !creature.IsInteractionAllowedInCombat())
                 return null;
 
             // not too far, taken from CGGameUI::SetInteractTarget
@@ -5488,35 +5521,6 @@ namespace Game.Entities
                 return null;
 
             return go;
-        }
-
-        public void UpdateNearbyCreatureNpcFlags()
-        {
-            List<Creature> creatures = GetCreatureListWithOptionsInGrid(GetVisibilityRange(), new() { IgnorePhases = false });
-
-            UpdateData udata = new(GetMapId());
-            ObjectFieldData objMask = new();
-            UnitData unitMask = new();
-            for (int i = 0; i < m_unitData.NpcFlags.GetSize(); ++i)
-                unitMask.MarkChanged(m_unitData.NpcFlags, i);
-
-            foreach (Creature creature in creatures)
-            {
-                if (!HaveAtClient(creature))
-                    continue;
-
-                // skip creatures which dont have any npcflags set
-                if (creature.GetNpcFlags() == 0 && creature.GetNpcFlags2() == 0)
-                    continue;
-
-                creature.BuildValuesUpdateForPlayerWithMask(udata, objMask.GetUpdateMask(), unitMask.GetUpdateMask(), this);
-            }
-
-            if (!udata.HasData())
-                return;
-
-            udata.BuildPacket(out UpdateObject packet);
-            SendPacket(packet);
         }
 
         public void SendInitialPacketsBeforeAddToMap()

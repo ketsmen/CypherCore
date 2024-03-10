@@ -286,6 +286,8 @@ namespace Game.Entities
 
             // TODO: migrate these in DB
             _staticFlags.ApplyFlag(CreatureStaticFlags2.AllowMountedCombat, GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.AllowMountedCombat));
+            SetIgnoreFeignDeath(creatureInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.IgnoreFeighDeath));
+            SetInteractionAllowedInCombat(GetCreatureDifficulty().TypeFlags.HasAnyFlag(CreatureTypeFlags.AllowInteractionWhileInCombat));
             SetTreatAsRaidUnit(GetCreatureDifficulty().TypeFlags.HasAnyFlag(CreatureTypeFlags.TreatAsRaidUnit));
 
             return true;
@@ -402,7 +404,7 @@ namespace Game.Entities
             InitializeMovementCapabilities();
 
             LoadCreaturesAddon();
-            LoadCreaturesSparringHealth();
+            LoadCreaturesSparringHealth(true);
             LoadTemplateImmunities(cInfo.CreatureImmunitiesId);
             GetThreatManager().EvaluateSuppressed();
 
@@ -866,7 +868,7 @@ namespace Game.Entities
             }
 
             LoadCreaturesAddon();
-            LoadCreaturesSparringHealth();
+            LoadCreaturesSparringHealth(true);
 
             //! Need to be called after LoadCreaturesAddon - MOVEMENTFLAG_HOVER is set there
             posZ += GetHoverOffset();
@@ -2405,7 +2407,7 @@ namespace Game.Entities
             if (target.HasUnitState(UnitState.Died))
             {
                 // some creatures can detect fake death
-                if (CanIgnoreFeignDeath() && target.HasUnitFlag2(UnitFlags2.FeignDeath))
+                if (IsIgnoringFeignDeath() && target.HasUnitFlag2(UnitFlags2.FeignDeath))
                     return true;
                 else
                     return false;
@@ -2562,10 +2564,10 @@ namespace Game.Entities
             return true;
         }
 
-        public void LoadCreaturesSparringHealth()
+        public void LoadCreaturesSparringHealth(bool force = false)
         {
             var templateValues = Global.ObjectMgr.GetCreatureTemplateSparringValues(GetCreatureTemplate().Entry);
-            if (!templateValues.Empty())
+            if (force || !templateValues.Empty())
             {
                 if (templateValues.Contains(_sparringHealthPct)) // only re-randomize sparring value if it was loaded from template (not when set to custom value from script)
                     _sparringHealthPct = templateValues.SelectRandom();
@@ -2754,6 +2756,33 @@ namespace Game.Entities
                 m_corpseRemoveTime = now + (uint)(m_corpseDelay * decayRate);
 
             m_respawnTime = Math.Max(m_corpseRemoveTime + m_respawnDelay, m_respawnTime);
+        }
+
+        public override void SetInteractionAllowedWhileHostile(bool interactionAllowed)
+        {
+            _staticFlags.ApplyFlag(CreatureStaticFlags5.InteractWhileHostile, interactionAllowed);
+            base.SetInteractionAllowedWhileHostile(interactionAllowed);
+        }
+
+        public override void SetInteractionAllowedInCombat(bool interactionAllowed)
+        {
+            _staticFlags.ApplyFlag(CreatureStaticFlags3.AllowInteractionWhileInCombat, interactionAllowed);
+            base.SetInteractionAllowedInCombat(interactionAllowed);
+        }
+
+        public override void UpdateNearbyPlayersInteractions()
+        {
+            base.UpdateNearbyPlayersInteractions();
+
+            // If as a result of npcflag updates we stop seeing UNIT_NPC_FLAG_QUESTGIVER then
+            // we must also send SMSG_QUEST_GIVER_STATUS_MULTIPLE because client will not request it automatically
+            if (IsQuestGiver())
+            {
+                var sender = (Player receiver) => receiver.PlayerTalkClass.SendQuestGiverStatus(receiver.GetQuestDialogStatus(this), GetGUID());
+
+                MessageDistDeliverer notifier = new(this, sender, GetVisibilityRange());
+                Cell.VisitWorldObjects(this, notifier, GetVisibilityRange());
+            }
         }
 
         public bool HasScalableLevels()
@@ -3066,7 +3095,17 @@ namespace Game.Entities
                 Log.outDebug(LogFilter.Unit, $"Creature::SetCannotReachTarget() called with true. Details: {GetDebugInfo()}");
         }
 
-        void SetDefaultMount(uint? mountCreatureDisplayId)
+        public bool IsIgnoringChaseRange()
+        {
+            return _staticFlags.HasFlag(CreatureStaticFlags6.AlwaysStandOnTopOfTarget);
+        }
+
+        public void SetIgnoreChaseRange(bool ignoreChaseRange)
+        {
+            _staticFlags.ApplyFlag(CreatureStaticFlags6.AlwaysStandOnTopOfTarget, ignoreChaseRange);
+        }
+
+        public void SetDefaultMount(uint? mountCreatureDisplayId)
         {
             if (mountCreatureDisplayId.HasValue && !CliDB.CreatureDisplayInfoStorage.HasRecord(mountCreatureDisplayId.Value))
                 mountCreatureDisplayId = null;
@@ -3525,7 +3564,10 @@ namespace Game.Entities
         public void SetNoCallAssistance(bool val) { m_AlreadyCallAssistance = val; }
         public void SetNoSearchAssistance(bool val) { m_AlreadySearchedAssistance = val; }
         public bool HasSearchedAssistance() { return m_AlreadySearchedAssistance; }
-        public bool CanIgnoreFeignDeath() { return GetCreatureTemplate().FlagsExtra.HasFlag(CreatureFlagsExtra.IgnoreFeighDeath); }
+        public bool IsIgnoringFeignDeath() { return _staticFlags.HasFlag(CreatureStaticFlags2.IgnoreFeignDeath); }
+        public void SetIgnoreFeignDeath(bool ignoreFeignDeath) { _staticFlags.ApplyFlag(CreatureStaticFlags2.IgnoreFeignDeath, ignoreFeignDeath); }
+        public bool IsIgnoringSanctuarySpellEffect() { return _staticFlags.HasFlag(CreatureStaticFlags2.IgnoreSanctuary); }
+        public void SetIgnoreSanctuarySpellEffect(bool ignoreSanctuary) { _staticFlags.ApplyFlag(CreatureStaticFlags2.IgnoreSanctuary, ignoreSanctuary); }
 
         public override MovementGeneratorType GetDefaultMovementType() { return DefaultMovementType; }
         public void SetDefaultMovementType(MovementGeneratorType mgt) { DefaultMovementType = mgt; }

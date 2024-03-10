@@ -1217,20 +1217,7 @@ namespace Game.Spells
                 if (goInfo.GetNoDamageImmune() != 0 && player.HasUnitFlag(UnitFlags.Immune))
                     return;
 
-                // Arathi Basin banner opening. // @todo Verify correctness of this check
-                if ((goInfo.type == GameObjectTypes.Button && goInfo.Button.noDamageImmune != 0) ||
-                    (goInfo.type == GameObjectTypes.Goober && goInfo.Goober.requireLOS != 0))
-                {
-                    //CanUseBattlegroundObject() already called in CheckCast()
-                    // in Battlegroundcheck
-                    Battleground bg = player.GetBattleground();
-                    if (bg != null)
-                    {
-                        bg.EventPlayerClickedOnFlag(player, gameObjTarget);
-                        return;
-                    }
-                }
-                else if (goInfo.type == GameObjectTypes.FlagStand)
+                if (goInfo.type == GameObjectTypes.FlagStand)
                 {
                     //CanUseBattlegroundObject() already called in CheckCast()
                     // in Battlegroundcheck
@@ -2631,7 +2618,7 @@ namespace Game.Spells
                 {
                     Battleground bg = player.GetBattleground();
                     if (bg != null)
-                        bg.SetDroppedFlagGUID(go.GetGUID(), bg.GetPlayerTeam(player.GetGUID()) == Team.Alliance ? BatttleGroundTeamId.Horde : BatttleGroundTeamId.Alliance);
+                        bg.SetDroppedFlagGUID(go.GetGUID(), bg.GetPlayerTeam(player.GetGUID()) == Team.Alliance ? BattleGroundTeamId.Horde : BattleGroundTeamId.Alliance);
                 }
             }
 
@@ -2840,16 +2827,23 @@ namespace Game.Spells
             if (unitTarget == null)
                 return;
 
+            var isAffectedBySanctuary = bool (Unit attacker) =>
+            {
+                Creature attackerCreature = attacker.ToCreature();
+                return attackerCreature == null || !attackerCreature.IsIgnoringSanctuarySpellEffect();
+            };
+
             if (unitTarget.IsPlayer() && !unitTarget.GetMap().IsDungeon())
             {
                 // stop all pve combat for players outside dungeons, suppress pvp combat
-                unitTarget.CombatStop(false, false);
+                unitTarget.CombatStop(false, false, isAffectedBySanctuary);
             }
             else
             {
                 // in dungeons (or for nonplayers), reset this unit on all enemies' threat lists
-                foreach (var pair in unitTarget.GetThreatManager().GetThreatenedByMeList())
-                    pair.Value.ScaleThreat(0.0f);
+                foreach (var (_, refe) in unitTarget.GetThreatManager().GetThreatenedByMeList())
+                    if (isAffectedBySanctuary(refe.GetOwner()))
+                        refe.ScaleThreat(0.0f);
             }
 
             // makes spells cast before this time fizzle
@@ -3752,8 +3746,6 @@ namespace Game.Spells
 
             Global.ScriptMgr.OnQuestStatusChange(player, quest_id);
             Global.ScriptMgr.OnQuestStatusChange(player, quest, oldStatus, QuestStatus.None);
-
-            player.UpdateNearbyCreatureNpcFlags();
         }
 
         [SpellEffectHandler(SpellEffectName.SendTaxi)]

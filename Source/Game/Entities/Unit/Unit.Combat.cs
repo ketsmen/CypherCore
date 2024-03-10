@@ -35,6 +35,9 @@ namespace Game.Entities
 
             RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.EnteringCombat);
             ProcSkillsAndAuras(this, null, new ProcFlagsInit(ProcFlags.EnterCombat), new ProcFlagsInit(ProcFlags.None), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, null, null, null);
+
+            if (!IsInteractionAllowedInCombat())
+                UpdateNearbyPlayersInteractions();
         }
 
         public virtual void AtExitCombat()
@@ -43,29 +46,38 @@ namespace Game.Entities
                 pair.Value.GetBase().CallScriptEnterLeaveCombatHandlers(pair.Value, false);
 
             RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.LeavingCombat);
+
+            if (!IsInteractionAllowedInCombat())
+                UpdateNearbyPlayersInteractions();
         }
 
         public virtual void AtEngage(Unit target) { }
 
         public virtual void AtDisengage() { }
 
-        public void CombatStop(bool includingCast = false, bool mutualPvP = true)
+        public void CombatStop(bool includingCast = false, bool mutualPvP = true, Func<Unit, bool> unitFilter = null)
         {
             if (includingCast && IsNonMeleeSpellCast(false))
                 InterruptNonMeleeSpells(false);
 
             AttackStop();
-            RemoveAllAttackers();
+            if (unitFilter == null)
+                RemoveAllAttackers();
+            else
+            {
+                List<Unit> attackersToRemove = attackerList.Where(unitFilter).ToList();
+                foreach (Unit attacker in attackersToRemove)
+                    attacker.AttackStop();
+            }
+
             if (IsTypeId(TypeId.Player))
                 ToPlayer().SendAttackSwingCancelAttack();     // melee and ranged forced attack cancel
 
+            m_combatManager.EndAllPvECombat(unitFilter);
             if (mutualPvP)
-                ClearInCombat();
-            else
-            { // vanish and brethren are weird
-                m_combatManager.EndAllPvECombat();
-                m_combatManager.SuppressPvPCombat();
-            }
+                m_combatManager.EndAllPvPCombat(unitFilter);
+            else // vanish and brethren are weird
+                m_combatManager.SuppressPvPCombat(unitFilter);
         }
 
         public void CombatStopWithPets(bool includingCast = false)
@@ -1654,5 +1666,46 @@ namespace Game.Entities
         /// enables / disables combat interaction of this unit
         /// </summary>
         public void SetIsCombatDisallowed(bool apply) { _isCombatDisallowed = apply; }
+
+        public bool IsInteractionAllowedWhileHostile()
+        {
+            return HasUnitFlag2(UnitFlags2.InteractWhileHostile);
+        }
+
+        public virtual void SetInteractionAllowedWhileHostile(bool interactionAllowed)
+        {
+            if (interactionAllowed)
+                SetUnitFlag2(UnitFlags2.InteractWhileHostile);
+            else
+                RemoveUnitFlag2(UnitFlags2.InteractWhileHostile);
+
+            UpdateNearbyPlayersInteractions();
+        }
+
+        public bool IsInteractionAllowedInCombat()
+        {
+            return HasUnitFlag3(UnitFlags3.AllowInteractionWhileInCombat);
+        }
+
+        public virtual void SetInteractionAllowedInCombat(bool interactionAllowed)
+        {
+            if (interactionAllowed)
+                SetUnitFlag3(UnitFlags3.AllowInteractionWhileInCombat);
+            else
+                RemoveUnitFlag3(UnitFlags3.AllowInteractionWhileInCombat);
+
+            if (IsInCombat())
+                UpdateNearbyPlayersInteractions();
+        }
+
+        public virtual void UpdateNearbyPlayersInteractions()
+        {
+            for (int i = 0; i < m_unitData.NpcFlags.GetSize(); ++i)
+                if (m_unitData.NpcFlags[i] != 0)
+                {
+                    m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, i);
+                    ForceUpdateFieldChange();
+                }
+        }
     }
 }
