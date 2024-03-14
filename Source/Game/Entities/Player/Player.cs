@@ -4622,12 +4622,15 @@ namespace Game.Entities
                 if (duration > 0)
                     pet.SetDuration(duration);
 
-                return null;
+                return pet;
             }
 
             // petentry == 0 for hunter "call pet" (current pet summoned if any)
             if (entry == 0)
+            {
+                pet.Dispose();
                 return null;
+            }
 
             // only SUMMON_PET are handled here
 
@@ -4636,6 +4639,7 @@ namespace Game.Entities
             {
                 Log.outError(LogFilter.Server, "Pet (guidlow {0}, entry {1}) not summoned. Suggested coordinates isn't valid (X: {2} Y: {3})",
                     pet.GetGUID().ToString(), pet.GetEntry(), pet.GetPositionX(), pet.GetPositionY());
+                pet.Dispose();
                 return null;
             }
 
@@ -4644,6 +4648,7 @@ namespace Game.Entities
             if (!pet.Create(map.GenerateLowGuid(HighGuid.Pet), map, entry, petNumber))
             {
                 Log.outError(LogFilter.Server, "no such creature entry {0}", entry);
+                pet.Dispose();
                 return null;
             }
 
@@ -5449,7 +5454,7 @@ namespace Game.Entities
                 return null;
 
             // alive or spirit healer
-            if (creature.IsAlive() && !creature.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.InteractWhileDead))
+            if (!creature.IsAlive() && !creature.GetCreatureDifficulty().TypeFlags.HasFlag(CreatureTypeFlags.InteractWhileDead))
                 return null;
 
             // appropriate npc type
@@ -5468,7 +5473,7 @@ namespace Game.Entities
                 return null;
 
             // not allow interaction under control, but allow with own pets
-            if (creature.GetCharmerGUID().IsEmpty())
+            if (!creature.GetCharmerGUID().IsEmpty())
                 return null;
 
             // not unfriendly/hostile
@@ -5479,7 +5484,7 @@ namespace Game.Entities
                 return null;
 
             // not too far, taken from CGGameUI::SetInteractTarget
-            if (creature.IsWithinDistInMap(this, creature.GetCombatReach() + 4.0f))
+            if (!creature.IsWithinDistInMap(this, creature.GetCombatReach() + 4.0f))
                 return null;
 
             return creature;
@@ -5643,6 +5648,17 @@ namespace Game.Entities
         public void SendInitialPacketsAfterAddToMap()
         {
             UpdateVisibilityForPlayer();
+
+            // Send map wide vignettes before UpdateZone, that will send zone wide vignettes
+            // But first send on new map will wipe all vignettes on client
+            VignetteUpdate vignetteUpdate = new();
+            vignetteUpdate.ForceUpdate = true;
+
+            foreach (VignetteData vignette in GetMap().GetInfiniteAOIVignettes())
+                if (!vignette.Data.GetFlags().HasFlag(VignetteFlags.ZoneInfiniteAOI) && Vignettes.CanSee(this, vignette))
+                    vignette.FillPacket(vignetteUpdate.Added);
+
+            SendPacket(vignetteUpdate);
 
             // update zone
             uint newzone, newarea;
@@ -6034,13 +6050,23 @@ namespace Game.Entities
         }
 
         #region Sends / Updates
-        void BeforeVisibilityDestroy(WorldObject obj, Player p)
+        void BeforeVisibilityDestroy(WorldObject t, Player p)
         {
-            if (!obj.IsTypeId(TypeId.Unit))
-                return;
+            var creature = t.ToCreature();
+            if (creature != null)
+                if (p.GetPetGUID() == creature.GetGUID() && creature.IsPet())
+                    creature.ToPet().Remove(PetSaveMode.NotInSlot, true);
 
-            if (p.GetPetGUID() == obj.GetGUID() && obj.ToCreature().IsPet())
-                ((Pet)obj).Remove(PetSaveMode.NotInSlot, true);
+            VignetteData vignette = t.GetVignette();
+            if (vignette != null)
+            {
+                if (!vignette.Data.IsInfiniteAOI())
+                {
+                    VignetteUpdate vignetteUpdate = new();
+                    vignetteUpdate.Removed.Add(vignette.Guid);
+                    p.SendPacket(vignetteUpdate);
+                }
+            }
         }
 
         public void UpdateVisibilityOf(ICollection<WorldObject> targets)
@@ -6049,7 +6075,7 @@ namespace Game.Entities
                 return;
 
             UpdateData udata = new(GetMapId());
-            List<Unit> newVisibleUnits = new();
+            List<WorldObject> newVisibleObjects = new();
 
             foreach (WorldObject target in targets)
             {
@@ -6059,28 +6085,28 @@ namespace Game.Entities
                 switch (target.GetTypeId())
                 {
                     case TypeId.Unit:
-                        UpdateVisibilityOf(target.ToCreature(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToCreature(), udata, newVisibleObjects);
                         break;
                     case TypeId.Player:
-                        UpdateVisibilityOf(target.ToPlayer(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToPlayer(), udata, newVisibleObjects);
                         break;
                     case TypeId.GameObject:
-                        UpdateVisibilityOf(target.ToGameObject(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToGameObject(), udata, newVisibleObjects);
                         break;
                     case TypeId.DynamicObject:
-                        UpdateVisibilityOf(target.ToDynamicObject(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToDynamicObject(), udata, newVisibleObjects);
                         break;
                     case TypeId.Corpse:
-                        UpdateVisibilityOf(target.ToCorpse(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToCorpse(), udata, newVisibleObjects);
                         break;
                     case TypeId.AreaTrigger:
-                        UpdateVisibilityOf(target.ToAreaTrigger(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToAreaTrigger(), udata, newVisibleObjects);
                         break;
                     case TypeId.SceneObject:
-                        UpdateVisibilityOf(target.ToSceneObject(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToSceneObject(), udata, newVisibleObjects);
                         break;
                     case TypeId.Conversation:
-                        UpdateVisibilityOf(target.ToConversation(), udata, newVisibleUnits);
+                        UpdateVisibilityOf(target.ToConversation(), udata, newVisibleObjects);
                         break;
                     default:
                         break;
@@ -6093,7 +6119,7 @@ namespace Game.Entities
             udata.BuildPacket(out UpdateObject packet);
             SendPacket(packet);
 
-            foreach (var visibleUnit in newVisibleUnits)
+            foreach (var visibleUnit in newVisibleObjects)
                 SendInitialVisiblePackets(visibleUnit);
         }
 
@@ -6103,8 +6129,7 @@ namespace Game.Entities
             {
                 if (!CanSeeOrDetect(target, false, true))
                 {
-                    if (target.IsTypeId(TypeId.Unit))
-                        BeforeVisibilityDestroy(target.ToCreature(), this);
+                    BeforeVisibilityDestroy(target, this);
 
                     if (!target.IsDestroyedObject())
                         target.SendOutOfRangeForPlayer(this);
@@ -6123,13 +6148,12 @@ namespace Game.Entities
 
                     // target aura duration for caster show only if target exist at caster client
                     // send data at target visibility change (adding to client)
-                    if (target.IsTypeMask(TypeMask.Unit))
-                        SendInitialVisiblePackets(target.ToUnit());
+                    SendInitialVisiblePackets(target);
                 }
             }
         }
 
-        public void UpdateVisibilityOf<T>(T target, UpdateData data, List<Unit> visibleNow) where T : WorldObject
+        public void UpdateVisibilityOf<T>(T target, UpdateData data, List<WorldObject> visibleNow) where T : WorldObject
         {
             if (HaveAtClient(target))
             {
@@ -6150,33 +6174,47 @@ namespace Game.Entities
                 if (CanSeeOrDetect(target, false, true))
                 {
                     target.BuildCreateUpdateBlockForPlayer(data, this);
-                    UpdateVisibilityOf_helper(m_clientGUIDs, target, visibleNow);
+                    m_clientGUIDs.Add(target.GetGUID());
+                    visibleNow.Add(target);
                 }
             }
         }
 
-        void UpdateVisibilityOf_helper<T>(List<ObjectGuid> s64, T target, List<Unit> v) where T : WorldObject
+        public void SendInitialVisiblePackets(WorldObject target)
         {
-            s64.Add(target.GetGUID());
-
-            switch (target.GetTypeId())
+            var sendVignette = (VignetteData vignette, Player where) =>
             {
-                case TypeId.Unit:
-                    v.Add(target.ToCreature());
-                    break;
-                case TypeId.Player:
-                    v.Add(target.ToPlayer());
-                    break;
+                if (!vignette.Data.IsInfiniteAOI() && Vignettes.CanSee(where, vignette))
+                {
+                    VignetteUpdate vignetteUpdate = new();
+                    vignette.FillPacket(vignetteUpdate.Added);
+                    where.SendPacket(vignetteUpdate);
+                }
+            };
+
+            Unit targetUnit = target.ToUnit();
+            if (targetUnit != null)
+            {
+                SendAurasForTarget(targetUnit);
+                if (targetUnit.IsAlive())
+                {
+                    if (targetUnit.HasUnitState(UnitState.MeleeAttacking) && targetUnit.GetVictim() != null)
+                        targetUnit.SendMeleeAttackStart(targetUnit.GetVictim());
+                }
+
+                VignetteData vignette = targetUnit.GetVignette();
+                if (vignette != null)
+                    sendVignette(vignette, this);
             }
-        }
-
-        public void SendInitialVisiblePackets(Unit target)
-        {
-            SendAurasForTarget(target);
-            if (target.IsAlive())
+            else
             {
-                if (target.HasUnitState(UnitState.MeleeAttacking) && target.GetVictim() != null)
-                    target.SendMeleeAttackStart(target.GetVictim());
+                GameObject targetGo = target.ToGameObject();
+                if (targetGo != null)
+                {
+                    VignetteData vignette = targetGo.GetVignette();
+                    if (vignette != null)
+                        sendVignette(vignette, this);
+                }
             }
         }
 
@@ -6416,16 +6454,12 @@ namespace Game.Entities
 
         public void AddExploredZones(int pos, ulong mask)
         {
-            SetUpdateFieldFlagValue(m_values
-                .ModifyValue(m_activePlayerData)
-                .ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex), pos, mask);
+            SetUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex, pos), mask);
         }
 
         public void RemoveExploredZones(int pos, ulong mask)
         {
-            RemoveUpdateFieldFlagValue(m_values
-                .ModifyValue(m_activePlayerData)
-                .ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex), pos, mask);
+            RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex, pos), mask);
         }
 
         public bool HasExploredZone(uint areaId)
@@ -7403,8 +7437,9 @@ namespace Game.Entities
                 // farsight dynobj or puppet may be very far away
                 UpdateVisibilityOf(target);
 
-                if (target.IsTypeMask(TypeMask.Unit) && target != GetVehicleBase())
-                    target.ToUnit().AddPlayerToVision(this);
+                Unit targetUnit = target.ToUnit();
+                if (targetUnit != null && targetUnit != GetVehicleBase())
+                    targetUnit.AddPlayerToVision(this);
                 SetSeer(target);
             }
             else
@@ -7419,8 +7454,9 @@ namespace Game.Entities
 
                 SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.FarsightObject), ObjectGuid.Empty);
 
-                if (target.IsTypeMask(TypeMask.Unit) && target != GetVehicleBase())
-                    target.ToUnit().RemovePlayerFromVision(this);
+                Unit targetUnit = target.ToUnit();
+                if (targetUnit != null && targetUnit != GetVehicleBase())
+                    targetUnit.RemovePlayerFromVision(this);
 
                 //must immediately set seer back otherwise may crash
                 SetSeer(this);

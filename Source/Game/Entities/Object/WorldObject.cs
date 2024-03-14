@@ -25,7 +25,7 @@ namespace Game.Entities
         public WorldObject(bool isWorldObject)
         {
             _name = "";
-            m_isWorldObject = isWorldObject;
+            m_isStoredInWorldObjectGridContainer = isWorldObject;
 
             m_serverSideVisibility.SetValue(ServerSideVisibilityType.Ghost, GhostVisibilityType.Alive | GhostVisibilityType.Ghost);
             m_serverSideVisibilityDetect.SetValue(ServerSideVisibilityType.Ghost, GhostVisibilityType.Alive);
@@ -46,7 +46,7 @@ namespace Game.Entities
         public virtual void Dispose()
         {
             // this may happen because there are many !create/delete
-            if (IsWorldObject() && _currMap != null)
+            if (IsStoredInWorldObjectGridContainer() && _currMap != null)
             {
                 if (IsTypeId(TypeId.Corpse))
                 {
@@ -59,8 +59,9 @@ namespace Game.Entities
             if (IsInWorld)
             {
                 Log.outFatal(LogFilter.Misc, "WorldObject.Dispose() {0} deleted but still in world!!", GetGUID().ToString());
-                if (IsTypeMask(TypeMask.Item))
-                    Log.outFatal(LogFilter.Misc, "Item slot {0}", ((Item)this).GetSlot());
+                Item item = ToItem();
+                if (item != null)
+                    Log.outFatal(LogFilter.Misc, "Item slot {0}", item.GetSlot());
                 Cypher.Assert(false);
             }
 
@@ -104,7 +105,7 @@ namespace Game.Entities
         public void UpdatePositionData()
         {
             PositionFullTerrainStatus data = new();
-            GetMap().GetFullTerrainStatusForPosition(_phaseShift, GetPositionX(), GetPositionY(), GetPositionZ(), data, LiquidHeaderTypeFlags.AllLiquids, GetCollisionHeight());
+            GetMap().GetFullTerrainStatusForPosition(_phaseShift, GetPositionX(), GetPositionY(), GetPositionZ(), data, null, GetCollisionHeight());
             ProcessPositionDataChanged(data);
         }
 
@@ -120,6 +121,7 @@ namespace Game.Entities
             m_outdoors = data.outdoors;
             m_staticFloorZ = data.FloorZ;
             m_liquidStatus = data.LiquidStatus;
+            m_currentWmo = data.wmoLocation;
         }
 
         public virtual void BuildCreateUpdateBlockForPlayer(UpdateData data, Player target)
@@ -857,10 +859,10 @@ namespace Game.Entities
             SetUpdateFieldValue(updateField, (T)(updateField.GetValue() | (dynamic)flag));
         }
 
-        public void SetUpdateFieldFlagValue<T>(DynamicUpdateField<T> updateField, int index, T flag) where T : new()
+        public void SetUpdateFieldFlagValue<T>(DynamicUpdateFieldSetter<T> updateField, T flag) where T : new()
         {
             //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
-            InsertDynamicUpdateFieldValue(updateField, index, (T)(updateField[index] | (dynamic)flag));
+            SetUpdateFieldValue(updateField, (T)(updateField.GetValue() | (dynamic)flag));
         }
 
         public void SetUpdateFieldFlagValue<T>(ref T value, T flag) where T : new()
@@ -875,10 +877,10 @@ namespace Game.Entities
             SetUpdateFieldValue(updateField, (T)(updateField.GetValue() & ~(dynamic)flag));
         }
 
-        public void RemoveUpdateFieldFlagValue<T>(DynamicUpdateField<T> updateField, int index, T flag) where T : new()
+        public void RemoveUpdateFieldFlagValue<T>(DynamicUpdateFieldSetter<T> updateField, T flag) where T : new()
         {
             //static_assert(std::is_integral < T >::value, "SetUpdateFieldFlagValue must be used with integral types");
-            InsertDynamicUpdateFieldValue(updateField, index, (T)(updateField[index] & ~(dynamic)flag));
+            SetUpdateFieldValue(updateField, (T)(updateField.GetValue() & ~(dynamic)flag));
         }
 
         public void RemoveUpdateFieldFlagValue<T>(ref T value, T flag) where T : new()
@@ -971,9 +973,9 @@ namespace Game.Entities
             AddToObjectUpdateIfNeeded();
         }
 
-        public bool IsWorldObject()
+        public bool IsStoredInWorldObjectGridContainer()
         {
-            if (m_isWorldObject)
+            if (m_isStoredInWorldObjectGridContainer)
                 return true;
 
             if (IsTypeId(TypeId.Unit) && ToCreature().m_isTempWorldObject)
@@ -987,7 +989,7 @@ namespace Game.Entities
             m_Events.Update(diff);
         }
 
-        public void SetWorldObject(bool on)
+        public void SetIsStoredInWorldObjectGridContainer(bool on)
         {
             if (!IsInWorld)
                 return;
@@ -1079,6 +1081,8 @@ namespace Game.Entities
         public bool IsOutdoors() { return m_outdoors; }
 
         public ZLiquidStatus GetLiquidStatus() { return m_liquidStatus; }
+
+        public WmoLocation GetCurrentWmo() { return m_currentWmo; }
 
         public bool IsInWorldPvpZone()
         {
@@ -1477,7 +1481,7 @@ namespace Game.Entities
             _currMap = map;
             SetMapId(map.GetId());
             instanceId = map.GetInstanceId();
-            if (IsWorldObject())
+            if (IsStoredInWorldObjectGridContainer())
                 _currMap.AddWorldObject(this);
         }
 
@@ -1488,7 +1492,7 @@ namespace Game.Entities
 
             Cypher.Assert(_currMap != null);
             Cypher.Assert(!IsInWorld);
-            if (IsWorldObject())
+            if (IsStoredInWorldObjectGridContainer())
                 _currMap.RemoveWorldObject(this);
             _currMap = null;
         }
@@ -1549,6 +1553,8 @@ namespace Game.Entities
 
             return null;
         }
+
+        public virtual VignetteData GetVignette() { return null; }
 
         public TempSummon SummonCreature(uint entry, float x, float y, float z, float o = 0, TempSummonType despawnType = TempSummonType.ManualDespawn, TimeSpan despawnTime = default, ObjectGuid privateObjectOwner = default)
         {
@@ -3011,7 +3017,8 @@ namespace Game.Entities
                 if (!player.HaveAtClient(this))
                     continue;
 
-                if (IsTypeMask(TypeMask.Unit) && (ToUnit().GetCharmerGUID() == player.GetGUID()))// @todo this is for puppet
+                Unit unit = ToUnit();
+                if (unit != null && unit.GetCharmerGUID() == player.GetGUID())// @todo this is for puppet
                     continue;
 
                 DestroyForPlayer(player);
@@ -3083,6 +3090,7 @@ namespace Game.Entities
         public bool IsDestroyedObject() { return _isDestroyedObject; }
         public void SetDestroyedObject(bool destroyed) { _isDestroyedObject = destroyed; }
 
+        public bool IsWorldObject() { return IsTypeMask(TypeMask.WorldObject); }
         public bool IsCreature() { return GetTypeId() == TypeId.Unit; }
         public bool IsPlayer() { return GetTypeId() == TypeId.Player; }
         public bool IsGameObject() { return GetTypeId() == TypeId.GameObject; }
@@ -3092,6 +3100,7 @@ namespace Game.Entities
         public bool IsAreaTrigger() { return GetTypeId() == TypeId.AreaTrigger; }
         public bool IsConversation() { return GetTypeId() == TypeId.Conversation; }
         public bool IsSceneObject() { return GetTypeId() == TypeId.SceneObject; }
+        public bool IsItem() { return GetTypeId() == TypeId.Item; }
 
         public Creature ToCreature() { return IsCreature() ? (this as Creature) : null; }
         public Player ToPlayer() { return IsPlayer() ? (this as Player) : null; }
@@ -3102,6 +3111,7 @@ namespace Game.Entities
         public AreaTrigger ToAreaTrigger() { return IsAreaTrigger() ? (this as AreaTrigger) : null; }
         public Conversation ToConversation() { return IsConversation() ? (this as Conversation) : null; }
         public SceneObject ToSceneObject() { return IsSceneObject() ? (this as SceneObject) : null; }
+        public Item ToItem() { return IsItem() ? (this as Item) : null; }
 
         public virtual uint GetLevelForTarget(WorldObject target) { return 1; }
 
@@ -3113,7 +3123,7 @@ namespace Game.Entities
         public void ResetAllNotifies() { m_notifyflags = 0; }
 
         public bool IsActiveObject() { return m_isActive; }
-        public bool IsPermanentWorldObject() { return m_isWorldObject; }
+        public bool IsAlwaysStoredInWorldObjectGridContainer() { return m_isStoredInWorldObjectGridContainer; }
 
         public ITransport GetTransport() { return m_transport; }
         public T GetTransport<T>() where T : class, ITransport
@@ -3443,7 +3453,12 @@ namespace Game.Entities
         {
             float newZ = GetMapHeight(x, y, z);
             if (newZ > MapConst.InvalidHeight)
-                z = newZ + (IsUnit() ? ToUnit().GetHoverOffset() : 0.0f);
+            {
+                z = newZ;
+                Unit unit = ToUnit();
+                if (unit != null)
+                    z += ToUnit().GetHoverOffset();
+            }
         }
 
         public void UpdateAllowedPositionZ(float x, float y, ref float z)
@@ -3804,6 +3819,7 @@ namespace Game.Entities
         float m_staticFloorZ;
         bool m_outdoors;
         ZLiquidStatus m_liquidStatus;
+        WmoLocation m_currentWmo;
 
         // Event handler
         public EventSystem m_Events = new();
@@ -3813,7 +3829,7 @@ namespace Game.Entities
         protected bool m_isActive;
         bool m_isFarVisible;
         float? m_visibilityDistanceOverride;
-        bool m_isWorldObject;
+        bool m_isStoredInWorldObjectGridContainer;
         public ZoneScript m_zoneScript;
 
         ITransport m_transport;

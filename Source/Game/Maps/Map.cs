@@ -32,6 +32,7 @@ namespace Game.Maps
             m_VisibilityNotifyPeriod = SharedConst.DefaultVisibilityNotifyPeriod;
             i_gridExpiry = expiry;
             m_terrain = Global.TerrainMgr.LoadTerrain(id);
+            _vignetteUpdateTimer = new(5200, 5200);
 
             for (uint x = 0; x < MapConst.MaxGrids; ++x)
             {
@@ -77,7 +78,7 @@ namespace Game.Maps
             for (var i = 0; i < i_worldObjects.Count; ++i)
             {
                 WorldObject obj = i_worldObjects[i];
-                Cypher.Assert(obj.IsWorldObject());
+                Cypher.Assert(obj.IsStoredInWorldObjectGridContainer());
                 obj.RemoveFromWorld();
                 obj.ResetMap();
             }
@@ -119,7 +120,7 @@ namespace Game.Maps
                         // ObjectGridLoader loads all corpses from _corpsesByCell even if they were already added to grid before it was loaded
                         // so we need to explicitly check it here (Map::AddToGrid is only called from Player::BuildPlayerRepop, not from ObjectGridLoader)
                         // to avoid failing an assertion in GridObject::AddToGrid
-                        if (obj.IsWorldObject())
+                        if (obj.IsStoredInWorldObjectGridContainer())
                         {
                             obj.SetCurrentCell(cell);
                             grid.GetGridCell(cell.GetCellX(), cell.GetCellY()).AddWorldObject(obj);
@@ -134,7 +135,7 @@ namespace Game.Maps
                     break;
                 case TypeId.DynamicObject:
                 default:
-                    if (obj.IsWorldObject())
+                    if (obj.IsStoredInWorldObjectGridContainer())
                         grid.GetGridCell(cell.GetCellX(), cell.GetCellY()).AddWorldObject(obj);
                     else
                         grid.GetGridCell(cell.GetCellX(), cell.GetCellY()).AddGridObject(obj);
@@ -153,7 +154,7 @@ namespace Game.Maps
             if (grid == null)
                 return;
 
-            if (obj.IsWorldObject())
+            if (obj.IsStoredInWorldObjectGridContainer())
                 grid.GetGridCell(cell.GetCellX(), cell.GetCellY()).RemoveWorldObject(obj);
             else
                 grid.GetGridCell(cell.GetCellX(), cell.GetCellY()).RemoveGridObject(obj);
@@ -163,7 +164,7 @@ namespace Game.Maps
 
         void SwitchGridContainers(WorldObject obj, bool on)
         {
-            if (obj.IsPermanentWorldObject())
+            if (obj.IsAlwaysStoredInWorldObjectGridContainer())
                 return;
 
             CellCoord p = GridDefines.ComputeCellCoord(obj.GetPositionX(), obj.GetPositionY());
@@ -397,6 +398,41 @@ namespace Game.Maps
                 player.SendPacket(updateWorldState);
             }
         }
+
+
+        public void AddInfiniteAOIVignette(VignetteData vignette)
+        {
+            _infiniteAOIVignettes.Add(vignette);
+
+            VignetteUpdate vignetteUpdate = new();
+            vignette.FillPacket(vignetteUpdate.Added);
+            vignetteUpdate.Write();
+
+            foreach (var player in GetPlayers())
+                if (Vignettes.CanSee(player, vignette))
+                    player.SendPacket(vignetteUpdate);
+        }
+
+        public void RemoveInfiniteAOIVignette(VignetteData vignette)
+        {
+            if (!_infiniteAOIVignettes.Remove(vignette))
+                return;
+
+            VignetteUpdate vignetteUpdate = new();
+            vignetteUpdate.Removed.Add(vignette.Guid);
+            vignetteUpdate.Write();
+
+            if (vignette.Data.GetFlags().HasFlag(VignetteFlags.ZoneInfiniteAOI))
+            {
+                foreach (var player in GetPlayers())
+                    if (player.GetZoneId() == vignette.ZoneID)
+                        player.SendPacket(vignetteUpdate);
+            }
+            else
+                SendToPlayers(vignetteUpdate);
+        }
+
+        public List<VignetteData> GetInfiniteAOIVignettes() { return _infiniteAOIVignettes; }
 
         void InitializeObject(WorldObject obj)
         {
@@ -661,6 +697,24 @@ namespace Game.Maps
                     continue;
 
                 transport.Update(diff);
+            }
+
+            if (_vignetteUpdateTimer.Update((int)diff))
+            {
+                foreach (VignetteData vignette in _infiniteAOIVignettes)
+                {
+                    if (vignette.NeedUpdate)
+                    {
+                        VignetteUpdate vignetteUpdate = new();
+                        vignette.FillPacket(vignetteUpdate.Updated);
+                        vignetteUpdate.Write();
+                        foreach (var player in GetPlayers())
+                            if (Vignettes.CanSee(player, vignette))
+                                player.SendPacket(vignetteUpdate);
+
+                        vignette.NeedUpdate = false;
+                    }
+                }
             }
 
             SendObjectUpdates();
@@ -1122,7 +1176,7 @@ namespace Game.Maps
                 }
 
                 creature._moveState = ObjectCellMoveState.None;
-                if (creature.IsInWorld)
+                if (!creature.IsInWorld)
                     continue;
 
                 // do move or do move to respawn or remove creature if previous all fail
@@ -1520,24 +1574,19 @@ namespace Game.Maps
             return (mogpFlags & 0x2000) != 0;
         }
 
-        public void GetFullTerrainStatusForPosition(PhaseShift phaseShift, float x, float y, float z, PositionFullTerrainStatus data, LiquidHeaderTypeFlags reqLiquidType, float collisionHeight = MapConst.DefaultCollesionHeight)
+        public void GetFullTerrainStatusForPosition(PhaseShift phaseShift, float x, float y, float z, PositionFullTerrainStatus data, LiquidHeaderTypeFlags? reqLiquidType = null, float collisionHeight = MapConst.DefaultCollesionHeight)
         {
             m_terrain.GetFullTerrainStatusForPosition(phaseShift, GetId(), x, y, z, data, reqLiquidType, collisionHeight, _dynamicTree);
         }
 
-        public ZLiquidStatus GetLiquidStatus(PhaseShift phaseShift, float x, float y, float z, LiquidHeaderTypeFlags reqLiquidType, float collisionHeight = MapConst.DefaultCollesionHeight)
+        public ZLiquidStatus GetLiquidStatus(PhaseShift phaseShift, float x, float y, float z, LiquidHeaderTypeFlags? reqLiquidType = null, float collisionHeight = MapConst.DefaultCollesionHeight)
         {
-            return m_terrain.GetLiquidStatus(phaseShift, GetId(), x, y, z, reqLiquidType, out _, collisionHeight);
+            return m_terrain.GetLiquidStatus(phaseShift, GetId(), x, y, z, out _, reqLiquidType, collisionHeight);
         }
 
-        public ZLiquidStatus GetLiquidStatus(PhaseShift phaseShift, float x, float y, float z, LiquidHeaderTypeFlags reqLiquidType, out LiquidData data, float collisionHeight = MapConst.DefaultCollesionHeight)
+        public ZLiquidStatus GetLiquidStatus(PhaseShift phaseShift, float x, float y, float z, out LiquidData data, LiquidHeaderTypeFlags? reqLiquidType = null, float collisionHeight = MapConst.DefaultCollesionHeight)
         {
-            return m_terrain.GetLiquidStatus(phaseShift, GetId(), x, y, z, reqLiquidType, out data, collisionHeight);
-        }
-
-        private bool GetAreaInfo(PhaseShift phaseShift, float x, float y, float z, out uint mogpflags, out int adtId, out int rootId, out int groupId)
-        {
-            return m_terrain.GetAreaInfo(phaseShift, GetId(), x, y, z, out mogpflags, out adtId, out rootId, out groupId, _dynamicTree);
+            return m_terrain.GetLiquidStatus(phaseShift, GetId(), x, y, z, out data, reqLiquidType, collisionHeight);
         }
 
         public uint GetAreaId(PhaseShift phaseShift, Position pos)
@@ -2481,7 +2530,7 @@ namespace Game.Maps
                 bool on = pair.Value;
                 i_objectsToSwitch.Remove(pair.Key);
 
-                if (!obj.IsPermanentWorldObject())
+                if (!obj.IsAlwaysStoredInWorldObjectGridContainer())
                 {
                     switch (obj.GetTypeId())
                     {
@@ -3831,7 +3880,10 @@ namespace Game.Maps
             // prepare static data
             ObjectGuid sourceGUID = source != null ? source.GetGUID() : ObjectGuid.Empty; //some script commands doesn't have source
             ObjectGuid targetGUID = target != null ? target.GetGUID() : ObjectGuid.Empty;
-            ObjectGuid ownerGUID = (source != null && source.IsTypeMask(TypeMask.Item)) ? ((Item)source).GetOwnerGUID() : ObjectGuid.Empty;
+            ObjectGuid ownerGUID = ObjectGuid.Empty;
+            var item = source?.ToItem();
+            if (item != null)
+                ownerGUID = item.GetOwnerGUID();
 
             // Schedule script execution for all scripts in the script map
             bool immedScript = false;
@@ -3978,7 +4030,7 @@ namespace Game.Maps
             if (obj == null)
                 Log.outError(LogFilter.Scripts, "{0} {1} object is NULL.", scriptInfo.GetDebugInfo(),
                     isSource ? "source" : "target");
-            else if (!obj.IsTypeMask(TypeMask.Unit))
+            else if (!obj.IsUnit())
                 Log.outError(LogFilter.Scripts,
                     "{0} {1} object is not unit (TypeId: {2}, Entry: {3}, GUID: {4}), skipping.", scriptInfo.GetDebugInfo(), isSource ? "source" : "target", obj.GetTypeId(), obj.GetEntry(), obj.GetGUID().ToString());
             else
@@ -4056,7 +4108,7 @@ namespace Game.Maps
                 Log.outError(LogFilter.Scripts, "{0} door guid is not specified.", scriptInfo.GetDebugInfo());
             else if (source == null)
                 Log.outError(LogFilter.Scripts, "{0} source object is NULL.", scriptInfo.GetDebugInfo());
-            else if (!source.IsTypeMask(TypeMask.Unit))
+            else if (!source.IsUnit())
                 Log.outError(LogFilter.Scripts,
                     "{0} source object is not unit (TypeId: {1}, Entry: {2}, GUID: {3}), skipping.", scriptInfo.GetDebugInfo(), source.GetTypeId(), source.GetEntry(), source.GetGUID().ToString());
             else
@@ -4075,12 +4127,10 @@ namespace Game.Maps
                     {
                         pDoor.UseDoorOrButton((uint)nTimeToToggle);
 
-                        if (target != null && target.IsTypeMask(TypeMask.GameObject))
-                        {
-                            GameObject goTarget = target.ToGameObject();
-                            if (goTarget != null && goTarget.GetGoType() == GameObjectTypes.Button)
-                                goTarget.UseDoorOrButton((uint)nTimeToToggle);
-                        }
+                        GameObject goTarget = target?.ToGameObject();
+                        if (goTarget != null && goTarget.GetGoType() == GameObjectTypes.Button)
+                            goTarget.UseDoorOrButton((uint)nTimeToToggle);
+
                     }
                 }
             }
@@ -4785,6 +4835,9 @@ namespace Game.Maps
         MultiPersonalPhaseTracker _multiPersonalPhaseTracker = new();
 
         Dictionary<int, int> _worldStateValues = new();
+
+        List<VignetteData> _infiniteAOIVignettes = new();
+        PeriodicTimer _vignetteUpdateTimer;
         #endregion
     }
 
@@ -5013,9 +5066,9 @@ namespace Game.Maps
                         raidInstanceMessage.DifficultyID = GetDifficultyID();
                         raidInstanceMessage.Write();
 
-                        foreach (Player player in GetPlayers())                        
+                        foreach (Player player in GetPlayers())
                             player.SendPacket(raidInstanceMessage);
-                        
+
                         if (i_data != null)
                         {
                             PendingRaidLock pendingRaidLock = new();
@@ -5321,29 +5374,29 @@ namespace Game.Maps
         }
     }
 
+    public class WmoLocation
+    {
+        public int GroupId;
+        public int NameSetId;
+        public int RootId;
+        public uint UniqueId;
+
+        public WmoLocation(int groupId, int nameSetId, int rootId, uint uniqueId)
+        {
+            GroupId = groupId;
+            NameSetId = nameSetId;
+            RootId = rootId;
+            UniqueId = uniqueId;
+        }
+    }
+
     public class PositionFullTerrainStatus
     {
-        public struct AreaInfo
-        {
-            public int AdtId;
-            public int RootId;
-            public int GroupId;
-            public uint MogpFlags;
-
-            public AreaInfo(int adtId, int rootId, int groupId, uint flags)
-            {
-                AdtId = adtId;
-                RootId = rootId;
-                GroupId = groupId;
-                MogpFlags = flags;
-            }
-        }
-
         public uint AreaId;
         public float FloorZ;
         public bool outdoors = true;
         public ZLiquidStatus LiquidStatus;
-        public AreaInfo? areaInfo;
+        public WmoLocation? wmoLocation;
         public LiquidData LiquidInfo;
     }
 

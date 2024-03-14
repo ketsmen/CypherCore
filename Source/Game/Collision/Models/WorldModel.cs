@@ -290,8 +290,7 @@ namespace Game.Collision
 
     public class WorldModel : IModel
     {
-        public uint Flags;
-
+        ModelFlags Flags;
         uint RootWMOID;
         List<GroupModel> groupModels = new();
         BIH groupTree = new();
@@ -302,7 +301,7 @@ namespace Game.Collision
             if ((ignoreFlags & ModelIgnoreFlags.M2) != ModelIgnoreFlags.Nothing)
             {
                 // M2 models are not taken into account for LoS calculation if caller requested their ignoring.
-                if ((Flags & (uint)ModelFlags.M2) != 0)
+                if (IsM2())
                     return false;
             }
 
@@ -314,26 +313,6 @@ namespace Game.Collision
             WModelRayCallBack isc = new(groupModels);
             groupTree.IntersectRay(ray, isc, ref distance, stopAtFirstHit);
             return isc.hit;
-        }
-
-        public bool IntersectPoint(Vector3 p, Vector3 down, out float dist, AreaInfo info)
-        {
-            dist = 0f;
-            if (groupModels.Empty())
-                return false;
-
-            WModelAreaCallback callback = new(groupModels, down);
-            groupTree.IntersectPoint(p, callback);
-            if (callback.hit != null)
-            {
-                info.rootId = (int)RootWMOID;
-                info.groupId = (int)callback.hit.GetWmoID();
-                info.flags = callback.hit.GetMogpFlags();
-                info.result = true;
-                dist = callback.zDist;
-                return true;
-            }
-            return false;
         }
 
         public bool GetLocationInfo(Vector3 p, Vector3 down, out float dist, GroupLocationInfo info)
@@ -371,6 +350,7 @@ namespace Game.Collision
                 return false;
 
             reader.ReadUInt32(); //chunkSize notused
+            Flags = (ModelFlags)reader.ReadUInt32();
             RootWMOID = reader.ReadUInt32();
 
             // read group models
@@ -391,5 +371,14 @@ namespace Game.Collision
 
             return groupTree.ReadFromFile(reader);
         }
+
+        public bool IsM2() { return Flags.HasFlag(ModelFlags.IsM2); }
+    }
+
+    [Flags]
+    enum ModelFlags
+    {
+        None = 0x0,
+        IsM2 = 0x1
     }
 }

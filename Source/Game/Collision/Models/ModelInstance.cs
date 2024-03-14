@@ -9,11 +9,10 @@ using System.Numerics;
 
 namespace Game.Collision
 {
-    public enum ModelFlags
+    public enum ModelInstanceFlags
     {
-        M2 = 1,
-        HasBound = 1 << 1,
-        ParentSpawn = 1 << 2
+        HasBound = 1 << 0,
+        ParentSpawn = 1 << 1
     }
 
     public class ModelMinimalData
@@ -56,7 +55,7 @@ namespace Game.Collision
             spawn.iRot = reader.Read<Vector3>();
             spawn.iScale = reader.ReadSingle();
 
-            bool has_bound = Convert.ToBoolean(spawn.flags & (uint)ModelFlags.HasBound);
+            bool has_bound = Convert.ToBoolean(spawn.flags & (uint)ModelInstanceFlags.HasBound);
             if (has_bound) // only WMOs have bound in MPQ, only available after computation
             {
                 Vector3 bLow = reader.Read<Vector3>();
@@ -121,35 +120,6 @@ namespace Game.Collision
             return hit;
         }
 
-        public void IntersectPoint(Vector3 p, AreaInfo info)
-        {
-            if (iModel == null)
-                return;
-
-            // M2 files don't contain area info, only WMO files
-            if (Convert.ToBoolean(flags & (uint)ModelFlags.M2))
-                return;
-            if (!iBound.contains(p))
-                return;
-            // child bounds are defined in object space:
-            Vector3 pModel = iInvRot.Multiply(p - iPos) * iInvScale;
-            Vector3 zDirModel = iInvRot.Multiply(new Vector3(0.0f, 0.0f, -1.0f));
-            float zDist;
-            if (iModel.IntersectPoint(pModel, zDirModel, out zDist, info))
-            {
-                Vector3 modelGround = pModel + zDist * zDirModel;
-                // Transform back to world space. Note that:
-                // Mat * vec == vec * Mat.transpose()
-                // and for rotation matrices: Mat.inverse() == Mat.transpose()
-                float world_Z = (iInvRot.Multiply(modelGround) * iScale + iPos).Z;
-                if (info.ground_Z < world_Z)
-                {
-                    info.ground_Z = world_Z;
-                    info.adtId = adtId;
-                }
-            }
-        }
-
         public bool GetLiquidLevel(Vector3 p, LocationInfo info, ref float liqHeight)
         {
             // child bounds are defined in object space:
@@ -172,10 +142,12 @@ namespace Game.Collision
                 return false;
 
             // M2 files don't contain area info, only WMO files
-            if (Convert.ToBoolean(flags & (uint)ModelFlags.M2))
+            if (iModel.IsM2())
                 return false;
+
             if (!iBound.contains(p))
                 return false;
+
             // child bounds are defined in object space:
             Vector3 pModel = iInvRot.Multiply(p - iPos) * iInvScale;
             Vector3 zDirModel = iInvRot.Multiply(new Vector3(0.0f, 0.0f, -1.0f));

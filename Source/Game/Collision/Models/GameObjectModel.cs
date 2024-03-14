@@ -61,7 +61,6 @@ namespace Game.Collision
 
             iBound = rotated_bounds + iPos;
             owner = modelOwner;
-            isWmo = modelData.isWmo;
             return true;
         }
 
@@ -73,6 +72,12 @@ namespace Game.Collision
 
             return mdl;
         }
+
+        public bool IsMapObject()
+        {
+            return !iModel.IsM2();
+        }
+
 
         public override bool IntersectRay(Ray ray, ref float maxDist, bool stopAtFirstHit, PhaseShift phaseShift, ModelIgnoreFlags ignoreFlags)
         {
@@ -97,33 +102,6 @@ namespace Game.Collision
                 maxDist = distance;
             }
             return hit;
-        }
-
-        public override void IntersectPoint(Vector3 point, AreaInfo info, PhaseShift phaseShift)
-        {
-            if (!IsCollisionEnabled() || !owner.IsSpawned() || !IsMapObject())
-                return;
-
-            if (!owner.IsInPhase(phaseShift))
-                return;
-
-            if (!iBound.contains(point))
-                return;
-
-            // child bounds are defined in object space:
-            Vector3 pModel = iInvRot.Multiply(point - iPos) * iInvScale;
-            Vector3 zDirModel = iInvRot.Multiply(new Vector3(0.0f, 0.0f, -1.0f));
-            float zDist;
-            if (iModel.IntersectPoint(pModel, zDirModel, out zDist, info))
-            {
-                Vector3 modelGround = pModel + zDist * zDirModel;
-                float world_Z = (iInvRot.Multiply(modelGround) * iScale + iPos).Z;
-                if (info.ground_Z < world_Z)
-                {
-                    info.ground_Z = world_Z;
-                    info.adtId = owner.GetNameSetId();
-                }
-            }
         }
 
         public bool GetLocationInfo(Vector3 point, LocationInfo info, PhaseShift phaseShift)
@@ -172,7 +150,7 @@ namespace Game.Collision
             }
             return false;
         }
-        
+
         public bool UpdatePosition()
         {
             if (iModel == null)
@@ -210,9 +188,8 @@ namespace Game.Collision
 
         public void EnableCollision(bool enable) { _collisionEnabled = enable; }
         bool IsCollisionEnabled() { return _collisionEnabled; }
-        public bool IsMapObject() { return isWmo; }
         public byte GetNameSetId() { return owner.GetNameSetId(); }
-        
+
         public static bool LoadGameObjectModelList()
         {
             uint oldMSTime = Time.GetMSTime();
@@ -239,13 +216,12 @@ namespace Game.Collision
                         break;
 
                     uint displayId = reader.ReadUInt32();
-                    bool isWmo = reader.ReadBoolean();
                     int name_length = reader.ReadInt32();
                     string name = reader.ReadString(name_length);
                     Vector3 v1 = reader.Read<Vector3>();
                     Vector3 v2 = reader.Read<Vector3>();
 
-                    StaticModelList.models.Add(displayId, new GameobjectModelData(name, v1, v2, isWmo));
+                    StaticModelList.models.Add(displayId, new GameobjectModelData(name, v1, v2));
                 }
             }
             catch (EndOfStreamException ex)
@@ -265,20 +241,17 @@ namespace Game.Collision
         float iScale;
         WorldModel iModel;
         GameObjectModelOwnerBase owner;
-        bool isWmo;
     }
     public class GameobjectModelData
     {
-        public GameobjectModelData(string name_, Vector3 lowBound, Vector3 highBound, bool isWmo_)
+        public GameobjectModelData(string name_, Vector3 lowBound, Vector3 highBound)
         {
             bound = new AxisAlignedBox(lowBound, highBound);
             name = name_;
-            isWmo = isWmo_;
         }
 
         public AxisAlignedBox bound;
         public string name;
-        public bool isWmo;
     }
 }
-    
+

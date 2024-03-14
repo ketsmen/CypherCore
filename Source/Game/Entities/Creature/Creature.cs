@@ -829,9 +829,9 @@ namespace Game.Entities
 
             {
                 // area/zone id is needed immediately for ZoneScript::GetCreatureEntry hook before it is known which creature template to load (no model/scale available yet)
-                PositionFullTerrainStatus positionData = new();
-                GetMap().GetFullTerrainStatusForPosition(GetPhaseShift(), GetPositionX(), GetPositionY(), GetPositionZ(), positionData, LiquidHeaderTypeFlags.AllLiquids, MapConst.DefaultCollesionHeight);
-                ProcessPositionDataChanged(positionData);
+                PositionFullTerrainStatus terrainStatus = new();
+                GetMap().GetFullTerrainStatusForPosition(GetPhaseShift(), GetPositionX(), GetPositionY(), GetPositionZ(), terrainStatus);
+                ProcessPositionDataChanged(terrainStatus);
             }
 
             // Allow players to see those units while dead, do it here (mayby altered by addon auras)
@@ -1724,6 +1724,13 @@ namespace Game.Entities
                 if (CreateVehicleKit(vehId, entry, true))
                     UpdateDisplayPower();
 
+            if (!IsPet())
+            {
+                uint vignetteId = GetCreatureTemplate().VignetteID;
+                if (vignetteId != 0)
+                    SetVignette(vignetteId);
+            }
+
             return true;
         }
 
@@ -2052,6 +2059,10 @@ namespace Game.Entities
                     RemoveUnitFlag(UnitFlags.InCombat);
 
                     SetMeleeDamageSchool((SpellSchools)cInfo.DmgSchool);
+
+                    uint vignetteId = cInfo.VignetteID;
+                    if (vignetteId != 0)
+                        SetVignette(vignetteId);
                 }
 
                 InitializeMovementAI();

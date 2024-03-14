@@ -684,6 +684,10 @@ namespace Game.Entities
             if (isInWater)
                 RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.Swimming);
 
+            // TODO: on heartbeat
+            if (m_vignette != null)
+                Vignettes.Update(m_vignette, this);
+
             return (relocated || turn);
         }
 
@@ -803,7 +807,7 @@ namespace Game.Entities
                     mountFlags = (AreaMountFlags)areaTable.MountFlags;
             }
 
-            ZLiquidStatus liquidStatus = GetMap().GetLiquidStatus(GetPhaseShift(), GetPositionX(), GetPositionY(), GetPositionZ(), LiquidHeaderTypeFlags.AllLiquids);
+            ZLiquidStatus liquidStatus = GetMap().GetLiquidStatus(GetPhaseShift(), GetPositionX(), GetPositionY(), GetPositionZ());
             isSubmerged = liquidStatus.HasAnyFlag(ZLiquidStatus.UnderWater) || HasUnitMovementFlag(MovementFlag.Swimming);
             isInWater = liquidStatus.HasAnyFlag(ZLiquidStatus.InWater | ZLiquidStatus.UnderWater);
 

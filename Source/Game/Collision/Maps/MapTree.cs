@@ -127,7 +127,7 @@ namespace Game.Collision
                         if (ModelSpawn.ReadFromFile(reader, out ModelSpawn spawn))
                         {
                             // acquire model instance
-                            WorldModel model = vm.AcquireModelInstance(spawn.name, spawn.flags);
+                            WorldModel model = vm.AcquireModelInstance(spawn.name);
                             if (model == null)
                                 Log.outError(LogFilter.Server, "StaticMapTree.LoadMapTile() : could not acquire WorldModel [{0}, {1}]", tileX, tileY);
 
@@ -285,27 +285,6 @@ namespace Game.Collision
         public static string GetTileFileName(uint mapID, int tileX, int tileY)
         {
             return $"{mapID:D4}_{tileY:D2}_{tileX:D2}.vmtile";
-        }
-
-        public bool GetAreaInfo(ref Vector3 pos, out uint flags, out int adtId, out int rootId, out int groupId)
-        {
-            flags = 0;
-            adtId = 0;
-            rootId = 0;
-            groupId = 0;
-
-            AreaInfoCallback intersectionCallBack = new(iTreeValues);
-            iTree.IntersectPoint(pos, intersectionCallBack);
-            if (intersectionCallBack.aInfo.result)
-            {
-                flags = intersectionCallBack.aInfo.flags;
-                adtId = intersectionCallBack.aInfo.adtId;
-                rootId = intersectionCallBack.aInfo.rootId;
-                groupId = intersectionCallBack.aInfo.groupId;
-                pos.Z = intersectionCallBack.aInfo.ground_Z;
-                return true;
-            }
-            return false;
         }
 
         public bool GetLocationInfo(Vector3 pos, LocationInfo info)
