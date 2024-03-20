@@ -364,7 +364,7 @@ namespace Game.Entities
             var factionTemplate = CliDB.FactionTemplateStorage.LookupByKey(cInfo.Faction);
             if (factionTemplate != null)
             {
-                SetPvP(factionTemplate.Flags.HasAnyFlag((ushort)FactionTemplateFlags.PVP));
+                SetPvP(factionTemplate.HasFlag(FactionTemplateFlags.PVP));
                 if (IsTaxi())
                 {
                     uint taxiNodesId = Global.ObjectMgr.GetNearestTaxiNode(GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId(),
@@ -777,7 +777,7 @@ namespace Game.Entities
                 lowGuid = map.GenerateLowGuid(HighGuid.Creature);
 
             Creature creature = new();
-            if (creature.Create(lowGuid, map, entry, pos, null, vehId))
+            if (!creature.Create(lowGuid, map, entry, pos, null, vehId))
                 return null;
 
             return creature;
@@ -786,7 +786,7 @@ namespace Game.Entities
         public static Creature CreateCreatureFromDB(ulong spawnId, Map map, bool addToMap = true, bool allowDuplicate = false)
         {
             Creature creature = new();
-            if (creature.LoadFromDB(spawnId, map, addToMap, allowDuplicate))
+            if (!creature.LoadFromDB(spawnId, map, addToMap, allowDuplicate))
                 return null;
 
             return creature;
@@ -1507,7 +1507,7 @@ namespace Game.Entities
             PowerTypeRecord powerTypeEntry = Global.DB2Mgr.GetPowerTypeEntry(powerType);
             if (powerTypeEntry != null)
             {
-                if (powerTypeEntry.GetFlags().HasFlag(PowerTypeFlags.UnitsUseDefaultPowerOnInit))
+                if (powerTypeEntry.HasFlag(PowerTypeFlags.UnitsUseDefaultPowerOnInit))
                     SetPower(powerType, powerTypeEntry.DefaultPower);
                 else
                     SetFullPower(powerType);

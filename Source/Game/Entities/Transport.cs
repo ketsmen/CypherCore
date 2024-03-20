@@ -377,7 +377,7 @@ namespace Game.Entities
             //         because the current GameObjectModel cannot be moved without recreating
             creature.AddUnitState(UnitState.IgnorePathfinding);
 
-            if (creature.IsPositionValid())
+            if (!creature.IsPositionValid())
             {
                 Log.outError(LogFilter.Transport, "Creature (guidlow {0}, entry {1}) not created. Suggested coordinates aren't valid (X: {2} Y: {3})", creature.GetGUID().ToString(), creature.GetEntry(), creature.GetPositionX(), creature.GetPositionY());
                 return null;
@@ -474,7 +474,7 @@ namespace Game.Entities
                                 mask = UnitTypeMask.Minion;
                                 break;
                             default:
-                                if (properties.GetFlags().HasFlag(SummonPropertiesFlags.JoinSummonerSpawnGroup)) // Mirror Image, Summon Gargoyle
+                                if (properties.HasFlag(SummonPropertiesFlags.JoinSummonerSpawnGroup)) // Mirror Image, Summon Gargoyle
                                     mask = UnitTypeMask.Guardian;
                                 break;
                         }
@@ -513,7 +513,7 @@ namespace Game.Entities
                 return null;
 
             WorldObject phaseShiftOwner = this;
-            if (summoner != null && !(properties != null && properties.GetFlags().HasFlag(SummonPropertiesFlags.IgnoreSummonerPhase)))
+            if (summoner != null && !(properties != null && properties.HasFlag(SummonPropertiesFlags.IgnoreSummonerPhase)))
                 phaseShiftOwner = summoner;
 
             if (phaseShiftOwner != null)
