@@ -115,6 +115,8 @@ namespace BNetServer.Networking
                     int i = 0;
                     foreach (byte b in realmListTicketClientInformation.Info.Secret)
                         clientSecret[i++] = b;
+
+                    _clientInfo = new() { Platform = realmListTicketClientInformation.Info.PlatformType, Arch = realmListTicketClientInformation.Info.ClientArch, Type = realmListTicketClientInformation.Info.Type };
                 }
             }
 
@@ -146,7 +148,7 @@ namespace BNetServer.Networking
                 var lastPlayerChar = gameAccountInfo.LastPlayedCharacters.LookupByKey(subRegion.StringValue);
                 if (lastPlayerChar != null)
                 {
-                    var compressed = Global.RealmMgr.GetRealmEntryJSON(lastPlayerChar.RealmId, build);
+                    var compressed = Global.RealmMgr.GetRealmEntryJSON(lastPlayerChar.RealmId, build, gameAccountInfo.SecurityLevel);
                     if (compressed.Length == 0)
                         return BattlenetRpcErrorCode.UtilServerFailedToSerializeResponse;
 
@@ -191,7 +193,7 @@ namespace BNetServer.Networking
             if (subRegion != null)
                 subRegionId = subRegion.StringValue;
 
-            var compressed = Global.RealmMgr.GetRealmList(build, subRegionId);
+            var compressed = Global.RealmMgr.GetRealmList(build, gameAccountInfo.SecurityLevel, subRegionId);
             if (compressed.Length == 0)
                 return BattlenetRpcErrorCode.UtilServerFailedToSerializeResponse;
 
@@ -227,7 +229,7 @@ namespace BNetServer.Networking
         {
             Variant realmAddress = Params.LookupByKey("Param_RealmAddress");
             if (realmAddress != null)
-                return Global.RealmMgr.JoinRealm((uint)realmAddress.UintValue, build, GetRemoteIpAddress(), clientSecret, (Locale)Enum.Parse(typeof(Locale), locale), os, _timezoneOffset, gameAccountInfo.Name, response);
+                return Global.RealmMgr.JoinRealm((uint)realmAddress.UintValue, build, _clientInfo, GetRemoteIpAddress(), clientSecret, (Locale)Enum.Parse(typeof(Locale), locale), os, _timezoneOffset, gameAccountInfo.Name, gameAccountInfo.SecurityLevel, response);
 
             return BattlenetRpcErrorCode.WowServicesInvalidJoinTicket;
         }

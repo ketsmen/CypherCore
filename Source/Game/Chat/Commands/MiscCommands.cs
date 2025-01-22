@@ -145,7 +145,7 @@ namespace Game.Chat
         [CommandNonGroup("bank", RBACPermissions.CommandBank)]
         static bool HandleBankCommand(CommandHandler handler)
         {
-            handler.GetSession().SendShowBank(handler.GetSession().GetPlayer().GetGUID());
+            handler.GetSession().SendShowBank(handler.GetSession().GetPlayer().GetGUID(), PlayerInteractionType.Banker);
             return true;
         }
 
@@ -1250,7 +1250,7 @@ namespace Game.Chat
 
             // Query the prepared statement for login data
             stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_PINFO);
-            stmt.AddValue(0, Global.WorldMgr.GetRealm().Id.Index);
+            stmt.AddValue(0, Global.RealmMgr.GetCurrentRealmId().Index);
             stmt.AddValue(1, accId);
             SQLResult result0 = DB.Login.Query(stmt);
 

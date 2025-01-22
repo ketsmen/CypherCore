@@ -4,8 +4,10 @@
 using Framework.Constants;
 using Framework.Dynamic;
 using Game.Entities;
+using Game.Maps;
 using Game.Scripting;
 using Game.Spells;
+using System;
 using System.Collections.Generic;
 using static Global;
 
@@ -13,6 +15,8 @@ namespace Scripts.Spells.Warlock
 {
     struct SpellIds
     {
+        public const uint AbsoluteCorruption = 196103;
+        public const uint CorruptionDamage = 146739;
         public const uint CreateHealthstone = 23517;
         public const uint DemonicCircleAllowCast = 62388;
         public const uint DemonicCircleSummon = 48018;
@@ -38,8 +42,8 @@ namespace Scripts.Spells.Warlock
         public const uint SoulSwapOverride = 86211;
         public const uint SoulSwapModCost = 92794;
         public const uint SoulSwapDotMarker = 92795;
-        public const uint UnstableAffliction = 30108;
-        public const uint UnstableAfflictionDispel = 31117;
+        public const uint UnstableAfflictionDamage = 196364;
+        public const uint UnstableAfflictionEnergize = 31117;
         public const uint Shadowflame = 37378;
         public const uint Flameshadow = 37379;
         public const uint SummonSuccubus = 712;
@@ -53,11 +57,43 @@ namespace Scripts.Spells.Warlock
         public const uint PriestShadowWordDeath = 32409;
     }
 
+    // 146739 - Corruption
+    [Script] // 445474 - Wither
+    class spell_warl_absolute_corruption : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellEffect((SpellIds.AbsoluteCorruption, 0));
+        }
+
+        public override bool Load()
+        {
+            return GetCaster().HasAura(SpellIds.AbsoluteCorruption);
+        }
+
+        void HandleApply(uint effIndex)
+        {
+            Aura absoluteCorruption = GetCaster().GetAura(SpellIds.AbsoluteCorruption);
+            if (absoluteCorruption != null)
+            {
+                TimeSpan duration = GetHitUnit().IsPvP()
+                    ? TimeSpan.FromSeconds(absoluteCorruption.GetSpellInfo().GetEffect(0).CalcValue())
+                    : TimeSpan.FromMilliseconds(-1);
+
+                GetHitAura().SetMaxDuration((int)duration.TotalMilliseconds);
+                GetHitAura().SetDuration((int)duration.TotalMilliseconds);
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new(HandleApply, 0, SpellEffectName.ApplyAura));
+        }
+    }
+
     [Script] // 710 - Banish
     class spell_warl_banish : SpellScript
     {
-        public spell_warl_banish() { }
-
         void HandleBanish(SpellMissInfo missInfo)
         {
             if (missInfo != SpellMissInfo.Immune)
@@ -364,22 +400,21 @@ namespace Scripts.Spells.Warlock
     }
 
     [Script] // 48181 - Haunt
-    class spell_warl_haunt : SpellScript
+    class spell_warl_haunt : AuraScript
     {
-        void HandleAfterHit()
+        void HandleRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
         {
-            Aura aura = GetHitAura();
-            if (aura != null)
+            if (GetTargetApplication().GetRemoveMode() == AuraRemoveMode.Death)
             {
-                AuraEffect aurEff = aura.GetEffect(1);
-                if (aurEff != null)
-                    aurEff.SetAmount(MathFunctions.CalculatePct(GetHitDamage(), aurEff.GetAmount()));
+                Unit caster = GetCaster();
+                if (caster != null)
+                    caster.GetSpellHistory().ResetCooldown(GetId(), true);
             }
         }
 
         public override void Register()
         {
-            AfterHit.Add(new(HandleAfterHit));
+            OnEffectRemove.Add(new(HandleRemove, 1, AuraType.ModSchoolMaskDamageFromCaster, AuraEffectHandleModes.Real));
         }
     }
 
@@ -556,27 +591,76 @@ namespace Scripts.Spells.Warlock
         }
     }
 
-    [Script] // 27285 - Seed of Corruption
+    [Script] // 27285 - Seed of Corruption (damage)
     class spell_warl_seed_of_corruption : SpellScript
     {
-        void FilterTargets(List<WorldObject> targets)
+        public override bool Validate(SpellInfo spellInfo)
         {
-            if (GetExplTargetUnit() != null)
-                targets.Remove(GetExplTargetUnit());
+            return ValidateSpellInfo(SpellIds.CorruptionDamage);
+        }
+
+        void HandleHit(uint effIndex)
+        {
+            GetCaster().CastSpell(GetHitUnit(), SpellIds.CorruptionDamage, true);
         }
 
         public override void Register()
         {
-            OnObjectAreaTargetSelect.Add(new(FilterTargets, 0, Targets.UnitDestAreaEnemy));
+            OnEffectHitTarget.Add(new(HandleHit, 0, SpellEffectName.SchoolDamage));
+        }
+    }
+
+    [Script]
+    class spell_warl_seed_of_corruption_dummy : SpellScript
+    {
+        void RemoveVisualMissile(ref WorldObject target)
+        {
+            target = null;
+        }
+
+        void SelectTarget(List<WorldObject> targets)
+        {
+            if (targets.Count < 2)
+                return;
+
+            if (!GetExplTargetUnit().HasAura(GetSpellInfo().Id, GetCaster().GetGUID()))
+            {
+                // primary target doesn't have seed, keep it
+                targets.Clear();
+                targets.Add(GetExplTargetUnit());
+            }
+            else
+            {
+                // primary target has seed, select random other target with no seed
+                targets.RemoveAll(new UnitAuraCheck(true, GetSpellInfo().Id, GetCaster().GetGUID()));
+                if (!targets.Empty())
+                    targets.RandomResize(1);
+                else
+                    targets.Add(GetExplTargetUnit());
+            }
+        }
+
+        public override void Register()
+        {
+            OnObjectTargetSelect.Add(new(RemoveVisualMissile, 0, Targets.UnitTargetEnemy));
+            OnObjectAreaTargetSelect.Add(new(SelectTarget, 1, Targets.UnitDestAreaEnemy));
+            OnObjectAreaTargetSelect.Add(new(SelectTarget, 2, Targets.UnitDestAreaEnemy));
         }
     }
 
     [Script] // 27243 - Seed of Corruption
-    class spell_warl_seed_of_corruption_dummy : AuraScript
+    class spell_warl_seed_of_corruption_dummy_aura : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)
         {
             return ValidateSpellInfo(SpellIds.SeedOfCorruptionDamage);
+        }
+
+        void OnPeriodic(AuraEffect aurEff)
+        {
+            Unit caster = GetCaster();
+            if (caster != null)
+                caster.CastSpell(GetTarget(), SpellIds.SeedOfCorruptionDamage, aurEff);
         }
 
         void CalculateBuffer(AuraEffect aurEff, ref int amount, ref bool canBeRecalculated)
@@ -591,29 +675,38 @@ namespace Scripts.Spells.Warlock
         void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
         {
             PreventDefaultAction();
+
             DamageInfo damageInfo = eventInfo.GetDamageInfo();
-            if (damageInfo == null || damageInfo.GetDamage() == 0)
+            if (damageInfo == null)
                 return;
-
-            int amount = (int)(aurEff.GetAmount() - damageInfo.GetDamage());
-            if (amount > 0)
-            {
-                aurEff.SetAmount(amount);
-                if (!GetTarget().HealthBelowPctDamaged(1, damageInfo.GetDamage()))
-                    return;
-            }
-
-            Remove();
 
             Unit caster = GetCaster();
             if (caster == null)
                 return;
+
+            if (damageInfo.GetAttacker() == null || damageInfo.GetAttacker() != caster)
+                return;
+
+            // other seed explosions detonate this instantly, no matter what damage amount is
+            if (damageInfo.GetSpellInfo() == null || damageInfo.GetSpellInfo().Id != SpellIds.SeedOfCorruptionDamage)
+            {
+                int amount = (int)(aurEff.GetAmount() - damageInfo.GetDamage());
+                if (amount > 0)
+                {
+                    aurEff.SetAmount(amount);
+                    if (!GetTarget().HealthBelowPctDamaged(1, damageInfo.GetDamage()))
+                        return;
+                }
+            }
+
+            Remove();
 
             caster.CastSpell(eventInfo.GetActionTarget(), SpellIds.SeedOfCorruptionDamage, aurEff);
         }
 
         public override void Register()
         {
+            OnEffectPeriodic.Add(new(OnPeriodic, 1, AuraType.PeriodicDamage));
             DoEffectCalcAmount.Add(new(CalculateBuffer, 2, AuraType.Dummy));
             OnEffectProc.Add(new(HandleProc, 2, AuraType.Dummy));
         }
@@ -942,46 +1035,47 @@ namespace Scripts.Spells.Warlock
         }
     }
 
-    [Script] // 30108, 34438, 34439, 35183 - Unstable Affliction
+    [Script] // 316099 - Unstable Affliction
     class spell_warl_unstable_affliction : AuraScript
     {
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.UnstableAfflictionDispel);
+            return ValidateSpellInfo(SpellIds.UnstableAfflictionDamage, SpellIds.UnstableAfflictionEnergize);
         }
 
         void HandleDispel(DispelInfo dispelInfo)
         {
             Unit caster = GetCaster();
-            if (caster != null)
-            {
-                AuraEffect aurEff = GetEffect(1);
-                if (aurEff != null)
-                {
-                    Unit target = dispelInfo.GetDispeller().ToUnit();
-                    if (target != null)
-                    {
-                        int bp = aurEff.GetAmount();
-                        bp = target.SpellDamageBonusTaken(caster, aurEff.GetSpellInfo(), bp, DamageEffectType.DOT);
-                        bp *= 9;
+            if (caster == null)
+                return;
 
-                        // backfire damage and silence
-                        CastSpellExtraArgs args = new(aurEff);
-                        args.AddSpellMod(SpellValueMod.BasePoint0, bp);
-                        caster.CastSpell(target, SpellIds.UnstableAfflictionDispel, args);
-                    }
-                }
-            }
+            AuraEffect removedEffect = GetEffect(1);
+            if (removedEffect == null)
+                return;
+
+            int damage = (int)(GetEffectInfo(0).CalcValue(caster, null, GetUnitOwner()) / 100.0f * removedEffect.CalculateEstimatedAmount(caster, removedEffect.GetAmount()));
+            caster.CastSpell(dispelInfo.GetDispeller(), SpellIds.UnstableAfflictionDamage, new CastSpellExtraArgs()
+                .AddSpellMod(SpellValueMod.BasePoint0, damage)
+                .SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError));
+        }
+
+        void HandleRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            if (GetTargetApplication().GetRemoveMode() != AuraRemoveMode.Death)
+                return;
+
+            GetCaster().CastSpell(GetCaster(), SpellIds.UnstableAfflictionEnergize, true);
         }
 
         public override void Register()
         {
             AfterDispel.Add(new(HandleDispel));
+            OnEffectRemove.Add(new(HandleRemove, 1, AuraType.PeriodicDamage, AuraEffectHandleModes.Real));
         }
     }
 
     // 5740 - Rain of Fire
-    [Script] /// Updated 7.1.5
+    [Script] /// Updated 11.0.2
     class spell_warl_rain_of_fire : AuraScript
     {
         void HandleDummyTick(AuraEffect aurEff)
@@ -1006,7 +1100,7 @@ namespace Scripts.Spells.Warlock
 
         public override void Register()
         {
-            OnEffectPeriodic.Add(new(HandleDummyTick, 3, AuraType.PeriodicDummy));
+            OnEffectPeriodic.Add(new(HandleDummyTick, 2, AuraType.PeriodicDummy));
         }
     }
 }

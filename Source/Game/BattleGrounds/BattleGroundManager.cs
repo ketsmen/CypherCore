@@ -3,13 +3,7 @@
 
 using Framework.Constants;
 using Framework.Database;
-using Game.BattleGrounds.Zones;
-using Game.BattleGrounds.Zones.AlteracValley;
-using Game.BattleGrounds.Zones.ArathisBasin;
-using Game.BattleGrounds.Zones.EyeofStorm;
-using Game.BattleGrounds.Zones.IsleOfConquest;
-using Game.BattleGrounds.Zones.StrandOfAncients;
-using Game.BattleGrounds.Zones.WarsongGluch;
+using Game.Arenas;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Networking.Packets;
@@ -201,6 +195,60 @@ namespace Game.BattleGrounds
             return null;
         }
 
+        public void LoadBattlegroundScriptTemplate()
+        {
+            uint oldMSTime = Time.GetMSTime();
+
+            //                                         0      1                   2
+            SQLResult result = DB.World.Query("SELECT MapId, BattlemasterListId, ScriptName FROM battleground_scripts");
+            if (result.IsEmpty())
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loaded 0 battleground scripts. DB table `battleground_scripts` is empty!");
+                return;
+            }
+
+            uint count = 0;
+            do
+            {
+                uint mapID = result.Read<uint>(0);
+
+                var mapEntry = CliDB.MapStorage.LookupByKey(mapID);
+                if (mapEntry == null || !mapEntry.IsBattlegroundOrArena())
+                {
+                    Log.outError(LogFilter.Sql, $"BattlegroundMgr::LoadBattlegroundScriptTemplate: bad mapid {mapID}! Map doesn't exist or is not a battleground/arena!");
+                    continue;
+                }
+
+                BattlegroundTypeId bgTypeId = (BattlegroundTypeId)result.Read<uint>(1);
+                if (bgTypeId != BattlegroundTypeId.None && !_battlegroundTemplates.ContainsKey(bgTypeId))
+                {
+                    Log.outError(LogFilter.Sql, $"BattlegroundMgr::LoadBattlegroundScriptTemplate: bad battlemasterlist id {bgTypeId}! Battleground doesn't exist or is not supported in battleground_template!");
+                    continue;
+                }
+
+                BattlegroundScriptTemplate scriptTemplate = new();
+                scriptTemplate.MapId = mapID;
+                scriptTemplate.Id = bgTypeId;
+                scriptTemplate.ScriptId = Global.ObjectMgr.GetScriptId(result.Read<string>(2));
+
+                _battlegroundScriptTemplates[(mapID, bgTypeId)] = scriptTemplate;
+
+                ++count;
+            } while (result.NextRow());
+
+            Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} battleground scripts in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
+        }
+
+        public BattlegroundScriptTemplate FindBattlegroundScriptTemplate(uint mapId, BattlegroundTypeId bgTypeId)
+        {
+            BattlegroundScriptTemplate scriptTemplate = _battlegroundScriptTemplates.LookupByKey((mapId, bgTypeId));
+            if (scriptTemplate != null)
+                return scriptTemplate;
+
+            // fall back to 0 for no specific battleground type id
+            return _battlegroundScriptTemplates.LookupByKey((mapId, BattlegroundTypeId.None));
+        }
+
         uint CreateClientVisibleInstanceId(BattlegroundTypeId bgTypeId, BattlegroundBracketId bracket_id)
         {
             if (IsArenaType(bgTypeId))
@@ -242,64 +290,18 @@ namespace Game.BattleGrounds
             if (bgTypeId == BattlegroundTypeId.RB || bgTypeId == BattlegroundTypeId.AA || bgTypeId == BattlegroundTypeId.RandomEpic)
                 return null;
 
-            PvpDifficultyRecord bracketEntry = Global.DB2Mgr.GetBattlegroundBracketById((uint)bg_template.BattlemasterEntry.MapId[0], bracketId);
+            PvpDifficultyRecord bracketEntry = Global.DB2Mgr.GetBattlegroundBracketById((uint)bg_template.MapIDs[0], bracketId);
             if (bracketEntry == null)
             {
-                Log.outError(LogFilter.Battleground, $"Battleground: CreateNewBattleground: bg bracket entry not found for map {bg_template.BattlemasterEntry.MapId[0]} bracket id {bracketId}");
+                Log.outError(LogFilter.Battleground, $"Battleground: CreateNewBattleground: bg bracket entry not found for map {bg_template.MapIDs[0]} bracket id {bracketId}");
                 return null;
             }
 
             Battleground bg = null;
-            // create a copy of the BG template
-            switch (bgTypeId)
-            {
-                case BattlegroundTypeId.AV:
-                    bg = new BgAlteracValley(bg_template);
-                    break;
-                case BattlegroundTypeId.WS:
-                case BattlegroundTypeId.WgCtf:
-                    bg = new BgWarsongGluch(bg_template);
-                    break;
-                case BattlegroundTypeId.AB:
-                case BattlegroundTypeId.DomAb:
-                    bg = new BgArathiBasin(bg_template);
-                    break;
-                case BattlegroundTypeId.NA:
-                    bg = new BgNagrandArena(bg_template);
-                    break;
-                case BattlegroundTypeId.BE:
-                    bg = new BgBladesEdgeArena(bg_template);
-                    break;
-                case BattlegroundTypeId.EY:
-                    bg = new BgEyeofStorm(bg_template);
-                    break;
-                case BattlegroundTypeId.RL:
-                    bg = new BgRuinsOfLordaernon(bg_template);
-                    break;
-                case BattlegroundTypeId.SA:
-                    bg = new BgStrandOfAncients(bg_template);
-                    break;
-                case BattlegroundTypeId.DS:
-                    bg = new BgDalaranSewers(bg_template);
-                    break;
-                case BattlegroundTypeId.RV:
-                    bg = new BgTheRingOfValor(bg_template);
-                    break;
-                case BattlegroundTypeId.IC:
-                    bg = new BgIsleofConquest(bg_template);
-                    break;
-                case BattlegroundTypeId.TP:
-                    bg = new BgTwinPeaks(bg_template);
-                    break;
-                case BattlegroundTypeId.BFG:
-                    bg = new BgBattleforGilneas(bg_template);
-                    break;
-                case BattlegroundTypeId.RB:
-                case BattlegroundTypeId.AA:
-                case BattlegroundTypeId.RandomEpic:
-                default:
-                    return null;
-            }
+            if (bg_template.IsArena())
+                bg = new Arena(bg_template);
+            else
+                bg = new Battleground(bg_template);
 
             bg.SetBracket(bracketEntry);
             bg.SetInstanceID(Global.MapMgr.GenerateInstanceId());
@@ -326,6 +328,11 @@ namespace Game.BattleGrounds
                 return;
             }
 
+            MultiMap<BattlegroundTypeId, int> mapsByBattleground = new();
+            foreach (var (_, battlemasterListXMap) in CliDB.BattlemasterListXMapStorage)
+                if (CliDB.BattlemasterListStorage.HasRecord(battlemasterListXMap.BattlemasterListID) && CliDB.MapStorage.HasRecord((uint)battlemasterListXMap.MapID))
+                    mapsByBattleground.Add((BattlegroundTypeId)battlemasterListXMap.BattlemasterListID, battlemasterListXMap.MapID);
+
             uint count = 0;
             do
             {
@@ -349,6 +356,7 @@ namespace Game.BattleGrounds
 
                 bgTemplate.ScriptId = Global.ObjectMgr.GetScriptId(result.Read<string>(5));
                 bgTemplate.BattlemasterEntry = bl;
+                bgTemplate.MapIDs = mapsByBattleground[bgTypeId];
 
                 if (bgTemplate.Id != BattlegroundTypeId.AA && !IsRandomBattleground(bgTemplate.Id))
                 {
@@ -379,8 +387,8 @@ namespace Game.BattleGrounds
 
                 _battlegroundTemplates[bgTypeId] = bgTemplate;
 
-                if (bgTemplate.BattlemasterEntry.MapId[1] == -1) // in this case we have only one mapId
-                    _battlegroundMapTemplates[(uint)bgTemplate.BattlemasterEntry.MapId[0]] = _battlegroundTemplates[bgTypeId];
+                if (bgTemplate.MapIDs.Count == 1)
+                    _battlegroundMapTemplates[(uint)bgTemplate.MapIDs[0]] = _battlegroundTemplates[bgTypeId];
 
                 ++count;
             }
@@ -415,7 +423,7 @@ namespace Game.BattleGrounds
 
                 WorldSafeLocsEntry pos = bg.GetTeamStartPosition(Battleground.GetTeamIndexByTeamId(team));
                 Log.outDebug(LogFilter.Battleground, $"BattlegroundMgr.SendToBattleground: Sending {player.GetName()} to map {mapid}, {pos.Loc} (bgType {bgTypeId})");
-                player.TeleportTo(pos.Loc);
+                player.TeleportTo(new Entities.TeleportLocation() { Location = pos.Loc, TransportGuid = pos.TransportSpawnId.HasValue ? ObjectGuid.Create(HighGuid.Transport, pos.TransportSpawnId.Value) : ObjectGuid.Empty });
             }
             else
                 Log.outError(LogFilter.Battleground, $"BattlegroundMgr.SendToBattleground: Instance {instanceId} (bgType {bgTypeId}) not found while trying to teleport player {player.GetName()}");
@@ -639,11 +647,8 @@ namespace Game.BattleGrounds
             {
                 Dictionary<BattlegroundTypeId, float> selectionWeights = new();
 
-                foreach (var mapId in bgTemplate.BattlemasterEntry.MapId)
+                foreach (var mapId in bgTemplate.MapIDs)
                 {
-                    if (mapId == -1)
-                        break;
-
                     BattlegroundTemplate bg = GetBattlegroundTemplateByMapId((uint)mapId);
                     if (bg != null)
                     {
@@ -723,6 +728,7 @@ namespace Game.BattleGrounds
         Dictionary<uint, BattlegroundTypeId> mBattleMastersMap = new();
         Dictionary<BattlegroundTypeId, BattlegroundTemplate> _battlegroundTemplates = new();
         Dictionary<uint, BattlegroundTemplate> _battlegroundMapTemplates = new();
+        Dictionary<(uint, BattlegroundTypeId), BattlegroundScriptTemplate> _battlegroundScriptTemplates = new();
 
         struct ScheduledQueueUpdate
         {
@@ -785,6 +791,7 @@ namespace Game.BattleGrounds
         public byte Weight;
         public uint ScriptId;
         public BattlemasterListRecord BattlemasterEntry;
+        public List<int> MapIDs = new();
 
         public bool IsArena() { return BattlemasterEntry.InstanceType == (uint)MapTypes.Arena; }
 
@@ -807,5 +814,12 @@ namespace Game.BattleGrounds
         {
             return BattlemasterEntry.MaxLevel;
         }
+    }
+
+    public class BattlegroundScriptTemplate
+    {
+        public uint MapId;
+        public BattlegroundTypeId Id;
+        public uint ScriptId;
     }
 }

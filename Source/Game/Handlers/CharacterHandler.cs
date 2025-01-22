@@ -46,7 +46,7 @@ namespace Game
             EnumCharactersResult charResult = new();
             charResult.Success = true;
             charResult.IsDeletedCharacters = holder.IsDeletedCharacters();
-            charResult.DisabledClassesMask = WorldConfig.GetUIntValue(WorldCfg.CharacterCreatingDisabledClassmask);
+            charResult.ClassDisableMask = WorldConfig.GetUIntValue(WorldCfg.CharacterCreatingDisabledClassmask);
 
             if (!charResult.IsDeletedCharacters)
                 _legitCharacters.Clear();
@@ -70,7 +70,10 @@ namespace Game
             {
                 do
                 {
-                    EnumCharactersResult.CharacterInfo charInfo = new(result.GetFields());
+                    charResult.Characters.Add(new EnumCharactersResult.CharacterInfo(result.GetFields()));
+
+
+                    EnumCharactersResult.CharacterInfoBasic charInfo = charResult.Characters.Last().Basic;
 
                     var customizationsForChar = customizations.LookupByKey(charInfo.Guid.GetCounter());
                     if (!customizationsForChar.Empty())
@@ -105,8 +108,6 @@ namespace Game
                         Global.CharacterCacheStorage.AddCharacterCacheEntry(charInfo.Guid, GetAccountId(), charInfo.Name, charInfo.SexId, charInfo.RaceId, (byte)charInfo.ClassId, charInfo.ExperienceLevel, false);
 
                     charResult.MaxCharacterLevel = Math.Max(charResult.MaxCharacterLevel, charInfo.ExperienceLevel);
-
-                    charResult.Characters.Add(charInfo);
                 }
                 while (result.NextRow() && charResult.Characters.Count < 200);
             }
@@ -115,8 +116,8 @@ namespace Game
             {
                 EnumCharactersResult.RaceUnlock raceUnlock = new();
                 raceUnlock.RaceID = requirement.Key;
-                raceUnlock.HasExpansion = (byte)GetAccountExpansion() >= requirement.Value.Expansion;
-                raceUnlock.HasAchievement = requirement.Value.AchievementId != 0 && (WorldConfig.GetBoolValue(WorldCfg.CharacterCreatingDisableAlliedRaceAchievementRequirement)
+                raceUnlock.HasUnlockedLicense = (byte)GetAccountExpansion() >= requirement.Value.Expansion;
+                raceUnlock.HasUnlockedAchievement = requirement.Value.AchievementId != 0 && (WorldConfig.GetBoolValue(WorldCfg.CharacterCreatingDisableAlliedRaceAchievementRequirement)
                     /* || HasAccountAchievement(requirement.second.AchievementId)*/);
                 charResult.RaceUnlockData.Add(raceUnlock);
             }
@@ -143,20 +144,20 @@ namespace Game
             EnumCharactersResult charEnum = new();
             charEnum.Success = true;
             charEnum.IsDeletedCharacters = true;
-            charEnum.DisabledClassesMask = WorldConfig.GetUIntValue(WorldCfg.CharacterCreatingDisabledClassmask);
+            charEnum.ClassDisableMask = WorldConfig.GetUIntValue(WorldCfg.CharacterCreatingDisabledClassmask);
 
             if (!result.IsEmpty())
             {
                 do
                 {
-                    EnumCharactersResult.CharacterInfo charInfo = new(result.GetFields());
+                    charEnum.Characters.Add(new EnumCharactersResult.CharacterInfo(result.GetFields()));
+
+                    EnumCharactersResult.CharacterInfoBasic charInfo = charEnum.Characters.Last().Basic;
 
                     Log.outInfo(LogFilter.Network, "Loading undeleted char guid {0} from account {1}.", charInfo.Guid.ToString(), GetAccountId());
 
                     if (!Global.CharacterCacheStorage.HasCharacterCacheEntry(charInfo.Guid)) // This can happen if characters are inserted into the database manually. Core hasn't loaded name data yet.
                         Global.CharacterCacheStorage.AddCharacterCacheEntry(charInfo.Guid, GetAccountId(), charInfo.Name, charInfo.SexId, charInfo.RaceId, (byte)charInfo.ClassId, charInfo.ExperienceLevel, true);
-
-                    charEnum.Characters.Add(charInfo);
                 }
                 while (result.NextRow());
             }
@@ -417,6 +418,12 @@ namespace Game
                 return;
             }
 
+            if (charCreate.CreateInfo.TimerunningSeasonID != 0)
+            {
+                SendCharCreate(ResponseCodes.CharCreateTimerunning);
+                return;
+            }
+
             CharacterCreateInfo createInfo = charCreate.CreateInfo;
             PreparedStatement stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_CHECK_NAME);
             stmt.AddValue(0, charCreate.CreateInfo.Name);
@@ -602,15 +609,15 @@ namespace Game
                     stmt = LoginDatabase.GetPreparedStatement(LoginStatements.REP_REALM_CHARACTERS);
                     stmt.AddValue(0, createInfo.CharCount);
                     stmt.AddValue(1, GetAccountId());
-                    stmt.AddValue(2, Global.WorldMgr.GetRealm().Id.Index);
+                    stmt.AddValue(2, Global.RealmMgr.GetCurrentRealmId().Index);
                     loginTransaction.Append(stmt);
-
-                    DB.Login.CommitTransaction(loginTransaction);
 
                     AddTransactionCallback(DB.Characters.AsyncCommitTransaction(characterTransaction)).AfterComplete(success =>
                     {
                         if (success)
                         {
+                            DB.Login.CommitTransaction(loginTransaction);
+
                             Log.outInfo(LogFilter.Player, "Account: {0} (IP: {1}) Create Character: {2} {3}", GetAccountId(), GetRemoteAddress(), createInfo.Name, newChar.GetGUID().ToString());
                             Global.ScriptMgr.OnPlayerCreate(newChar);
                             Global.CharacterCacheStorage.AddCharacterCacheEntry(newChar.GetGUID(), GetAccountId(), newChar.GetName(), (byte)newChar.GetNativeGender(), (byte)newChar.GetRace(), (byte)newChar.GetClass(), (byte)newChar.GetLevel(), false);
@@ -840,6 +847,8 @@ namespace Game
                 pCurrChar.SetGuildRank(0);
                 pCurrChar.SetGuildLevel(0);
             }
+
+            SendAuctionFavoriteList();
 
             pCurrChar.GetSession().GetBattlePetMgr().SendJournalLockStatus();
 
@@ -1117,7 +1126,7 @@ namespace Game
             features.ComplaintStatus = (byte)ComplaintStatus.EnabledWithAutoIgnore;
             features.CfgRealmID = 2;
             features.CfgRealmRecID = 0;
-            features.TokenPollTimeSeconds = 300;
+            features.CommercePricePollTimeSeconds = 300;
             features.VoiceEnabled = false;
             features.BrowserEnabled = false; // Has to be false, otherwise client will crash if "Customer Support" is opened
 
@@ -1126,7 +1135,7 @@ namespace Game
             europaTicketSystemStatus.ThrottleState.PerMilliseconds = 60000;
             europaTicketSystemStatus.ThrottleState.TryCount = 1;
             europaTicketSystemStatus.ThrottleState.LastResetTimeBeforeNow = 111111;
-            features.TutorialsEnabled = true;
+            features.TutorialEnabled = true;
             features.NPETutorialsEnabled = true;
             // END OF DUMMY VALUES
 
@@ -1139,11 +1148,10 @@ namespace Game
 
             features.CharUndeleteEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemCharacterUndeleteEnabled);
             features.BpayStoreEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemBpayStoreEnabled);
-            features.WarModeFeatureEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemWarModeEnabled);
-            features.IsMuted = !CanSpeak();
+            features.WarModeEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemWarModeEnabled);
+            features.IsChatMuted = !CanSpeak();
 
-
-            features.TextToSpeechFeatureEnabled = false;
+            features.SpeakForMeAllowed = false;
 
             SendPacket(features);
         }
@@ -1237,12 +1245,6 @@ namespace Game
             {
                 SendPacket(new CheckCharacterNameAvailabilityResult(sequenceIndex, !result.IsEmpty() ? ResponseCodes.CharCreateNameInUse : ResponseCodes.Success));
             }));
-        }
-
-        [WorldPacketHandler(ClientOpcodes.RequestForcedReactions)]
-        void HandleRequestForcedReactions(RequestForcedReactions requestForcedReactions)
-        {
-            GetPlayer().GetReputationMgr().SendForceReactions();
         }
 
         [WorldPacketHandler(ClientOpcodes.CharacterRenameRequest, Status = SessionStatus.Authed)]
@@ -1394,10 +1396,8 @@ namespace Game
                     if (!MeetsChrCustomizationReq(req, (Race)packet.CustomizedRace, _player.GetClass(), false, packet.Customizations))
                         return;
 
-                var condition = CliDB.PlayerConditionStorage.LookupByKey(conditionalChrModel.PlayerConditionID);
-                if (condition != null)
-                    if (!ConditionManager.IsPlayerMeetingCondition(_player, condition))
-                        return;
+                if (!ConditionManager.IsPlayerMeetingCondition(_player, (uint)conditionalChrModel.PlayerConditionID))
+                    return;
             }
 
             if (!ValidateAppearance(_player.GetRace(), _player.GetClass(), (Gender)packet.NewSex, packet.Customizations))
@@ -1632,10 +1632,8 @@ namespace Game
                     if (illusion.ItemVisual == 0 || !illusion.HasFlag(SpellItemEnchantmentFlags.AllowTransmog))
                         return false;
 
-                    PlayerConditionRecord condition = CliDB.PlayerConditionStorage.LookupByKey(illusion.TransmogUseConditionID);
-                    if (condition != null)
-                        if (!ConditionManager.IsPlayerMeetingCondition(_player, condition))
-                            return false;
+                    if (!ConditionManager.IsPlayerMeetingCondition(_player, illusion.TransmogUseConditionID))
+                        return false;
 
                     if (illusion.ScalingClassRestricted > 0 && illusion.ScalingClassRestricted != (byte)_player.GetClass())
                         return false;
@@ -1947,6 +1945,7 @@ namespace Game
                         case Race.Vulpera:
                             stmt.AddValue(1, 2776);
                             break;
+                        case Race.PandarenNeutral:
                         case Race.PandarenAlliance:
                         case Race.PandarenHorde:
                             stmt.AddValue(1, 905);
@@ -1954,6 +1953,10 @@ namespace Game
                         case Race.DracthyrAlliance:
                         case Race.DracthyrHorde:
                             stmt.AddValue(1, 138);
+                            break;
+                        case Race.EarthenDwarfHorde:
+                        case Race.EarthenDwarfAlliance:
+                            stmt.AddValue(1, 140);
                             break;
                         default:
                             Log.outError(LogFilter.Player, $"Could not find language data for race ({factionChangeInfo.RaceID}).");

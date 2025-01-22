@@ -31,6 +31,8 @@ namespace Game.Entities
             m_updateFlag.Stationary = true;
             m_updateFlag.Rotation = true;
 
+            m_entityFragments.Add(EntityFragment.Tag_GameObject, false);
+
             m_respawnDelayTime = 300;
             m_despawnDelay = 0;
             m_lootState = LootState.NotReady;
@@ -290,13 +292,15 @@ namespace Game.Entities
                     m_goValue.FishingHole.MaxOpens = RandomHelper.URand(GetGoInfo().FishingHole.minRestock, GetGoInfo().FishingHole.maxRestock);
                     break;
                 case GameObjectTypes.DestructibleBuilding:
-                    m_goValue.Building.Health = 20000;//goinfo.DestructibleBuilding.intactNumHits + goinfo.DestructibleBuilding.damagedNumHits;
-                    m_goValue.Building.MaxHealth = m_goValue.Building.Health;
+                    m_goValue.Building.DestructibleHitpoint = Global.ObjectMgr.GetDestructibleHitpoint(GetGoInfo().DestructibleBuilding.HealthRec);
+                    m_goValue.Building.Health = m_goValue.Building.DestructibleHitpoint != null ? m_goValue.Building.DestructibleHitpoint.GetMaxHealth() : 0;
                     SetGoAnimProgress(255);
+
                     // yes, even after the updatefield rewrite this garbage hack is still in client
                     SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.ParentRotation), new Quaternion(goInfo.DestructibleBuilding.DestructibleModelRec, 0f, 0f, 0f));
                     break;
                 case GameObjectTypes.Transport:
+                    m_updateFlag.GameObject = true;
                     m_goTypeImpl = new GameObjectType.Transport(this);
 
                     if (goInfo.Transport.startOpen != 0)
@@ -379,7 +383,7 @@ namespace Game.Entities
 
             LastUsedScriptID = GetGoInfo().ScriptId;
 
-            m_stringIds[0] = goInfo.StringId;
+            m_stringIds[(int)StringIdType.Template] = goInfo.StringId;
 
             AIM_Initialize();
 
@@ -1162,7 +1166,7 @@ namespace Game.Entities
 
             m_goData = data;
 
-            m_stringIds[1] = data.StringId;
+            m_stringIds[(int)StringIdType.Spawn] = data.StringId;
 
             if (addToMap && !GetMap().AddToMap(this))
                 return false;
@@ -1366,13 +1370,38 @@ namespace Game.Entities
             }
         }
 
+        public bool HasConditionalInteraction()
+        {
+            if (GetGoInfo().GetQuestID() != 0)
+                return true;
+
+            if (GetGoType() != GameObjectTypes.AuraGenerator && GetGoInfo().GetConditionID1() != 0)
+                return true;
+
+            if (Global.ObjectMgr.IsGameObjectForQuests(GetEntry()))
+                return true;
+
+            return false;
+        }
+
+        public bool CanActivateForPlayer(Player target)
+        {
+            if (!MeetsInteractCondition(target))
+                return false;
+
+            if (!ActivateToQuest(target))
+                return false;
+
+            return true;
+        }
+
         public bool ActivateToQuest(Player target)
         {
             if (target.HasQuestForGO((int)GetEntry()))
                 return true;
 
             if (!Global.ObjectMgr.IsGameObjectForQuests(GetEntry()))
-                return false;
+                return true;
 
             switch (GetGoType())
             {
@@ -1393,9 +1422,6 @@ namespace Game.Entities
                         || LootStorage.Gameobject.HaveQuestLootForPlayer(GetGoInfo().Chest.chestPersonalLoot, target)
                         || LootStorage.Gameobject.HaveQuestLootForPlayer(GetGoInfo().Chest.chestPushLoot, target))
                     {
-                        Battleground bg = target.GetBattleground();
-                        if (bg != null)
-                            return bg.CanActivateGO((int)GetEntry(), (uint)bg.GetPlayerTeam(target.GetGUID()));
                         return true;
                     }
                     break;
@@ -1406,9 +1432,21 @@ namespace Game.Entities
                         return true;
                     break;
                 }
+                case GameObjectTypes.SpellFocus:
+                {
+                    if (target.GetQuestStatus(GetGoInfo().SpellFocus.questID) == QuestStatus.Incomplete)
+                        return true;
+                    break;
+                }
                 case GameObjectTypes.Goober:
                 {
                     if (target.GetQuestStatus(GetGoInfo().Goober.questID) == QuestStatus.Incomplete)
+                        return true;
+                    break;
+                }
+                case GameObjectTypes.GatheringNode:
+                {
+                    if (LootStorage.Gameobject.HaveQuestLootForPlayer(GetGoInfo().GatheringNode.chestLoot, target))
                         return true;
                     break;
                 }
@@ -1699,10 +1737,6 @@ namespace Game.Entities
                 {
                     Player player = user.ToPlayer();
                     if (player == null)
-                        return;
-
-                    Battleground bg = player.GetBattleground();
-                    if (bg != null && !bg.CanActivateGO((int)GetEntry(), (uint)bg.GetPlayerTeam(user.GetGUID())))
                         return;
 
                     GameObjectTemplate info = GetGoInfo();
@@ -2233,12 +2267,12 @@ namespace Game.Entities
                         return;
 
                     //required lvl checks!
-                    var userLevels = Global.DB2Mgr.GetContentTuningData(info.ContentTuningId, player.m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                    var userLevels = Global.DB2Mgr.GetContentTuningData(info.ContentTuningId, player.m_playerData.CtrOptions.GetValue().ConditionalFlags);
                     if (userLevels.HasValue)
                         if (player.GetLevel() < userLevels.Value.MaxLevel)
                             return;
 
-                    var targetLevels = Global.DB2Mgr.GetContentTuningData(info.ContentTuningId, targetPlayer.m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                    var targetLevels = Global.DB2Mgr.GetContentTuningData(info.ContentTuningId, targetPlayer.m_playerData.CtrOptions.GetValue().ConditionalFlags);
                     if (targetLevels.HasValue)
                         if (targetPlayer.GetLevel() < targetLevels.Value.MaxLevel)
                             return;
@@ -2250,7 +2284,6 @@ namespace Game.Entities
 
                     break;
                 }
-
                 case GameObjectTypes.FlagStand:                     // 24
                 {
                     if (!user.IsTypeId(TypeId.Player))
@@ -2260,29 +2293,22 @@ namespace Game.Entities
 
                     if (player.CanUseBattlegroundObject(this))
                     {
-                        // in Battlegroundcheck
-                        Battleground bg = player.GetBattleground();
-                        if (bg == null)
+                        if (player.GetVehicle() != null)
                             return;
 
-                        if (player.GetVehicle() != null)
+                        if (HasFlag(GameObjectFlags.InUse))
+                            return;
+
+                        if (!MeetsInteractCondition(player))
                             return;
 
                         player.RemoveAurasByType(AuraType.ModStealth);
                         player.RemoveAurasByType(AuraType.ModInvisibility);
-                        // BG flag click
-                        // AB:
-                        // 15001
-                        // 15002
-                        // 15003
-                        // 15004
-                        // 15005
-                        bg.EventPlayerClickedOnFlag(player, this);
-                        return;                                     //we don;t need to delete flag ... it is despawned!
+                        spellId = GetGoInfo().FlagStand.pickupSpell;
+                        spellCaster = null;
                     }
                     break;
                 }
-
                 case GameObjectTypes.FishingHole:                   // 25
                 {
                     if (!user.IsTypeId(TypeId.Player))
@@ -2290,7 +2316,7 @@ namespace Game.Entities
 
                     Player player = user.ToPlayer();
 
-                    Loot loot = new Loot(GetMap(), GetGUID(), LootType.Fishinghole, null);
+                    Loot loot = new(GetMap(), GetGUID(), LootType.Fishinghole, null);
                     loot.FillLoot(GetGoInfo().GetLootId(), LootStorage.Gameobject, player, true, false, LootModes.Default, ItemBonusMgr.GetContextForPlayer(GetMap().GetMapDifficulty(), player));
                     m_personalLoot[player.GetGUID()] = loot;
 
@@ -2298,7 +2324,6 @@ namespace Game.Entities
                     player.UpdateCriteria(CriteriaType.CatchFishInFishingHole, GetGoInfo().entry);
                     return;
                 }
-
                 case GameObjectTypes.FlagDrop:                      // 26
                 {
                     if (!user.IsTypeId(TypeId.Player))
@@ -2308,11 +2333,6 @@ namespace Game.Entities
 
                     if (player.CanUseBattlegroundObject(this))
                     {
-                        // in Battlegroundcheck
-                        Battleground bg = player.GetBattleground();
-                        if (bg == null)
-                            return;
-
                         if (player.GetVehicle() != null)
                             return;
 
@@ -2325,24 +2345,8 @@ namespace Game.Entities
                         // EotS:
                         // 184142 - Netherstorm Flag
                         GameObjectTemplate info = GetGoInfo();
-                        if (info != null)
-                        {
-                            switch (info.entry)
-                            {
-                                case 179785:                        // Silverwing Flag
-                                case 179786:                        // Warsong Flag
-                                    if (bg.GetTypeID() == BattlegroundTypeId.WS)
-                                        bg.EventPlayerClickedOnFlag(player, this);
-                                    break;
-                                case 184142:                        // Netherstorm Flag
-                                    if (bg.GetTypeID() == BattlegroundTypeId.EY)
-                                        bg.EventPlayerClickedOnFlag(player, this);
-                                    break;
-                            }
-
-                            if (info.FlagDrop.eventID != 0)
-                                GameEvents.Trigger(info.FlagDrop.eventID, player, this);
-                        }
+                        if (info != null && info.FlagDrop.eventID != 0)
+                            GameEvents.Trigger(info.FlagDrop.eventID, player, this);
                         //this cause to call return, all flags must be deleted here!!
                         spellId = 0;
                         Delete();
@@ -2462,10 +2466,9 @@ namespace Game.Entities
                         return;
 
                     Player player = user.ToPlayer();
-                    PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(info.ItemForge.conditionID1);
-                    if (playerCondition != null)
-                        if (!ConditionManager.IsPlayerMeetingCondition(player, playerCondition))
-                            return;
+
+                    if (!MeetsInteractCondition(player))
+                        return;
 
                     switch (info.ItemForge.ForgeType)
                     {
@@ -2639,8 +2642,22 @@ namespace Game.Entities
                 SpellCastResult castResult = CastSpell(user, spellId);
                 if (castResult == SpellCastResult.Success)
                 {
-                    if (GetGoType() == GameObjectTypes.NewFlag)
-                        HandleCustomTypeCommand(new GameObjectType.SetNewFlagState(FlagState.Taken, user.ToPlayer()));
+                    switch (GetGoType())
+                    {
+                        case GameObjectTypes.NewFlag:
+                            HandleCustomTypeCommand(new GameObjectType.SetNewFlagState(FlagState.Taken, user.ToPlayer()));
+                            break;
+                        case GameObjectTypes.FlagStand:
+                            SetFlag(GameObjectFlags.InUse);
+                            ZoneScript zonescript = GetZoneScript();
+                            if (zonescript != null)
+                                zonescript.OnFlagTaken(this, user?.ToPlayer());
+
+                            Delete();
+                            break;
+                        default:
+                            break;
+                    }
                 }
             }
         }
@@ -2692,6 +2709,15 @@ namespace Game.Entities
             return GetGoInfo().ScriptId;
         }
 
+        public void InheritStringIds(GameObject parent)
+        {
+            // copy references to stringIds from template and spawn
+            m_stringIds = parent.m_stringIds;
+
+            // then copy script stringId, not just its reference
+            SetScriptStringId(parent.GetStringId(StringIdType.Script));
+        }
+
         public bool HasStringId(string id)
         {
             return m_stringIds.Contains(id);
@@ -2702,16 +2728,16 @@ namespace Game.Entities
             if (!id.IsEmpty())
             {
                 m_scriptStringId = id;
-                m_stringIds[2] = m_scriptStringId;
+                m_stringIds[(int)StringIdType.Script] = m_scriptStringId;
             }
             else
             {
                 m_scriptStringId = null;
-                m_stringIds[2] = null;
+                m_stringIds[(int)StringIdType.Script] = null;
             }
         }
 
-        public string[] GetStringIds() { return m_stringIds; }
+        public string GetStringId(StringIdType type) { return m_stringIds[(int)type]; }
 
         public override string GetName(Locale locale = Locale.enUS)
         {
@@ -2743,7 +2769,7 @@ namespace Game.Entities
 
         public void SetLocalRotation(float qx, float qy, float qz, float qw)
         {
-            Quaternion rotation = new Quaternion(qx, qy, qz, qw);
+            Quaternion rotation = new(qx, qy, qz, qw);
             rotation = Quaternion.Multiply(rotation, 1.0f / MathF.Sqrt(Quaternion.Dot(rotation, rotation)));
 
             m_localRotation.X = rotation.X;
@@ -2880,7 +2906,7 @@ namespace Game.Entities
 
         public void ModifyHealth(int change, WorldObject attackerOrHealer = null, uint spellId = 0)
         {
-            if (m_goValue.Building.MaxHealth == 0 || change == 0)
+            if (m_goValue.Building.DestructibleHitpoint == null || change == 0)
                 return;
 
             // prevent double destructions of the same object
@@ -2889,13 +2915,13 @@ namespace Game.Entities
 
             if (m_goValue.Building.Health + change <= 0)
                 m_goValue.Building.Health = 0;
-            else if (m_goValue.Building.Health + change >= m_goValue.Building.MaxHealth)
-                m_goValue.Building.Health = m_goValue.Building.MaxHealth;
+            else if (m_goValue.Building.Health + change >= m_goValue.Building.DestructibleHitpoint.GetMaxHealth())
+                m_goValue.Building.Health = m_goValue.Building.DestructibleHitpoint.GetMaxHealth();
             else
                 m_goValue.Building.Health += (uint)change;
 
             // Set the health bar, value = 255 * healthPct;
-            SetGoAnimProgress(m_goValue.Building.Health * 255 / m_goValue.Building.MaxHealth);
+            SetGoAnimProgress(m_goValue.Building.Health * 255 / m_goValue.Building.DestructibleHitpoint.GetMaxHealth());
 
             // dealing damage, send packet
             Player player = attackerOrHealer != null ? attackerOrHealer.GetCharmerOrOwnerPlayerOrPlayerItself() : null;
@@ -2917,9 +2943,9 @@ namespace Game.Entities
 
             if (m_goValue.Building.Health == 0)
                 newState = GameObjectDestructibleState.Destroyed;
-            else if (m_goValue.Building.Health < m_goValue.Building.MaxHealth / 2)
+            else if (m_goValue.Building.Health < m_goValue.Building.DestructibleHitpoint.DamagedNumHits)
                 newState = GameObjectDestructibleState.Damaged;
-            else if (m_goValue.Building.Health == m_goValue.Building.MaxHealth)
+            else if (m_goValue.Building.Health == m_goValue.Building.DestructibleHitpoint.GetMaxHealth())
                 newState = GameObjectDestructibleState.Intact;
 
             if (newState == GetDestructibleState())
@@ -2938,9 +2964,9 @@ namespace Game.Entities
                 case GameObjectDestructibleState.Intact:
                     RemoveFlag(GameObjectFlags.Damaged | GameObjectFlags.Destroyed);
                     SetDisplayId(m_goInfo.displayId);
-                    if (setHealth)
+                    if (setHealth && m_goValue.Building.DestructibleHitpoint != null)
                     {
-                        m_goValue.Building.Health = m_goValue.Building.MaxHealth;
+                        m_goValue.Building.Health = m_goValue.Building.DestructibleHitpoint.GetMaxHealth();
                         SetGoAnimProgress(255);
                     }
                     EnableCollision(true);
@@ -2959,12 +2985,13 @@ namespace Game.Entities
                     if (modelData != null)
                         if (modelData.State1Wmo != 0)
                             modelId = modelData.State1Wmo;
+
                     SetDisplayId(modelId);
 
-                    if (setHealth)
+                    if (setHealth && m_goValue.Building.DestructibleHitpoint != null)
                     {
-                        m_goValue.Building.Health = 10000;//m_goInfo.DestructibleBuilding.damagedNumHits;
-                        uint maxHealth = m_goValue.Building.MaxHealth;
+                        m_goValue.Building.Health = m_goValue.Building.DestructibleHitpoint.DamagedNumHits;
+                        uint maxHealth = m_goValue.Building.DestructibleHitpoint.GetMaxHealth();
                         // in this case current health is 0 anyway so just prevent crashing here
                         if (maxHealth == 0)
                             maxHealth = 1;
@@ -2978,14 +3005,6 @@ namespace Game.Entities
                         GameEvents.Trigger(GetGoInfo().DestructibleBuilding.DestroyedEvent, attackerOrHealer, this);
                     GetAI().Destroyed(attackerOrHealer, m_goInfo.DestructibleBuilding.DestroyedEvent);
 
-                    Player player = attackerOrHealer != null ? attackerOrHealer.GetCharmerOrOwnerPlayerOrPlayerItself() : null;
-                    if (player != null)
-                    {
-                        Battleground bg = player.GetBattleground();
-                        if (bg != null)
-                            bg.DestroyGate(player, this);
-                    }
-
                     RemoveFlag(GameObjectFlags.Damaged);
                     SetFlag(GameObjectFlags.Destroyed);
 
@@ -2994,6 +3013,7 @@ namespace Game.Entities
                     if (modelData != null)
                         if (modelData.State2Wmo != 0)
                             modelId = modelData.State2Wmo;
+
                     SetDisplayId(modelId);
 
                     if (setHealth)
@@ -3018,9 +3038,9 @@ namespace Game.Entities
                     SetDisplayId(modelId);
 
                     // restores to full health
-                    if (setHealth)
+                    if (setHealth & m_goValue.Building.DestructibleHitpoint != null)
                     {
-                        m_goValue.Building.Health = m_goValue.Building.MaxHealth;
+                        m_goValue.Building.Health = m_goValue.Building.DestructibleHitpoint.GetMaxHealth();
                         SetGoAnimProgress(255);
                     }
                     EnableCollision(true);
@@ -3254,37 +3274,25 @@ namespace Game.Entities
             return ObjectAccessor.GetGameObject(this, m_linkedTrap);
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_gameObjectData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_gameObjectData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt32(m_values.GetChangedObjectTypeMask());
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.GameObject))
-                m_gameObjectData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+                m_gameObjectData.WriteUpdate(data, flags, this, target);
         }
 
         public void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedGameObjectMask, Player target)
         {
+            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
             UpdateMask valuesMask = new((int)TypeId.Max);
             if (requestedObjectMask.IsAnySet())
                 valuesMask.Set((int)TypeId.Object);
@@ -3293,6 +3301,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.GameObject);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])
@@ -3318,29 +3327,17 @@ namespace Game.Entities
 
         public List<uint> GetPauseTimes()
         {
-            GameObjectType.Transport transport = m_goTypeImpl as GameObjectType.Transport;
-            if (transport != null)
+            if (m_goTypeImpl is GameObjectType.Transport transport)
                 return transport.GetPauseTimes();
 
             return null;
         }
 
+        public float? GetPathProgressForClient() { return m_transportPathProgress; }
+
         public void SetPathProgressForClient(float progress)
         {
-            DoWithSuppressingObjectUpdates(() =>
-            {
-                ObjectFieldData dynflagMask = new();
-                dynflagMask.MarkChanged(m_objectData.DynamicFlags);
-                bool marked = (m_objectData.GetUpdateMask() & dynflagMask.GetUpdateMask()).IsAnySet();
-
-                uint dynamicFlags = (uint)GetDynamicFlags();
-                dynamicFlags &= 0xFFFF; // remove high bits
-                dynamicFlags |= (uint)(progress * 65535.0f) << 16;
-                ReplaceAllDynamicFlags((GameObjectDynamicLowFlags)dynamicFlags);
-
-                if (!marked)
-                    m_objectData.ClearChanged(m_objectData.DynamicFlags);
-            });
+            m_transportPathProgress = progress;
         }
 
         public void GetRespawnPosition(out float x, out float y, out float z, out float ori)
@@ -3655,8 +3652,7 @@ namespace Game.Entities
             if (GetGoType() != GameObjectTypes.NewFlag)
                 return 0;
 
-            GameObjectType.NewFlag newFlag = m_goTypeImpl as GameObjectType.NewFlag;
-            if (newFlag == null)
+            if (m_goTypeImpl is not GameObjectType.NewFlag newFlag)
                 return 0;
 
             return newFlag.GetState();
@@ -3667,8 +3663,7 @@ namespace Game.Entities
             if (GetGoType() != GameObjectTypes.NewFlag)
                 return ObjectGuid.Empty;
 
-            GameObjectType.NewFlag newFlag = m_goTypeImpl as GameObjectType.NewFlag;
-            if (newFlag == null)
+            if (m_goTypeImpl is not GameObjectType.NewFlag newFlag)
                 return ObjectGuid.Empty;
 
             return newFlag.GetCarrierGUID();
@@ -3679,8 +3674,7 @@ namespace Game.Entities
             if (GetGoType() != GameObjectTypes.NewFlag)
                 return 0;
 
-            GameObjectType.NewFlag newFlag = m_goTypeImpl as GameObjectType.NewFlag;
-            if (newFlag == null)
+            if (m_goTypeImpl is not GameObjectType.NewFlag newFlag)
                 return 0;
 
             return newFlag.GetTakenFromBaseTime();
@@ -3688,8 +3682,7 @@ namespace Game.Entities
 
         public List<ObjectGuid> GetInsidePlayers()
         {
-            ControlZone controlZone = m_goTypeImpl as ControlZone;
-            if (controlZone != null)
+            if (m_goTypeImpl is ControlZone controlZone)
                 return controlZone.GetInsidePlayers();
 
             return null;
@@ -3697,15 +3690,7 @@ namespace Game.Entities
 
         public bool MeetsInteractCondition(Player user)
         {
-            if (m_goInfo.GetConditionID1() == 0)
-                return true;
-
-            PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(m_goInfo.GetConditionID1());
-            if (playerCondition != null)
-                if (!ConditionManager.IsPlayerMeetingCondition(user, playerCondition))
-                    return false;
-
-            return true;
+            return ConditionManager.IsPlayerMeetingCondition(user, m_goInfo.GetConditionID1());
         }
 
         PerPlayerState GetOrCreatePerPlayerStates(ObjectGuid guid)
@@ -3797,17 +3782,17 @@ namespace Game.Entities
         public GameObjectTypes GetGoType() { return (GameObjectTypes)(sbyte)m_gameObjectData.TypeID; }
         public void SetGoType(GameObjectTypes type) { SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.TypeID), (sbyte)type); }
         public GameObjectState GetGoState() { return (GameObjectState)(sbyte)m_gameObjectData.State; }
-        uint GetGoArtKit() { return m_gameObjectData.ArtKit; }
-        byte GetGoAnimProgress() { return m_gameObjectData.PercentHealth; }
+        public uint GetGoArtKit() { return m_gameObjectData.ArtKit; }
+        public byte GetGoAnimProgress() { return m_gameObjectData.PercentHealth; }
         public void SetGoAnimProgress(uint animprogress) { SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.PercentHealth), (byte)animprogress); }
 
         public LootState GetLootState() { return m_lootState; }
         public LootModes GetLootMode() { return m_LootMode; }
-        bool HasLootMode(LootModes lootMode) { return Convert.ToBoolean(m_LootMode & lootMode); }
-        void SetLootMode(LootModes lootMode) { m_LootMode = lootMode; }
-        void AddLootMode(LootModes lootMode) { m_LootMode |= lootMode; }
-        void RemoveLootMode(LootModes lootMode) { m_LootMode &= ~lootMode; }
-        void ResetLootMode() { m_LootMode = LootModes.Default; }
+        public bool HasLootMode(LootModes lootMode) { return Convert.ToBoolean(m_LootMode & lootMode); }
+        public void SetLootMode(LootModes lootMode) { m_LootMode = lootMode; }
+        public void AddLootMode(LootModes lootMode) { m_LootMode |= lootMode; }
+        public void RemoveLootMode(LootModes lootMode) { m_LootMode &= ~lootMode; }
+        public void ResetLootMode() { m_LootMode = LootModes.Default; }
 
         public void AddToSkillupList(ObjectGuid PlayerGuid) { m_SkillupList.Add(PlayerGuid); }
         public bool IsInSkillupList(ObjectGuid PlayerGuid)
@@ -3818,17 +3803,17 @@ namespace Game.Entities
 
             return false;
         }
-        void ClearSkillupList() { m_SkillupList.Clear(); }
+        public void ClearSkillupList() { m_SkillupList.Clear(); }
 
         public void AddUse() { ++m_usetimes; }
 
         public uint GetUseCount() { return m_usetimes; }
-        uint GetUniqueUseCount() { return (uint)m_unique_users.Count; }
+        public uint GetUniqueUseCount() { return (uint)m_unique_users.Count; }
 
-        List<ObjectGuid> GetTapList() { return m_tapList; }
-        void SetTapList(List<ObjectGuid> tapList) { m_tapList = tapList; }
+        public List<ObjectGuid> GetTapList() { return m_tapList; }
+        public void SetTapList(List<ObjectGuid> tapList) { m_tapList = tapList; }
 
-        bool HasLootRecipient() { return !m_tapList.Empty(); }
+        public bool HasLootRecipient() { return !m_tapList.Empty(); }
 
         public override uint GetLevelForTarget(WorldObject target)
         {
@@ -3841,7 +3826,7 @@ namespace Game.Entities
                 Player player = target.ToPlayer();
                 if (player != null)
                 {
-                    var userLevels = Global.DB2Mgr.GetContentTuningData(GetGoInfo().ContentTuningId, player.m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                    var userLevels = Global.DB2Mgr.GetContentTuningData(GetGoInfo().ContentTuningId, player.m_playerData.CtrOptions.GetValue().ConditionalFlags);
                     if (userLevels.HasValue)
                         return (byte)Math.Clamp(player.GetLevel(), userLevels.Value.MinLevel, userLevels.Value.MaxLevel);
                 }
@@ -3902,8 +3887,14 @@ namespace Game.Entities
         public void CreateModel()
         {
             m_model = GameObjectModel.Create(new GameObjectModelOwnerImpl(this));
-            if (m_model != null && m_model.IsMapObject())
-                SetFlag(GameObjectFlags.MapObject);
+            if (m_model != null)
+            {
+                if (m_model.IsMapObject())
+                    SetFlag(GameObjectFlags.MapObject);
+
+                if (GetGoType() == GameObjectTypes.Door)
+                    m_model.DisableLosBlocking(GetGoInfo().Door.NotLOSBlocking != 0);
+            }
         }
 
         // There's many places not ready for dynamic spawns. This allows them to live on for now.
@@ -3946,6 +3937,7 @@ namespace Game.Entities
         bool m_respawnCompatibilityMode;
         ushort _animKitId;
         uint _worldEffectID;
+        float? m_transportPathProgress;
 
         VignetteData m_vignette;
 
@@ -4006,14 +3998,9 @@ namespace Game.Entities
     }
 
     // Base class for GameObject type specific implementations
-    public class GameObjectTypeBase
+    public class GameObjectTypeBase(GameObject owner)
     {
-        protected GameObject _owner;
-
-        public GameObjectTypeBase(GameObject owner)
-        {
-            _owner = owner;
-        }
+        protected GameObject _owner = owner;
 
         public virtual void Update(uint diff) { }
         public virtual void OnStateChanged(GameObjectState oldState, GameObjectState newState) { }
@@ -4057,7 +4044,7 @@ namespace Game.Entities
         public struct building
         {
             public uint Health;
-            public uint MaxHealth;
+            public DestructibleHitpoint DestructibleHitpoint;
         }
         //42 GAMEOBJECT_TYPE_CAPTURE_POINT
         public struct capturePoint
@@ -4149,12 +4136,12 @@ namespace Game.Entities
 
                 uint now = GameTime.GetGameTimeMS();
                 uint period = GetTransportPeriod();
-                uint newProgress = 0;
+                uint newProgress;
                 if (_stopFrames.Empty())
                     newProgress = now % period;
                 else
                 {
-                    int stopTargetTime = 0;
+                    int stopTargetTime;
                     if (_owner.GetGoState() == GameObjectState.TransportActive)
                         stopTargetTime = 0;
                     else
@@ -4179,7 +4166,7 @@ namespace Game.Entities
 
                             progressPct = pathPctBetweenStops * timeSinceStopProgressPct + stopSourcePathPct;
                             if (progressPct > 1.0f)
-                                progressPct = progressPct - 1.0f;
+                                progressPct = -1.0f;
                         }
                         else
                         {
@@ -4379,8 +4366,7 @@ namespace Game.Entities
             {
                 foreach (WorldObject passenger in _passengers)
                 {
-                    float x, y, z, o;
-                    passenger.m_movementInfo.transport.pos.GetPosition(out x, out y, out z, out o);
+                    passenger.m_movementInfo.transport.pos.GetPosition(out float x, out float y, out float z, out float o);
                     CalculatePassengerPosition(ref x, ref y, ref z, ref o);
                     ITransport.UpdatePassengerPosition(this, _owner.GetMap(), passenger, x, y, z, o, true);
                 }
@@ -4529,7 +4515,7 @@ namespace Game.Entities
             public long GetTakenFromBaseTime() { return _takenFromBaseTime; }
         }
 
-        class SetNewFlagState : GameObjectTypeBase.CustomCommand
+        public class SetNewFlagState : GameObjectTypeBase.CustomCommand
         {
             FlagState _state;
             Player _player;
@@ -4542,8 +4528,7 @@ namespace Game.Entities
 
             public override void Execute(GameObjectTypeBase type)
             {
-                NewFlag newFlag = type as NewFlag;
-                if (newFlag != null)
+                if (type is NewFlag newFlag)
                     newFlag.SetState(_state, _player);
             }
         }
@@ -4635,7 +4620,7 @@ namespace Game.Entities
         void HandleHeartbeat()
         {
             // update player list inside control zone
-            List<Unit> targetList = new();
+            List<Player> targetList = new();
             SearchTargets(targetList);
 
             int oldControllingTeam = GetControllingTeam();
@@ -4684,7 +4669,7 @@ namespace Game.Entities
                 player.SendUpdateWorldState(_owner.GetGoInfo().ControlZone.worldstate2, (uint)roundedValue);
         }
 
-        void SearchTargets(List<Unit> targetList)
+        void SearchTargets(List<Player> targetList)
         {
             AnyUnitInObjectRangeCheck check = new(_owner, _owner.GetGoInfo().ControlZone.radius, true);
             PlayerListSearcher searcher = new(_owner, targetList, check);
@@ -4692,9 +4677,10 @@ namespace Game.Entities
             HandleUnitEnterExit(targetList);
         }
 
-        float CalculatePointsPerSecond(List<Unit> targetList)
+        float CalculatePointsPerSecond(List<Player> targetList)
         {
-            int delta = 0;
+            int hordePlayers = 0;
+            int alliancePlayers = 0;
 
             foreach (Player player in targetList)
             {
@@ -4702,31 +4688,48 @@ namespace Game.Entities
                     continue;
 
                 if (player.GetTeam() == Team.Horde)
-                    delta--;
+                    hordePlayers--;
                 else
-                    delta++;
+                    alliancePlayers++;
             }
+
+            sbyte factionCoefficient = 0; // alliance superiority = 1; horde superiority = -1
+
+            if (alliancePlayers > hordePlayers)
+                factionCoefficient = 1;
+            else if (hordePlayers > alliancePlayers)
+                factionCoefficient = -1;
+
+            float timeNeeded = CalculateTimeNeeded(hordePlayers, alliancePlayers);
+            if (timeNeeded == 0.0f)
+                return 0.0f;
+
+            return 100.0f / timeNeeded * factionCoefficient;
+        }
+
+        float CalculateTimeNeeded(int hordePlayers, int alliancePlayers)
+        {
+            uint uncontestedTime = _owner.GetGoInfo().ControlZone.UncontestedTime;
+            uint delta = (uint)Math.Abs(alliancePlayers - hordePlayers);
+            uint minSuperiority = _owner.GetGoInfo().ControlZone.minSuperiority;
+
+            if (delta < minSuperiority)
+                return 0;
+
+            // return the uncontested time if controlzone is not contested
+            if (uncontestedTime != 0 && (hordePlayers == 0 || alliancePlayers == 0))
+                return uncontestedTime;
 
             uint minTime = _owner.GetGoInfo().ControlZone.minTime;
             uint maxTime = _owner.GetGoInfo().ControlZone.maxTime;
-            uint minSuperiority = _owner.GetGoInfo().ControlZone.minSuperiority;
             uint maxSuperiority = _owner.GetGoInfo().ControlZone.maxSuperiority;
 
-            if (Math.Abs(delta) < minSuperiority)
-                return 0;
-
-            float slope = ((float)minTime - maxTime) / (maxSuperiority - minSuperiority);
+            float slope = (minTime - maxTime) / MathF.Max(maxSuperiority - minSuperiority, 1);
             float intercept = maxTime - slope * minSuperiority;
-            float timeNeeded = slope * Math.Abs(delta) + intercept;
-            float percentageIncrease = 100.0f / timeNeeded;
-
-            if (delta < 0)
-                percentageIncrease *= -1;
-
-            return percentageIncrease;
+            return slope * delta + intercept;
         }
 
-        void HandleUnitEnterExit(List<Unit> newTargetList)
+        void HandleUnitEnterExit(List<Player> newTargetList)
         {
             List<ObjectGuid> exitPlayers = new(_insidePlayers);
 
@@ -4793,8 +4796,7 @@ namespace Game.Entities
 
         public override void Execute(GameObjectTypeBase type)
         {
-            ControlZone controlZone = type as ControlZone;
-            if (controlZone != null)
+            if (type is ControlZone controlZone)
             {
                 uint value = controlZone.GetStartingValue();
                 if (_value.HasValue)

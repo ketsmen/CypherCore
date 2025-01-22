@@ -77,7 +77,7 @@ namespace Game.Collision
             var instanceTree = iInstanceMapTrees.LookupByKey(mapId);
             if (instanceTree != null)
             {
-                instanceTree.UnloadMap(this);
+                instanceTree.UnloadMap();
                 if (instanceTree.NumLoadedTiles() == 0)
                 {
                     iInstanceMapTrees.Remove(mapId);
@@ -183,25 +183,25 @@ namespace Game.Collision
 
         public WorldModel AcquireModelInstance(string filename)
         {
+            ManagedModel worldmodel; // this is intentionally declared before lock so that it is destroyed after it to prevent deadlocks in releaseModelInstance
+
             lock (LoadedModelFilesLock)
             {
                 filename = filename.TrimEnd('\0');
-                var model = iLoadedModelFiles.LookupByKey(filename);
-                if (model == null)
+                if (iLoadedModelFiles.TryGetValue(filename, out worldmodel))
+                    return worldmodel.Model;
+
+                worldmodel = new ManagedModel(filename);
+                if (!worldmodel.Model.ReadFile(VMapPath + filename))
                 {
-                    model = new ManagedModel();
-                    if (!model.GetModel().ReadFile(VMapPath + filename))
-                    {
-                        Log.outError(LogFilter.Server, "VMapManager: could not load '{0}'", filename);
-                        return null;
-                    }
-
-                    Log.outDebug(LogFilter.Maps, "VMapManager: loading file '{0}'", filename);
-
-                    iLoadedModelFiles.Add(filename, model);
+                    Log.outError(LogFilter.Server, $"VMapManager: could not load '{filename}'");
+                    return null;
                 }
-                model.IncRefCount();
-                return model.GetModel();
+
+                Log.outDebug(LogFilter.Maps, $"VMapManager: loading file '{filename}'");
+
+                iLoadedModelFiles.Add(filename, worldmodel);
+                return worldmodel.Model;
             }
         }
 
@@ -210,16 +210,14 @@ namespace Game.Collision
             lock (LoadedModelFilesLock)
             {
                 filename = filename.TrimEnd('\0');
-                var model = iLoadedModelFiles.LookupByKey(filename);
-                if (model == null)
+                
+                Log.outDebug(LogFilter.Maps, $"VMapManager: unloading file '{filename}'");
+
+                var erased = iLoadedModelFiles.Remove(filename);
+                if (!erased)
                 {
-                    Log.outError(LogFilter.Server, "VMapManager: trying to unload non-loaded file '{0}'", filename);
+                    Log.outError(LogFilter.Server, $"VMapManager: trying to unload non-loaded file '{filename}'");
                     return;
-                }
-                if (model.DecRefCount() == 0)
-                {
-                    Log.outDebug(LogFilter.Maps, "VMapManager: unloading file '{0}'", filename);
-                    iLoadedModelFiles.Remove(filename);
                 }
             }
         }
@@ -250,7 +248,7 @@ namespace Game.Collision
 
         public static string GetMapFileName(uint mapId)
         {
-            return $"{mapId:D4}.vmtree";
+            return $"{mapId:D4}/{mapId:D4}.vmtree";
         }
 
         public void SetEnableLineOfSightCalc(bool pVal) { _enableLineOfSightCalc = pVal; }
@@ -271,19 +269,18 @@ namespace Game.Collision
 
     public class ManagedModel
     {
-        public ManagedModel()
+        public WorldModel Model = new();
+        string _name; // valid only while model is held in VMapManager2::iLoadedModelFiles
+
+        public ManagedModel(string name)
         {
-            iModel = new();
-            iRefCount = 0;
+            _name = name;
         }
 
-        public void SetModel(WorldModel model) { iModel = model; }
-        public WorldModel GetModel() { return iModel; }
-        public void IncRefCount() { ++iRefCount; }
-        public int DecRefCount() { return --iRefCount; }
-
-        WorldModel iModel;
-        int iRefCount;
+        ~ManagedModel()
+        {
+            Global.VMapMgr.ReleaseModelInstance(_name);
+        }
     }
 
     public class AreaAndLiquidData

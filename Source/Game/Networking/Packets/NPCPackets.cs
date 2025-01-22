@@ -54,6 +54,7 @@ namespace Game.Networking.Packets
         {
             _worldPacket.WritePackedGuid(GossipGUID);
             _worldPacket.WriteUInt32(GossipID);
+            _worldPacket.WriteUInt32(LfgDungeonsID);
             _worldPacket.WriteInt32(FriendshipFactionID);
             _worldPacket.WriteInt32(GossipOptions.Count);
             _worldPacket.WriteInt32(GossipText.Count);
@@ -81,6 +82,7 @@ namespace Game.Networking.Packets
         public int? TextID; // in classic variants this still holds npc_text id
         public int? BroadcastTextID;
         public uint GossipID;
+        public uint LfgDungeonsID;
     }
 
     public class GossipSelectOption : ClientPacket
@@ -143,14 +145,14 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WritePackedGuid(Vendor);
-            _worldPacket.WriteUInt8(Reason);
+            _worldPacket.WriteInt32(Reason);
             _worldPacket.WriteInt32(Items.Count);
 
             foreach (VendorItemPkt item in Items)
                 item.Write(_worldPacket);
         }
 
-        public byte Reason = 0;
+        public int Reason;
         public List<VendorItemPkt> Items = new();
         public ObjectGuid Vendor;
     }
@@ -310,12 +312,14 @@ namespace Game.Networking.Packets
         public GossipOptionRewardType Type;
         public int ID;
         public int Quantity;
+        public sbyte ItemContext;
 
         public void Write(WorldPacket data)
         {
             data.WriteBits((byte)Type, 1);
             data.WriteInt32(ID);
             data.WriteInt32(Quantity);
+            data.WriteInt8(ItemContext);
         }
     }
 
@@ -346,6 +350,7 @@ namespace Game.Networking.Packets
         public TreasureLootList Treasure = new();
         public int? SpellID;
         public int? OverrideIconID;
+        public string FailureDescription;
 
         public void Write(WorldPacket data)
         {
@@ -361,6 +366,7 @@ namespace Game.Networking.Packets
             data.WriteBits((byte)Status, 2);
             data.WriteBit(SpellID.HasValue);
             data.WriteBit(OverrideIconID.HasValue);
+            data.WriteBits(FailureDescription.GetByteCount() + 1, 8);
             data.FlushBits();
 
             Treasure.Write(data);
@@ -373,6 +379,9 @@ namespace Game.Networking.Packets
 
             if (OverrideIconID.HasValue)
                 data.WriteInt32(OverrideIconID.Value);
+
+            if (!FailureDescription.IsEmpty())
+                data.WriteCString(FailureDescription);
         }
     }
 
@@ -381,22 +390,30 @@ namespace Game.Networking.Packets
         public uint QuestID;
         public uint ContentTuningID;
         public int QuestType;
+        public int Unused1102;
         public bool Repeatable;
+        public bool ResetByScheduler;
         public bool Important;
+        public bool Meta;
         public string QuestTitle;
         public uint QuestFlags;
         public uint QuestFlagsEx;
+        public uint QuestFlagsEx2;
 
         public void Write(WorldPacket data)
         {
             data.WriteUInt32(QuestID);
             data.WriteUInt32(ContentTuningID);
             data.WriteInt32(QuestType);
+            data.WriteInt32(Unused1102);
             data.WriteUInt32(QuestFlags);
             data.WriteUInt32(QuestFlagsEx);
+            data.WriteUInt32(QuestFlagsEx2);
 
             data.WriteBit(Repeatable);
+            data.WriteBit(ResetByScheduler);
             data.WriteBit(Important);
+            data.WriteBit(Meta);
             data.WriteBits(QuestTitle.GetByteCount(), 9);
             data.FlushBits();
 
@@ -411,7 +428,6 @@ namespace Game.Networking.Packets
             data.WriteUInt64(Price);
             data.WriteInt32(MuID);
             data.WriteInt32(Type);
-            data.WriteInt32(Durability);
             data.WriteInt32(StackCount);
             data.WriteInt32(Quantity);
             data.WriteInt32(ExtendedCostID);
@@ -429,7 +445,6 @@ namespace Game.Networking.Packets
         public ItemInstance Item = new();
         public int Quantity = -1;
         public ulong Price;
-        public int Durability;
         public int StackCount;
         public int ExtendedCostID;
         public int PlayerConditionFailed;

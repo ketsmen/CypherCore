@@ -2,11 +2,10 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
-using Framework.Dynamic;
 using Game.Entities;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System;
 
 namespace Game.Networking.Packets
 {
@@ -77,7 +76,7 @@ namespace Game.Networking.Packets
         {
             _worldPacket.WritePackedGuid(VendorGUID);
             _worldPacket.WriteUInt32(Muid);
-            _worldPacket.WriteUInt8((byte)Reason);
+            _worldPacket.WriteUInt32((uint)Reason);
         }
 
         public ObjectGuid VendorGUID;
@@ -409,13 +408,14 @@ namespace Game.Networking.Packets
             _worldPacket.WritePackedGuid(PlayerGUID);
             _worldPacket.WriteUInt8(Slot);
             _worldPacket.WriteInt32(SlotInBag);
-            _worldPacket.WriteInt32(QuestLogItemID);
+            _worldPacket.WriteInt32(ProxyItemID);
             _worldPacket.WriteUInt32(Quantity);
             _worldPacket.WriteUInt32(QuantityInInventory);
-            _worldPacket.WriteInt32(DungeonEncounterID);
+            _worldPacket.WriteInt32(QuantityInQuestLog);
+            _worldPacket.WriteInt32(EncounterID);
             _worldPacket.WriteInt32(BattlePetSpeciesID);
             _worldPacket.WriteInt32(BattlePetBreedID);
-            _worldPacket.WriteUInt32(BattlePetBreedQuality);
+            _worldPacket.WriteUInt8(BattlePetBreedQuality);
             _worldPacket.WriteInt32(BattlePetLevel);
             _worldPacket.WritePackedGuid(ItemGUID);
             _worldPacket.WriteInt32(Toasts.Count);
@@ -424,10 +424,10 @@ namespace Game.Networking.Packets
 
             _worldPacket.WriteBit(Pushed);
             _worldPacket.WriteBit(Created);
-            _worldPacket.WriteBit(Unused_1017);
-            _worldPacket.WriteBits((uint)DisplayText, 3);
+            _worldPacket.WriteBit(FakeQuestItem);
+            _worldPacket.WriteBits((uint)ChatNotifyType, 3);
             _worldPacket.WriteBit(IsBonusRoll);
-            _worldPacket.WriteBit(IsEncounterLoot);
+            _worldPacket.WriteBit(IsPersonalLoot);
             _worldPacket.WriteBit(CraftingData != null);
             _worldPacket.WriteBit(FirstCraftOperationID.HasValue);
             _worldPacket.FlushBits();
@@ -445,25 +445,26 @@ namespace Game.Networking.Packets
         public byte Slot;
         public int SlotInBag;
         public ItemInstance Item = new();
-        public int QuestLogItemID;// Item ID used for updating quest progress
+        public int ProxyItemID;// Item ID used for updating quest progress
                                   // only set if different than real ID (similar to CreatureTemplate.KillCredit)
         public uint Quantity;
         public uint QuantityInInventory;
-        public int DungeonEncounterID;
+        public int QuantityInQuestLog;
+        public int EncounterID;
         public int BattlePetSpeciesID;
         public int BattlePetBreedID;
-        public uint BattlePetBreedQuality;
+        public byte BattlePetBreedQuality;
         public int BattlePetLevel;
         public ObjectGuid ItemGUID;
         public List<UiEventToast> Toasts = new();
         public CraftingData CraftingData;
         public uint? FirstCraftOperationID;
         public bool Pushed;
-        public DisplayType DisplayText;
+        public DisplayType ChatNotifyType;
         public bool Created;
-        public bool Unused_1017;
+        public bool FakeQuestItem;
         public bool IsBonusRoll;
-        public bool IsEncounterLoot;
+        public bool IsPersonalLoot;
 
         public enum DisplayType
         {
@@ -635,6 +636,13 @@ namespace Game.Networking.Packets
         public ObjectGuid Item;
     }
 
+    class SortAccountBankBags : ClientPacket
+    {
+        public SortAccountBankBags(WorldPacket packet) : base(packet) { }
+
+        public override void Read() { }
+    }
+
     class SortBags : ClientPacket
     {
         public SortBags(WorldPacket packet) : base(packet) { }
@@ -680,6 +688,115 @@ namespace Game.Networking.Packets
         public InventoryFullOverflow() : base(ServerOpcodes.InventoryFullOverflow) { }
 
         public override void Write() { }
+    }
+
+    class ChangeBagSlotFlag : ClientPacket
+    {
+        public byte BagIndex;
+        public BagSlotFlags FlagToChange;
+        public bool On;
+
+        public ChangeBagSlotFlag(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            BagIndex = _worldPacket.ReadUInt8();
+            FlagToChange = (BagSlotFlags)_worldPacket.ReadUInt32();
+            On = _worldPacket.HasBit();
+        }
+    }
+
+    class ChangeBankBagSlotFlag : ClientPacket
+    {
+        public byte BagIndex;
+        public BagSlotFlags FlagToChange;
+        public bool On;
+
+        public ChangeBankBagSlotFlag(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            BagIndex = _worldPacket.ReadUInt8();
+            FlagToChange = (BagSlotFlags)_worldPacket.ReadUInt32();
+            On = _worldPacket.HasBit();
+        }
+    }
+
+    class SetBackpackAutosortDisabled : ClientPacket
+    {
+        public bool Disable;
+
+        public SetBackpackAutosortDisabled(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            Disable = _worldPacket.HasBit();
+        }
+
+    }
+
+    class SetBackpackSellJunkDisabled : ClientPacket
+    {
+        public bool Disable;
+
+        public SetBackpackSellJunkDisabled(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            Disable = _worldPacket.HasBit();
+        }
+
+    }
+
+    class SetBankAutosortDisabled : ClientPacket
+    {
+        public bool Disable;
+
+        public SetBankAutosortDisabled(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            Disable = _worldPacket.HasBit();
+        }
+    }
+
+    class AddItemPassive : ServerPacket
+    {
+        public uint SpellID;
+
+        public AddItemPassive() : base(ServerOpcodes.AddItemPassive, ConnectionType.Instance) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteUInt32(SpellID);
+        }
+    }
+
+    class RemoveItemPassive : ServerPacket
+    {
+        public uint SpellID;
+
+        public RemoveItemPassive() : base(ServerOpcodes.RemoveItemPassive, ConnectionType.Instance) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteUInt32(SpellID);
+        }
+    }
+
+    class SendItemPassives : ServerPacket
+    {
+        public List<uint> SpellID = new();
+
+        public SendItemPassives() : base(ServerOpcodes.SendItemPassives, ConnectionType.Instance) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteInt32(SpellID.Count);
+            if (!SpellID.Empty())
+                foreach (uint id in SpellID)
+                    _worldPacket.WriteUInt32(id);
+        }
     }
 
     //Structs
@@ -762,14 +879,14 @@ namespace Game.Networking.Packets
 
         public void Read(WorldPacket data)
         {
-            Value = data.ReadUInt32();
             Type = (ItemModifier)data.ReadUInt8();
+            Value = data.ReadUInt32();
         }
 
         public void Write(WorldPacket data)
-        {
-            data.WriteUInt32(Value);
+        {     
             data.WriteUInt8((byte)Type);
+            data.WriteUInt32(Value);
         }
 
         public override int GetHashCode()

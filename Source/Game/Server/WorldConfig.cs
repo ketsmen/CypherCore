@@ -457,7 +457,7 @@ namespace Game
                 Values[WorldCfg.StartDemonHunterPlayerLevel] = Values[WorldCfg.MaxPlayerLevel];
             }
 
-            Values[WorldCfg.StartEvokerPlayerLevel] = GetDefaultValue("StartEvokerPlayerLevel", 58);
+            Values[WorldCfg.StartEvokerPlayerLevel] = GetDefaultValue("StartEvokerPlayerLevel", 10);
             if ((int)Values[WorldCfg.StartEvokerPlayerLevel] < 1)
             {
                 Log.outError(LogFilter.ServerLoading, $"StartEvokerPlayerLevel ({Values[WorldCfg.StartEvokerPlayerLevel]}) must be in range 1..MaxPlayerLevel({Values[WorldCfg.MaxPlayerLevel]}). Set to 1.");
@@ -1008,6 +1008,9 @@ namespace Game
 
             // Enable AE loot
             Values[WorldCfg.EnableAeLoot] = GetDefaultValue("Loot.EnableAELoot", true);
+
+            // Loading of Locales
+            Values[WorldCfg.LoadLocales] = GetDefaultValue("Load.Locales", true);
 
             // call ScriptMgr if we're reloading the configuration
             if (reload)

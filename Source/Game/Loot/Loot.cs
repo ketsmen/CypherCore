@@ -16,19 +16,47 @@ namespace Game.Loots
 {
     public class LootItem
     {
+        public uint itemid;
+        public uint LootListId;
+        public uint randomBonusListId;
+        public List<uint> BonusListIDs = new();
+        public ItemContext context;
+        public ConditionsReference conditions;                               // additional loot condition
+        public List<ObjectGuid> allowedGUIDs = new();
+        public ObjectGuid rollWinnerGUID;                                   // Stores the guid of person who won loot, if his bags are full only he can see the item in loot list!
+        public uint count;
+        public LootItemType type;
+        public bool is_looted;
+        public bool is_blocked;
+        public bool freeforall;                          // free for all
+        public bool is_underthreshold;
+        public bool is_counted;
+        public bool needs_quest;                          // quest drop
+        public bool follow_loot_rules;
+
         public LootItem() { }
         public LootItem(LootStoreItem li)
         {
             itemid = li.itemid;
             conditions = li.conditions;
-
-            ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(itemid);
-            freeforall = proto != null && proto.HasFlag(ItemFlags.MultiDrop);
-            follow_loot_rules = !li.needs_quest || (proto != null && proto.FlagsCu.HasAnyFlag(ItemFlagsCustom.FollowLootRules));
-
             needs_quest = li.needs_quest;
 
-            randomBonusListId = ItemEnchantmentManager.GenerateItemRandomBonusListId(itemid);
+            switch (li.type)
+            {
+                case LootStoreItemType.Item:
+                    randomBonusListId = ItemEnchantmentManager.GenerateItemRandomBonusListId(itemid);
+                    type = LootItemType.Item;
+                    ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(itemid);
+                    freeforall = proto != null && proto.HasFlag(ItemFlags.MultiDrop);
+                    follow_loot_rules = !li.needs_quest || (proto != null && proto.HasFlag(ItemFlagsCustom.FollowLootRules));
+                    break;
+                case LootStoreItemType.Currency:
+                    type = LootItemType.Currency;
+                    freeforall = true;
+                    break;
+                default:
+                    break;
+            }
         }
 
         /// <summary>
@@ -39,10 +67,35 @@ namespace Game.Loots
         /// <returns></returns>
         public bool AllowedForPlayer(Player player, Loot loot)
         {
-            return AllowedForPlayer(player, loot, itemid, needs_quest, follow_loot_rules, false, conditions);
+            switch (type)
+            {
+                case LootItemType.Item:
+                    return ItemAllowedForPlayer(player, loot, itemid, needs_quest, follow_loot_rules, false, conditions);
+                case LootItemType.Currency:
+                    return CurrencyAllowedForPlayer(player, itemid, needs_quest, conditions);
+                default:
+                    break;
+            }
+            return false;
         }
 
-        public static bool AllowedForPlayer(Player player, Loot loot, uint itemid, bool needs_quest, bool follow_loot_rules, bool strictUsabilityCheck, ConditionsReference conditions)
+        public static bool AllowedForPlayer(Player player, LootStoreItem lootStoreItem, bool strictUsabilityCheck)
+        {
+            switch (lootStoreItem.type)
+            {
+                case LootStoreItemType.Item:
+                    return ItemAllowedForPlayer(player, null, lootStoreItem.itemid, lootStoreItem.needs_quest,
+                        !lootStoreItem.needs_quest || Global.ObjectMgr.GetItemTemplate(lootStoreItem.itemid).HasFlag(ItemFlagsCustom.FollowLootRules),
+                        strictUsabilityCheck, lootStoreItem.conditions);
+                case LootStoreItemType.Currency:
+                    return CurrencyAllowedForPlayer(player, lootStoreItem.itemid, lootStoreItem.needs_quest, lootStoreItem.conditions);
+                default:
+                    break;
+            }
+            return false;
+        }
+
+        public static bool ItemAllowedForPlayer(Player player, Loot loot, uint itemid, bool needs_quest, bool follow_loot_rules, bool strictUsabilityCheck, ConditionsReference conditions)
         {
             // DB conditions check
             if (!conditions.Meets(player))
@@ -92,6 +145,30 @@ namespace Game.Loots
                 if (player.CanRollNeedForItem(pProto, null, false) != InventoryResult.Ok)
                     return false;
             }
+
+            return true;
+        }
+
+        public static bool CurrencyAllowedForPlayer(Player player, uint currencyId, bool needs_quest, ConditionsReference conditions)
+        {
+            // DB conditions check
+            if (!conditions.Meets(player))
+                return false;
+
+            CurrencyTypesRecord currency = CliDB.CurrencyTypesStorage.LookupByKey(currencyId);
+            if (currency == null)
+                return false;
+
+            // not show loot for not own team
+            if (currency.HasFlag(CurrencyTypesFlags.IsHordeOnly) && player.GetTeam() != Team.Horde)
+                return false;
+
+            if (currency.HasFlag(CurrencyTypesFlags.IsAllianceOnly) && player.GetTeam() != Team.Alliance)
+                return false;
+
+            // check quest requirements
+            if (needs_quest && !player.HasQuestForCurrency(currencyId))
+                return false;
 
             return true;
         }
@@ -174,23 +251,6 @@ namespace Game.Loots
         }
 
         public List<ObjectGuid> GetAllowedLooters() { return allowedGUIDs; }
-
-        public uint itemid;
-        public uint LootListId;
-        public uint randomBonusListId;
-        public List<uint> BonusListIDs = new();
-        public ItemContext context;
-        public ConditionsReference conditions;                               // additional loot condition
-        public List<ObjectGuid> allowedGUIDs = new();
-        public ObjectGuid rollWinnerGUID;                                   // Stores the guid of person who won loot, if his bags are full only he can see the item in loot list!
-        public byte count;
-        public bool is_looted;
-        public bool is_blocked;
-        public bool freeforall;                          // free for all
-        public bool is_underthreshold;
-        public bool is_counted;
-        public bool needs_quest;                          // quest drop
-        public bool follow_loot_rules;
     }
 
     public class NotNormalLootItem
@@ -459,8 +519,8 @@ namespace Game.Loots
                 m_voteMask = RollMask.AllMask;
                 if (itemTemplate.HasFlag(ItemFlags2.CanOnlyRollGreed))
                     m_voteMask = m_voteMask & ~RollMask.Need;
-                var disenchant = GetItemDisenchantLoot();
-                if (disenchant == null || disenchant.SkillRequired > enchantingSkill)
+                var disenchantSkillRequired = GetItemDisenchantSkillRequired();
+                if (!disenchantSkillRequired.HasValue || disenchantSkillRequired > enchantingSkill)
                     m_voteMask = m_voteMask & ~RollMask.Disenchant;
 
                 if (playerCount > 1)                                    // check if more than one player can loot this item
@@ -583,7 +643,30 @@ namespace Game.Loots
             return notVoted == 0;
         }
 
-        ItemDisenchantLootRecord GetItemDisenchantLoot()
+        uint? GetItemDisenchantLootId()
+        {
+            ItemInstance itemInstance = new(m_lootItem);
+
+            BonusData bonusData = new(itemInstance);
+            if (!bonusData.CanDisenchant)
+                return null;
+
+            if (bonusData.DisenchantLootId != 0)
+                return bonusData.DisenchantLootId;
+
+            ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(m_lootItem.itemid);
+
+            // ignore temporary item level scaling (pvp or timewalking)
+            uint itemLevel = Item.GetItemLevel(itemTemplate, bonusData, (uint)bonusData.RequiredLevel, 0, 0, 0, 0, false, 0);
+
+            var disenchantLoot = Item.GetBaseDisenchantLoot(itemTemplate, (uint)bonusData.Quality, itemLevel);
+            if (disenchantLoot == null)
+                return null;
+
+            return disenchantLoot.Id;
+        }
+
+        ushort? GetItemDisenchantSkillRequired()
         {
             ItemInstance itemInstance = new(m_lootItem);
 
@@ -592,8 +675,15 @@ namespace Game.Loots
                 return null;
 
             ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(m_lootItem.itemid);
-            uint itemLevel = Item.GetItemLevel(itemTemplate, bonusData, 1, 0, 0, 0, 0, false, 0);
-            return Item.GetDisenchantLoot(itemTemplate, (uint)bonusData.Quality, itemLevel);
+
+            // ignore temporary item level scaling (pvp or timewalking)
+            uint itemLevel = Item.GetItemLevel(itemTemplate, bonusData, (uint)bonusData.RequiredLevel, 0, 0, 0, 0, false, 0);
+
+            var disenchantLoot = Item.GetBaseDisenchantLoot(itemTemplate, (uint)bonusData.Quality, itemLevel);
+            if (disenchantLoot == null)
+                return null;
+
+            return disenchantLoot.SkillRequired;
         }
 
         // terminate the roll
@@ -622,15 +712,14 @@ namespace Game.Loots
 
                     if (winnerPair.Value.Vote == RollVote.Disenchant)
                     {
-                        var disenchant = GetItemDisenchantLoot();
                         Loot loot = new(m_map, m_loot.GetOwnerGUID(), LootType.Disenchanting, null);
-                        loot.FillLoot(disenchant.Id, LootStorage.Disenchant, player, true, false, LootModes.Default, ItemContext.None);
+                        loot.FillLoot(GetItemDisenchantLootId().GetValueOrDefault(), LootStorage.Disenchant, player, true, false, LootModes.Default, ItemContext.None);
                         if (!loot.AutoStore(player, ItemConst.NullBag, ItemConst.NullSlot, true))
                         {
                             for (uint i = 0; i < loot.items.Count; ++i)
                             {
                                 LootItem disenchantLoot = loot.LootItemInSlot(i, player);
-                                if (disenchantLoot != null)
+                                if (disenchantLoot != null && disenchantLoot.type == LootItemType.Item)
                                     player.SendItemRetrievalMail(disenchantLoot.itemid, disenchantLoot.count, disenchantLoot.context);
                             }
                         }
@@ -660,23 +749,40 @@ namespace Game.Loots
         // Inserts the item into the loot (called by LootTemplate processors)
         public void AddItem(LootStoreItem item)
         {
-            ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(item.itemid);
-            if (proto == null)
-                return;
-
-            uint count = RandomHelper.URand(item.mincount, item.maxcount);
-            uint stacks = (uint)(count / proto.GetMaxStackSize() + (Convert.ToBoolean(count % proto.GetMaxStackSize()) ? 1 : 0));
-
-            for (uint i = 0; i < stacks && items.Count < SharedConst.MaxNRLootItems; ++i)
+            switch (item.type)
             {
-                LootItem generatedLoot = new(item);
-                generatedLoot.context = _itemContext;
-                generatedLoot.count = (byte)Math.Min(count, proto.GetMaxStackSize());
-                generatedLoot.LootListId = (uint)items.Count;
-                generatedLoot.BonusListIDs = ItemBonusMgr.GetBonusListsForItem(generatedLoot.itemid, new(_itemContext));
+                case LootStoreItemType.Item:
+                {
+                    ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(item.itemid);
+                    if (proto == null)
+                        return;
 
-                items.Add(generatedLoot);
-                count -= proto.GetMaxStackSize();
+                    uint count = RandomHelper.URand(item.mincount, item.maxcount);
+                    uint stacks = (uint)(count / proto.GetMaxStackSize() + (Convert.ToBoolean(count % proto.GetMaxStackSize()) ? 1 : 0));
+
+                    for (uint i = 0; i < stacks && items.Count < SharedConst.MaxNRLootItems; ++i)
+                    {
+                        LootItem generatedLoot = new(item);
+                        generatedLoot.context = _itemContext;
+                        generatedLoot.count = (byte)Math.Min(count, proto.GetMaxStackSize());
+                        generatedLoot.LootListId = (uint)items.Count;
+                        generatedLoot.BonusListIDs = ItemBonusMgr.GetBonusListsForItem(generatedLoot.itemid, new(_itemContext));
+
+                        items.Add(generatedLoot);
+                        count -= proto.GetMaxStackSize();
+                    }
+                    break;
+                }
+                case LootStoreItemType.Currency:
+                {
+                    LootItem generatedLoot = new(item);
+                    generatedLoot.count = RandomHelper.URand(item.mincount, item.maxcount);
+                    generatedLoot.LootListId = (uint)items.Count;
+                    items.Add(generatedLoot);
+                    break;
+                }
+                default:
+                    break;
             }
         }
 
@@ -699,19 +805,36 @@ namespace Game.Loots
                 if (!lootItem.rollWinnerGUID.IsEmpty() && lootItem.rollWinnerGUID != GetGUID())
                     continue;
 
-                List<ItemPosCount> dest = new();
-                InventoryResult msg = player.CanStoreNewItem(bag, slot, dest, lootItem.itemid, lootItem.count);
-                if (msg != InventoryResult.Ok && slot != ItemConst.NullSlot)
-                    msg = player.CanStoreNewItem(bag, ItemConst.NullSlot, dest, lootItem.itemid, lootItem.count);
-                if (msg != InventoryResult.Ok && bag != ItemConst.NullBag)
-                    msg = player.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, lootItem.itemid, lootItem.count);
-                if (msg != InventoryResult.Ok)
+                switch (lootItem.type)
                 {
-                    player.SendEquipError(msg, null, null, lootItem.itemid);
-                    allLooted = false;
-                    continue;
-                }
+                    case LootItemType.Item:
+                        List<ItemPosCount> dest = new();
+                        InventoryResult msg = player.CanStoreNewItem(bag, slot, dest, lootItem.itemid, lootItem.count);
+                        if (msg != InventoryResult.Ok && slot != ItemConst.NullSlot)
+                            msg = player.CanStoreNewItem(bag, ItemConst.NullSlot, dest, lootItem.itemid, lootItem.count);
+                        if (msg != InventoryResult.Ok && bag != ItemConst.NullBag)
+                            msg = player.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, lootItem.itemid, lootItem.count);
+                        if (msg != InventoryResult.Ok)
+                        {
+                            player.SendEquipError(msg, null, null, lootItem.itemid);
+                            allLooted = false;
+                            continue;
+                        }
 
+                        Item pItem = player.StoreNewItem(dest, lootItem.itemid, true, lootItem.randomBonusListId, null, lootItem.context, lootItem.BonusListIDs);
+                        if (pItem != null)
+                        {
+                            player.SendNewItem(pItem, lootItem.count, false, createdByPlayer, broadcast, GetDungeonEncounterId());
+                            player.ApplyItemLootedSpell(pItem, true);
+                        }
+                        else
+                            player.ApplyItemLootedSpell(Global.ObjectMgr.GetItemTemplate(lootItem.itemid));
+
+                        break;
+                    case LootItemType.Currency:
+                        player.ModifyCurrency(lootItem.itemid, (int)lootItem.count, CurrencyGainSource.Loot);
+                        break;
+                }
                 if (ffaitem != null)
                     ffaitem.is_looted = true;
 
@@ -719,15 +842,6 @@ namespace Game.Loots
                     lootItem.is_looted = true;
 
                 --unlootedCount;
-
-                Item pItem = player.StoreNewItem(dest, lootItem.itemid, true, lootItem.randomBonusListId, null, lootItem.context, lootItem.BonusListIDs);
-                if (pItem != null)
-                {
-                    player.SendNewItem(pItem, lootItem.count, false, createdByPlayer, broadcast, GetDungeonEncounterId());
-                    player.ApplyItemLootedSpell(pItem, true);
-                }
-                else
-                    player.ApplyItemLootedSpell(Global.ObjectMgr.GetItemTemplate(lootItem.itemid));
             }
 
             return allLooted;
@@ -783,7 +897,7 @@ namespace Game.Loots
 
                 foreach (LootItem item in items)
                 {
-                    if (!item.follow_loot_rules || item.freeforall)
+                    if (!item.follow_loot_rules || item.freeforall || item.type != LootItemType.Item)
                         continue;
 
                     ItemTemplate proto = Global.ObjectMgr.GetItemTemplate(item.itemid);
@@ -1014,12 +1128,8 @@ namespace Game.Loots
                     return true;
 
             var ffaItems = GetPlayerFFAItems().LookupByKey(player.GetGUID());
-            if (ffaItems != null)
-            {
-                bool hasFfaItem = ffaItems.Any(ffaItem => !ffaItem.is_looted);
-                if (hasFfaItem)
-                    return true;
-            }
+            if (ffaItems != null && ffaItems.Any(ffaItem => !ffaItem.is_looted))
+                return true;
 
             return false;
         }
@@ -1046,12 +1156,34 @@ namespace Game.Loots
                 if (!uiType.HasValue)
                     continue;
 
-                LootItemData lootItem = new();
-                lootItem.LootListID = (byte)item.LootListId;
-                lootItem.UIType = uiType.Value;
-                lootItem.Quantity = item.count;
-                lootItem.Loot = new(item);
-                packet.Items.Add(lootItem);
+                switch (item.type)
+                {
+                    case LootItemType.Item:
+                    {
+                        LootItemData lootItem = new();
+                        lootItem.LootListID = (byte)item.LootListId;
+                        lootItem.UIType = uiType.Value;
+                        lootItem.Quantity = item.count;
+                        lootItem.Loot = new(item);
+                        packet.Items.Add(lootItem);
+                        break;
+                    }
+                    case LootItemType.Currency:
+                    {
+                        LootCurrency lootCurrency = new();
+                        lootCurrency.CurrencyID = item.itemid;
+                        lootCurrency.Quantity = item.count;
+                        lootCurrency.LootListID = (byte)item.LootListId;
+                        lootCurrency.UIType = (byte)uiType.Value;
+
+                        // fake visible quantity for SPELL_AURA_MOD_CURRENCY_CATEGORY_GAIN_PCT - handled in Player::ModifyCurrency
+                        lootCurrency.Quantity = (uint)((float)lootCurrency.Quantity * viewer.GetTotalAuraMultiplierByMiscValue(AuraType.ModCurrencyCategoryGainPct, CliDB.CurrencyTypesStorage.LookupByKey(item.itemid).CategoryID));
+                        packet.Currencies.Add(lootCurrency);
+                        break;
+                    }
+                    default:
+                        break;
+                }
             }
         }
 

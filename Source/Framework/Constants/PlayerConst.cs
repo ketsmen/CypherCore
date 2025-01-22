@@ -7,7 +7,7 @@ namespace Framework.Constants
 {
     public struct PlayerConst
     {
-        public const Expansion CurrentExpansion = Expansion.Dragonflight;
+        public const Expansion CurrentExpansion = Expansion.TheWarWithin;
 
         public const int MaxTalentTiers = 7;
         public const int MaxTalentColumns = 3;
@@ -69,6 +69,8 @@ namespace Framework.Constants
         public const uint CurrencyMaxCapAncientMana = 2000;
 
         public const float MaxAreaSpiritHealerRange = 20.0f;
+
+        public const float TeleportMinLoadScreenDistance = 200.0f;
     }
 
     public struct MoneyConstants
@@ -148,7 +150,8 @@ namespace Framework.Constants
         Mobile = 0x40,
         Guide = 0x1000,
         Newcomer = 0x2000,
-        Censored = 0x4000
+        Censored = 0x4000,
+        Timerunning = 0x8000
     }
 
     public enum DrunkenState
@@ -517,8 +520,14 @@ namespace Framework.Constants
         // first slot for item stored (in any way in player items data)
         Start = 0,
         // last+1 slot for item stored (in any way in player items data)
-        End = 227,
+        End = 232,
         Count = (End - Start)
+    }
+
+    enum AccountBankBagSlots
+    {
+        Start = 227,
+        End = 232
     }
 
     public enum PlayerTitle : ulong
@@ -790,6 +799,16 @@ namespace Framework.Constants
         QuestComplete = 16,
         RatedPvPReward = 17,
         CorruptedLoot = 19
+    }
+
+    public enum AvgItemLevelCategory
+    {
+        Base = 0,
+        EquippedBase = 1,
+        EquippedEffective = 2,
+        Pvp = 3,
+        PvpWeighted = 4,
+        EquippedEffectiveWeighted = 5
     }
 
     [Flags]

@@ -107,12 +107,16 @@ namespace Game.Spells
             if (GetSpellInfo().HasAttribute(SpellAttr10.RollingPeriodic))
             {
                 var periodicAuras = GetBase().GetUnitOwner().GetAuraEffectsByType(GetAuraType());
-                amount = periodicAuras.Aggregate(0, (val, aurEff) =>
+                uint totalTicks = GetTotalTicks();
+                if (totalTicks != 0)
                 {
-                    if (aurEff.GetCasterGUID() == GetCasterGUID() && aurEff.GetId() == GetId() && aurEff.GetEffIndex() == GetEffIndex() && aurEff.GetTotalTicks() > 0)
-                        val += aurEff.GetAmount() * (int)aurEff.GetRemainingTicks() / (int)aurEff.GetTotalTicks();
-                    return val;
-                });
+                    amount = periodicAuras.Aggregate(amount, (val, aurEff) =>
+                    {
+                        if (aurEff.GetCasterGUID() == GetCasterGUID() && aurEff.GetId() == GetId() && aurEff.GetEffIndex() == GetEffIndex())
+                            val += (int)(aurEff.GetEstimatedAmount().GetValueOrDefault(aurEff.GetAmount()) * (float)aurEff.GetRemainingTicks() / (float)aurEff.GetTotalTicks());
+                        return val;
+                    });
+                }
             }
 
             GetBase().CallScriptEffectCalcAmountHandlers(this, ref amount, ref m_canBeRecalculated);
@@ -330,6 +334,29 @@ namespace Game.Spells
                     break;
             }
             GetBase().CallScriptEffectCalcSpellModHandlers(this, ref m_spellmod);
+
+            // validate modifier
+            if (m_spellmod != null)
+            {
+                bool isValid = true;
+                bool logErrors = GetBase().GetLoadedScripts().Any(script => script.DoEffectCalcSpellMod.Count > 0);
+                if (m_spellmod.op >= SpellModOp.Max)
+                {
+                    isValid = false;
+                    if (logErrors)
+                        Log.outError(LogFilter.Spells, $"Aura script for spell id {GetId()} created invalid spell modifier op {m_spellmod.op}");
+                }
+
+                if (m_spellmod.type >= SpellModType.End)
+                {
+                    isValid = false;
+                    if (logErrors)
+                        Log.outError(LogFilter.Spells, $"Aura script for spell id {GetId()} created invalid spell modifier type {m_spellmod.type}");
+                }
+
+                if (!isValid)
+                    m_spellmod = null;
+            }
         }
         public void ChangeAmount(int newAmount, bool mark = true, bool onStackOrReapply = false, AuraEffect triggeredBy = null)
         {
@@ -2152,11 +2179,7 @@ namespace Game.Spells
                                 {
                                     Player playerTarget = target.ToPlayer();
                                     if (playerTarget != null)
-                                    {
-                                        var playerCondition = CliDB.PlayerConditionStorage.LookupByKey(mountDisplay.PlayerConditionID);
-                                        if (playerCondition != null)
-                                            return ConditionManager.IsPlayerMeetingCondition(playerTarget, playerCondition);
-                                    }
+                                        return ConditionManager.IsPlayerMeetingCondition(playerTarget, mountDisplay.PlayerConditionID);
 
                                     return true;
                                 }).ToList();
@@ -2196,7 +2219,10 @@ namespace Game.Spells
                 {
                     var mountCapability = CliDB.MountCapabilityStorage.LookupByKey(GetAmount());
                     if (mountCapability != null)
+                    {
+                        target.SetFlightCapabilityID(mountCapability.FlightCapabilityID, true);
                         target.CastSpell(target, mountCapability.ModSpellAuraID, new CastSpellExtraArgs(this));
+                    }
                 }
             }
             else
@@ -2216,6 +2242,8 @@ namespace Game.Spells
                     var mountCapability = CliDB.MountCapabilityStorage.LookupByKey(GetAmount());
                     if (mountCapability != null)
                         target.RemoveAurasDueToSpell(mountCapability.ModSpellAuraID, target.GetGUID());
+
+                    target.SetFlightCapabilityID(0, true);
                 }
             }
         }
@@ -2350,6 +2378,18 @@ namespace Game.Spells
             target.SetCanTurnWhileFalling(apply);
         }
 
+        [AuraEffectHandler(AuraType.AdvFlying)]
+        void HandleModAdvFlying(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.SendForClientMask))
+                return;
+
+            Unit target = aurApp.GetTarget();
+            target.SetCanDoubleJump(apply || target.HasAura(196055));
+            target.SetCanFly(apply);
+            target.SetCanAdvFly(apply);
+        }
+
         [AuraEffectHandler(AuraType.IgnoreMovementForces)]
         void HandleIgnoreMovementForces(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {
@@ -2383,6 +2423,22 @@ namespace Game.Spells
             }
 
             target.SetDisableInertia(apply);
+        }
+
+        void HandleSetCantSwim(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.SendForClientMask))
+                return;
+
+            Unit target = aurApp.GetTarget();
+            if (!apply)
+            {
+                // do not remove unit flag if there are more than this auraEffect of that kind on unit on unit
+                if (target.HasAuraType(GetAuraType()))
+                    return;
+            }
+
+            target.SetMoveCantSwim(apply);
         }
 
         /****************************/
@@ -2530,6 +2586,21 @@ namespace Game.Spells
             target.SetControlled(false, UnitState.Fleeing);
         }
 
+        static void HandleAuraDisableGravity(Unit target, bool apply)
+        {
+            // Do not remove DisableGravity if there are more than this auraEffect of that kind on the unit or if it's a creature with DisableGravity on its movement template.
+            if (!apply)
+                if (target.HasAuraType(AuraType.ModRootDisableGravity)
+                    || target.HasAuraType(AuraType.ModStunDisableGravity)
+                    || target.HasAuraType(AuraType.DisableGravity)
+                    || (target.IsCreature() && target.ToCreature().IsFloating()))
+                    return;
+
+            if (target.SetDisableGravity(apply))
+                if (!apply && !target.IsFlying())
+                    target.GetMotionMaster().MoveFall();
+        }
+
         [AuraEffectHandler(AuraType.ModRootDisableGravity)]
         void HandleAuraModRootAndDisableGravity(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
         {
@@ -2540,13 +2611,7 @@ namespace Game.Spells
 
             target.SetControlled(apply, UnitState.Root);
 
-            // Do not remove DisableGravity if there are more than this auraEffect of that kind on the unit or if it's a creature with DisableGravity on its movement template.
-            if (!apply && (target.HasAuraType(GetAuraType()) || target.HasAuraType(AuraType.ModRootDisableGravity) || (target.IsCreature() && target.ToCreature().IsFloating())))
-                return;
-
-            if (target.SetDisableGravity(apply))
-                if (!apply && !target.IsFlying())
-                    target.GetMotionMaster().MoveFall();
+            HandleAuraDisableGravity(target, apply);
         }
 
         [AuraEffectHandler(AuraType.ModStunDisableGravity)]
@@ -2562,13 +2627,18 @@ namespace Game.Spells
             if (apply)
                 target.GetThreatManager().EvaluateSuppressed();
 
-            // Do not remove DisableGravity if there are more than this auraEffect of that kind on the unit or if it's a creature with DisableGravity on its movement template.
-            if (!apply && (target.HasAuraType(GetAuraType()) || target.HasAuraType(AuraType.ModStunDisableGravity) || (target.IsCreature() && target.ToCreature().IsFloating())))
+            HandleAuraDisableGravity(target, apply);
+        }
+
+        [AuraEffectHandler(AuraType.DisableGravity)]
+        void HandleAuraDisableGravity(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.Real))
                 return;
 
-            if (target.SetDisableGravity(apply))
-                if (!apply && !target.IsFlying())
-                    target.GetMotionMaster().MoveFall();
+            Unit target = aurApp.GetTarget();
+
+            HandleAuraDisableGravity(target, apply);
         }
 
         /***************************/
@@ -2849,6 +2919,49 @@ namespace Game.Spells
             aurApp.GetTarget().UpdateMovementForcesModMagnitude();
         }
 
+        [AuraEffectHandler(AuraType.ModAdvFlyingAirFriction)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingMaxVel)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingLiftCoef)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingAddImpulseMaxSpeed)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingBankingRate)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingPitchingRateDown)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingPitchingRateUp)]
+        [AuraEffectHandler(AuraType.ModAdvFlyingOverMaxDeceleration)]
+        void HandleAuraModAdvFlyingSpeed(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.ChangeAmountMask))
+                return;
+
+            Unit target = aurApp.GetTarget();
+            switch (GetAuraType())
+            {
+                case AuraType.ModAdvFlyingAirFriction:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.AirFriction, true);
+                    break;
+                case AuraType.ModAdvFlyingMaxVel:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.MaxVel, true);
+                    break;
+                case AuraType.ModAdvFlyingLiftCoef:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.LiftCoefficient, true);
+                    break;
+                case AuraType.ModAdvFlyingAddImpulseMaxSpeed:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.AddImpulseMaxSpeed, true);
+                    break;
+                case AuraType.ModAdvFlyingBankingRate:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.BankingRate, true);
+                    break;
+                case AuraType.ModAdvFlyingPitchingRateDown:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.PitchingRateDown, true);
+                    break;
+                case AuraType.ModAdvFlyingPitchingRateUp:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.PitchingRateUp, true);
+                    break;
+                case AuraType.ModAdvFlyingOverMaxDeceleration:
+                    target.UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.OverMaxDeceleration, true);
+                    break;
+            }
+        }
+
         /*********************************************************/
         /***                     IMMUNITY                      ***/
         /*********************************************************/
@@ -2886,13 +2999,7 @@ namespace Game.Spells
             Player player = target.ToPlayer();
             if (!apply && player != null && GetSpellInfo().HasAuraInterruptFlag(SpellAuraInterruptFlags.StealthOrInvis))
             {
-                if (player.InBattleground())
-                {
-                    Battleground bg = player.GetBattleground();
-                    if (bg != null)
-                        bg.EventPlayerDroppedFlag(player);
-                }
-                else
+                if (!player.InBattleground())
                     Global.OutdoorPvPMgr.HandleDropFlag(player, GetSpellInfo().Id);
             }
         }
@@ -2915,28 +3022,6 @@ namespace Game.Spells
 
             Unit target = aurApp.GetTarget();
             m_spellInfo.ApplyAllSpellImmunitiesTo(target, GetSpellEffectInfo(), apply);
-
-            if (GetSpellInfo().Mechanic == Mechanics.Banish)
-            {
-                if (apply)
-                    target.AddUnitState(UnitState.Isolated);
-                else
-                {
-                    bool banishFound = false;
-                    var banishAuras = target.GetAuraEffectsByType(GetAuraType());
-                    foreach (var aurEff in banishAuras)
-                    {
-                        if (aurEff.GetSpellInfo().Mechanic == Mechanics.Banish)
-                        {
-                            banishFound = true;
-                            break;
-                        }
-                    }
-
-                    if (!banishFound)
-                        target.ClearUnitState(UnitState.Isolated);
-                }
-            }
 
             // TODO: should be changed to a proc script on flag spell (they have "Taken positive" proc flags in db2)
             {
@@ -4629,7 +4714,6 @@ namespace Game.Spells
             ReputationRank factionRank = (ReputationRank)GetAmount();
 
             player.GetReputationMgr().ApplyForceReaction(factionId, factionRank, apply);
-            player.GetReputationMgr().SendForceReactions();
 
             // stop fighting at apply (if forced rank friendly) or at remove (if real rank friendly)
             if ((apply && factionRank >= ReputationRank.Friendly) || (!apply && player.GetReputationRank(factionId) >= ReputationRank.Friendly))
@@ -4966,13 +5050,23 @@ namespace Game.Spells
 
             int vehicleId = GetMiscValue();
 
+            target.RemoveVehicleKit();
+
             if (apply)
             {
                 if (!target.CreateVehicleKit((uint)vehicleId, 0))
                     return;
             }
-            else if (target.GetVehicleKit() != null)
-                target.RemoveVehicleKit();
+            else
+            {
+                Creature creature = target.ToCreature();
+                if (creature != null)
+                {
+                    uint originalVehicleId = creature.GetCreatureTemplate().VehicleId;
+                    if (originalVehicleId != 0)
+                        creature.CreateVehicleKit(originalVehicleId, creature.GetEntry());
+                }
+            }
 
             if (!target.IsTypeId(TypeId.Player))
                 return;
@@ -5074,7 +5168,7 @@ namespace Game.Spells
             if (!target.IsAlive())
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
+            if (target.IsImmunedToDamage(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5202,7 +5296,7 @@ namespace Game.Spells
             if (!target.IsAlive())
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
+            if (target.IsImmunedToDamage(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5302,7 +5396,7 @@ namespace Game.Spells
             if (caster == null || !caster.IsAlive() || !target.IsAlive())
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated))
+            if (target.IsImmunedToAuraPeriodicTick(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5332,7 +5426,7 @@ namespace Game.Spells
             if (!target.IsAlive())
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated))
+            if (target.IsImmunedToAuraPeriodicTick(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5392,7 +5486,7 @@ namespace Game.Spells
             if (caster == null || !caster.IsAlive() || !target.IsAlive() || target.GetPowerType() != powerType)
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
+            if (target.IsImmunedToAuraPeriodicTick(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5452,7 +5546,7 @@ namespace Game.Spells
             if (!target.IsAlive() || target.GetMaxPower(powerType) == 0)
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated))
+            if (target.IsImmunedToAuraPeriodicTick(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5481,7 +5575,7 @@ namespace Game.Spells
             if (!target.IsAlive() || target.GetMaxPower(powerType) == 0)
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated))
+            if (target.IsImmunedToAuraPeriodicTick(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5510,7 +5604,7 @@ namespace Game.Spells
             if (caster == null || !target.IsAlive() || target.GetPowerType() != powerType)
                 return;
 
-            if (target.HasUnitState(UnitState.Isolated) || target.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
+            if (target.IsImmunedToDamage(caster, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(target, caster);
                 return;
@@ -5640,7 +5734,7 @@ namespace Game.Spells
         {
             Unit target = aurApp.GetTarget();
             Unit triggerTarget = eventInfo.GetProcTarget();
-            if (triggerTarget.HasUnitState(UnitState.Isolated) || triggerTarget.IsImmunedToDamage(GetSpellInfo(), GetSpellEffectInfo()))
+            if (triggerTarget.IsImmunedToDamage(target, GetSpellInfo(), GetSpellEffectInfo()))
             {
                 SendTickImmune(triggerTarget, target);
                 return;
@@ -5924,15 +6018,28 @@ namespace Game.Spells
 
             if (!apply && aurApp.GetRemoveMode() != AuraRemoveMode.Default)
             {
-                GameObject gameObjectCaster = target.GetMap().GetGameObject(GetCasterGUID());
-                if (gameObjectCaster != null)
+                if (GetCasterGUID().IsGameObject())
                 {
-                    if (gameObjectCaster.GetGoType() == GameObjectTypes.NewFlag)
+                    GameObjectTemplate gobTemplate = Global.ObjectMgr.GetGameObjectTemplate(GetCasterGUID().GetEntry());
+                    if (gobTemplate != null)
                     {
-                        gameObjectCaster.HandleCustomTypeCommand(new SetNewFlagState(FlagState.Dropped, target));
-                        GameObject droppedFlag = gameObjectCaster.SummonGameObject(gameObjectCaster.GetGoInfo().NewFlag.FlagDrop, target.GetPosition(), Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(target.GetOrientation(), 0.0f, 0.0f)), TimeSpan.FromSeconds(gameObjectCaster.GetGoInfo().NewFlag.ExpireDuration / 1000), GameObjectSummonType.TimedDespawn);
-                        if (droppedFlag != null)
-                            droppedFlag.SetOwnerGUID(gameObjectCaster.GetGUID());
+                        if (gobTemplate.type == GameObjectTypes.NewFlag)
+                        {
+                            GameObject gameObjectCaster = target.GetMap().GetGameObject(GetCasterGUID());
+                            if (gameObjectCaster != null)
+                            {
+                                gameObjectCaster.HandleCustomTypeCommand(new SetNewFlagState(FlagState.Dropped, target));
+                                GameObject droppedFlag = gameObjectCaster.SummonGameObject(gameObjectCaster.GetGoInfo().NewFlag.FlagDrop, target.GetPosition(), Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(target.GetOrientation(), 0.0f, 0.0f)), TimeSpan.FromSeconds(gameObjectCaster.GetGoInfo().NewFlag.ExpireDuration / 1000), GameObjectSummonType.TimedDespawn);
+                                if (droppedFlag != null)
+                                    droppedFlag.SetOwnerGUID(gameObjectCaster.GetGUID());
+                            }
+                        }
+                        else if (gobTemplate.type == GameObjectTypes.FlagStand)
+                        {
+                            ZoneScript zonescript = target.FindZoneScript();
+                            if (zonescript != null)
+                                zonescript.OnFlagDropped(GetCasterGUID(), target);
+                        }
                     }
                 }
             }
@@ -6057,6 +6164,43 @@ namespace Game.Spells
                 return;
 
             playerTarget.UpdatePositionData();
+        }
+
+        [AuraEffectHandler(AuraType.ActAsControlZone)]
+        void HandleAuraActAsControlZone(AuraApplication aurApp, AuraEffectHandleModes mode, bool apply)
+        {
+            if (!mode.HasAnyFlag(AuraEffectHandleModes.Real))
+                return;
+
+            Unit auraOwner = aurApp.GetTarget();
+            if (!apply)
+            {
+                auraOwner.RemoveGameObject(GetSpellInfo().Id, true);
+                return;
+            }
+
+            GameObjectTemplate gameobjectTemplate = Global.ObjectMgr.GetGameObjectTemplate((uint)GetMiscValue());
+            if (gameobjectTemplate == null)
+            {
+                Log.outWarn(LogFilter.Spells, $"AuraEffect::HanldeAuraActAsControlZone: Spell {GetId()} [EffectIndex: {GetEffIndex()}] does not have an existing gameobject template.");
+                return;
+            }
+
+            if (gameobjectTemplate.type != GameObjectTypes.ControlZone)
+            {
+                Log.outWarn(LogFilter.Spells, $"AuraEffect::HanldeAuraActAsControlZone: Spell {GetId()} [EffectIndex: {GetEffIndex()}] has a gameobject template ({gameobjectTemplate.entry}) that is not a control zone.");
+                return;
+            }
+
+            if (gameobjectTemplate.displayId != 0)
+            {
+                Log.outWarn(LogFilter.Spells, $"AuraEffect::HanldeAuraActAsControlZone: Spell {GetId()} [EffectIndex: {GetEffIndex()}] has a gameobject template ({gameobjectTemplate.entry}) that has a display id. Only invisible gameobjects are supported.");
+                return;
+            }
+
+            GameObject controlZone = auraOwner.SummonGameObject(gameobjectTemplate.entry, auraOwner.GetPosition(), Quaternion.CreateFromRotationMatrix(Extensions.fromEulerAnglesZYX(aurApp.GetTarget().GetOrientation(), 0.0f, 0.0f)), TimeSpan.FromHours(24), GameObjectSummonType.TimedOrCorpseDespawn);
+            if (controlZone != null)
+                controlZone.SetSpellId(GetSpellInfo().Id);
         }
         #endregion
     }

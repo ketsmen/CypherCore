@@ -274,20 +274,23 @@ namespace Game.Entities
             return false;
         }
 
-        public override SpellInfo GetCastSpellInfo(SpellInfo spellInfo, TriggerCastFlags triggerFlag)
+        public override SpellInfo GetCastSpellInfo(SpellInfo spellInfo, TriggerCastFlags triggerFlag, GetCastSpellInfoContext context)
         {
             var overrides = m_overrideSpells.LookupByKey(spellInfo.Id);
             if (!overrides.Empty())
             {
                 foreach (uint spellId in overrides)
                 {
-                    SpellInfo newInfo = Global.SpellMgr.GetSpellInfo(spellId, GetMap().GetDifficultyID());
-                    if (newInfo != null)
-                        return GetCastSpellInfo(newInfo, triggerFlag);
+                    if (context.AddSpell(spellId))
+                    {
+                        SpellInfo newInfo = Global.SpellMgr.GetSpellInfo(spellId, GetMap().GetDifficultyID());
+                        if (newInfo != null)
+                            return GetCastSpellInfo(newInfo, triggerFlag, context);
+                    }
                 }
             }
 
-            return base.GetCastSpellInfo(spellInfo, triggerFlag);
+            return base.GetCastSpellInfo(spellInfo, triggerFlag, context);
         }
 
         public void SetOverrideSpellsId(uint overrideSpellsId) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.OverrideSpellsID), overrideSpellsId); }
@@ -334,7 +337,7 @@ namespace Game.Entities
                         for (int j = 0; j < specSpells.Count; ++j)
                         {
                             SpecializationSpellsRecord specSpell = specSpells[j];
-                            RemoveSpell(specSpell.SpellID, true);
+                            RemoveSpell(specSpell.SpellID);
                             if (specSpell.OverridesSpellID != 0)
                                 RemoveOverrideSpell(specSpell.OverridesSpellID, specSpell.SpellID);
                         }
@@ -447,9 +450,10 @@ namespace Game.Entities
             Log.outDebug(LogFilter.Player, "Player:UpdateSkillPro Chance={0:F3}% taken", chance / 10.0f);
             return true;
         }
+
         void UpdateSkillEnchantments(uint skill_id, ushort curr_value, ushort new_value)
         {
-            for (byte i = 0; i < InventorySlots.BagEnd; ++i)
+            for (byte i = 0; i < InventorySlots.ReagentBagEnd; ++i)
             {
                 if (m_items[i] != null)
                 {
@@ -1858,7 +1862,7 @@ namespace Game.Entities
                     ApplyItemObtainSpells(item, true);
             }
 
-            for (byte i = InventorySlots.BagStart; i < InventorySlots.BagEnd; ++i)
+            for (byte i = InventorySlots.BagStart; i < InventorySlots.ReagentBagEnd; ++i)
             {
                 Bag bag = GetBagByPos(i);
                 if (bag == null)
@@ -2330,6 +2334,18 @@ namespace Game.Entities
 
             foreach (var spellNode in spell_bounds)
             {
+                bool hasOtherSpellTeachingThis = Global.SpellMgr.GetSpellLearnedBySpellMapBounds(spellNode.Spell).Any(learnNode =>
+                {
+                    if (learnNode.SourceSpell == spellId)
+                        return false;
+                    if (!learnNode.Active)
+                        return false;
+                    return HasSpell(learnNode.SourceSpell);
+                });
+
+                if (hasOtherSpellTeachingThis)
+                    continue;
+
                 RemoveSpell(spellNode.Spell, disabled);
                 if (spellNode.OverridesSpell != 0)
                     RemoveOverrideSpell(spellNode.OverridesSpell, spellNode.Spell);
@@ -2760,7 +2776,7 @@ namespace Game.Entities
             if (traitDefinitionId.HasValue)
             {
                 TraitDefinitionRecord traitDefinition = CliDB.TraitDefinitionStorage.LookupByKey(traitDefinitionId.Value);
-                if (traitDefinition != null)
+                if (traitDefinition != null && traitDefinition.OverridesSpellID != 0)
                     AddOverrideSpell(traitDefinition.OverridesSpellID, spellId);
             }
 
@@ -3320,7 +3336,7 @@ namespace Game.Entities
 
         public void UpdateEquipSpellsAtFormChange()
         {
-            for (byte i = 0; i < InventorySlots.BagEnd; ++i)
+            for (byte i = 0; i < InventorySlots.ReagentBagEnd; ++i)
             {
                 if (m_items[i] != null && !m_items[i].IsBroken() && CanUseAttackType(GetAttackBySlot(i, m_items[i].GetTemplate().GetInventoryType())))
                 {
@@ -3866,7 +3882,8 @@ namespace Game.Entities
             }
 
             // Check possible spell cast overrides
-            spellInfo = castingUnit.GetCastSpellInfo(spellInfo, triggerFlag);
+            GetCastSpellInfoContext overrideContext = new();
+            spellInfo = castingUnit.GetCastSpellInfo(spellInfo, triggerFlag, overrideContext);
             if (spellInfo.IsPassive())
             {
                 CancelPendingCastRequest();

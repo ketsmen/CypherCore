@@ -11,7 +11,7 @@ namespace Framework.Constants
         public const int MaxGemSockets = 3;
         public const int MaxSpells = 5;
         public const int MaxStats = 10;
-        public const int MaxBagSize = 36;
+        public const int MaxBagSize = 98;
         public const byte NullBag = 0;
         public const byte NullSlot = 255;
         public const int MaxOutfitItems = 24;
@@ -93,6 +93,20 @@ namespace Framework.Constants
             ItemModifier.TransmogSecondaryAppearanceSpec3,
             ItemModifier.TransmogSecondaryAppearanceSpec4,
             ItemModifier.TransmogSecondaryAppearanceSpec5
+        };
+
+        public static InventoryType[] InventoryTypesEquipable =
+        {
+            InventoryType.Weapon,
+            InventoryType.Shield,
+            InventoryType.Ranged,
+            InventoryType.Weapon2Hand,
+            InventoryType.WeaponMainhand,
+            InventoryType.WeaponOffhand,
+            InventoryType.Holdable,
+            InventoryType.Thrown,
+            InventoryType.RangedRight,
+            InventoryType.ProfessionTool
         };
     }
 
@@ -315,6 +329,9 @@ namespace Framework.Constants
         OnPickup = 5,
         OnLearn = 6,                   // used in itemtemplate.spell2 with spellid with SPELLGENERICLEARN in spell1
         OnLooted = 7,
+        TeachMount = 8,
+        OnPickupForced = 9,
+        OnLootedForced = 10,
         Max
     }
 
@@ -401,7 +418,7 @@ namespace Framework.Constants
         CraftingReagentSlot12 = 55,
         CraftingReagentSlot13 = 56,
         CraftingReagentSlot14 = 57,
-
+        Reforge = 58,
 
         Max
     }
@@ -450,8 +467,8 @@ namespace Framework.Constants
         RaidRaidFinder = 4,
         RaidHeroic = 5,
         RaidMythic = 6,
-        PvpUnranked1 = 7,
-        PvpRanked1Unrated = 8,
+        PVPUnranked1 = 7,
+        PVPRanked1Unrated = 8,
         ScenarioNormal = 9,
         ScenarioHeroic = 10,
         QuestReward = 11,
@@ -459,7 +476,7 @@ namespace Framework.Constants
         TradeSkill = 13,
         Vendor = 14,
         BlackMarket = 15,
-        MythicplusEndOfRun = 16,
+        MythicPlusEndofRun = 16,
         DungeonLvlUp1 = 17,
         DungeonLvlUp2 = 18,
         DungeonLvlUp3 = 19,
@@ -476,36 +493,36 @@ namespace Framework.Constants
         WorldQuest6 = 30,
         MissionReward1 = 31,
         MissionReward2 = 32,
-        MythicplusEndOfRunTimeChest = 33,
-        ZzchallengeMode3 = 34,
-        MythicplusJackpot = 35,
+        MythicPlusEndofRunTimeChest = 33,
+        MythicPlusTimewalkingEndofRun = 34,
+        MythicPlusJackpot = 35,
         WorldQuest7 = 36,
         WorldQuest8 = 37,
-        PvpRanked2Combatant = 38,
-        PvpRanked3Challenger = 39,
-        PvpRanked4Rival = 40,
-        PvpUnranked2 = 41,
+        PVPRanked2Combatant = 38,
+        PVPRanked4Challenger = 39,
+        PVPRanked6Rival = 40,
+        PVPUnranked2 = 41,
         WorldQuest9 = 42,
         WorldQuest10 = 43,
-        PvpRanked5Duelist = 44,
-        PvpRanked6Elite = 45,
-        PvpRanked7 = 46,
-        PvpUnranked3 = 47,
-        PvpUnranked4 = 48,
-        PvpUnranked5 = 49,
-        PvpUnranked6 = 50,
-        PvpUnranked7 = 51,
-        PvpRanked8 = 52,
+        PVPRanked8Duelist = 44,
+        PVPRanked9Elite = 45,
+        PVPRanked3Combatant = 46,
+        PVPUnranked3 = 47,
+        PVPUnranked4 = 48,
+        PVPUnranked5 = 49,
+        PVPUnranked6 = 50,
+        PVPUnranked7 = 51,
+        PVPRanked5Challenger = 52,
         WorldQuest11 = 53,
         WorldQuest12 = 54,
         WorldQuest13 = 55,
-        PvpRankedJackpot = 56,
-        TournamentRealm = 57,
+        PVPRankedJackpot = 56,
+        TournamentRealm1 = 57,
         Relinquished = 58,
         LegendaryForge = 59,
         QuestBonusLoot = 60,
-        CharacterBoostBfa = 61,
-        CharacterBoostShadowlands = 62,
+        CharacterBoostDragonflight70 = 61,
+        CharacterBoostShadowlands50 = 62,
         LegendaryCrafting1 = 63,
         LegendaryCrafting2 = 64,
         LegendaryCrafting3 = 65,
@@ -520,8 +537,8 @@ namespace Framework.Constants
         WorldQuestJackpot = 74,
         NewCharacter = 75,
         WarMode = 76,
-        PvpBrawl1 = 77,
-        PvpBrawl2 = 78,
+        PvPBrawl1 = 77,
+        PvPBrawl2 = 78,
         Torghast = 79,
         CorpseRecovery = 80,
         WorldBoss = 81,
@@ -529,9 +546,9 @@ namespace Framework.Constants
         RaidRaidFinderExtended = 83,
         RaidHeroicExtended = 84,
         RaidMythicExtended = 85,
-        CharacterTemplate91 = 86,
-        ChallengeMode4 = 87,
-        PvpRanked9 = 88,
+        CharacterBoostShadowlands60 = 86,
+        MythicPlusTimewalkingEndofRunTimeChest = 87,
+        PvpRanked7Rival = 88,
         RaidNormalExtended2 = 89,
         RaidFinderExtended2 = 90,
         RaidHeroicExtended2 = 91,
@@ -544,6 +561,70 @@ namespace Framework.Constants
         TemplateCharacter2 = 98,
         TemplateCharacter3 = 99,
         TemplateCharacter4 = 100,
+        DungeonNormalJackpot = 101,
+        DungeonHeroicJackpot = 102,
+        DungeonMythicJackpot = 103,
+        Delves1 = 104,
+        Timerunning = 105,
+        Delves2 = 106,
+        Delves3 = 107,
+        DelvesJackpot = 108,
+        DelvesKey1 = 109,
+        DelvesKey2 = 110,
+        DelvesKey3 = 111,
+        DelvesKey4 = 112,
+        DelvesKey5 = 113,
+        DelvesKey6 = 114,
+        DelvesKey7 = 115,
+        DelvesKey8 = 116,
+        DelvesBounty1 = 117,
+        DelvesBounty2 = 118,
+        DelvesBounty3 = 119,
+        DelvesBounty4 = 120,
+        DelvesBounty5 = 121,
+        DelvesBounty6 = 122,
+        DelvesBounty7 = 123,
+        DelvesBounty8 = 124,
+        DelvesLevelUp1 = 125,
+        DelvesLevelUp2 = 126,
+        DelvesLevelUp3 = 127,
+        DelvesLevelUp4 = 128,
+        DelvesBonus1 = 129,
+        DelvesBonus2 = 130,
+        DelvesBonus3 = 131,
+        DelvesBonus4 = 132,
+        DelvesBonus5 = 133,
+        DelvesBonus6 = 134,
+        DelvesBonus7 = 135,
+        DelvesBonus8 = 136,
+        DelvesBonus9 = 137,
+        DelvesBonus10 = 138,
+        DungeonBonus1 = 139,
+        DungeonBonus2 = 140,
+        DungeonBonus3 = 141,
+        DungeonBonus4 = 142,
+        DungeonBonus5 = 143,
+        DungeonBonus6 = 144,
+        DungeonBonus7 = 145,
+        DungeonBonus8 = 146,
+        DungeonBonus9 = 147,
+        DungeonBonus10 = 148,
+        RaidBonus1 = 149,
+        RaidBonus2 = 150,
+        RaidBonus3 = 151,
+        RaidBonus4 = 152,
+        RaidBonus5 = 153,
+        RaidBonus6 = 154,
+        RaidBonus7 = 155,
+        RaidBonus8 = 156,
+        RaidBonus9 = 157,
+        RaidBonus10 = 158,
+        DungeonHardMode1 = 159,
+        DungeonHardMode2 = 160,
+        DungeonHardMode3 = 161,
+        TournamentRealm2 = 162,
+        TournamentRealm3 = 163,
+        TournamentRealm4 = 164,
 
         Max
     }
@@ -650,6 +731,11 @@ namespace Framework.Constants
         OnEquip = 2,
         OnUse = 3,
         Quest = 4,
+        Unused1 = 5,
+        Unused2 = 6,
+        WowAccount = 7,
+        BnetAccount = 8,
+        BnetAccountUntilEquipped = 9,
     }
 
     public enum ItemClass : sbyte
@@ -1240,7 +1326,7 @@ namespace Framework.Constants
         CantEquipRating = 81, // You Don'T Have The Personal, Team, Or Battleground Rating Required To Buy That Item
         EventAutoequipBindConfirm = 82,
         NotSameAccount = 83, // Account-Bound Items Can Only Be Given To Your Own Characters.
-        EquipNone3 = 84,
+        None = 84,
         ItemMaxLimitCategoryCountExceededIs = 85, // You Can Only Carry %D %S
         ItemMaxLimitCategorySocketedExceededIs = 86, // You Can Only Equip %D |4item:Items In The %S Category
         ScalingStatItemLevelExceeded = 87, // Your Level Is Too High To Use That Item
@@ -1274,7 +1360,25 @@ namespace Framework.Constants
         ReagentBagWrongSlot = 115,// Reagent Bags can only be placed in the reagent bag slot.
         SlotOnlyReagentBag = 116,// Only Reagent Bags can be placed in the reagent bag slot.
         ReagentBagItemType = 117,// Only Reagents can be placed in Reagent Bags.
-        CantBulkSellItemWithRefund = 118// Items that can be refunded can't be bulk sold.
+        CantBulkSellItemWithRefund = 118,// Items that can be refunded can't be bulk sold.
+        NoSoulboundItemInAccountBank = 119,// Soulbound items cannot be stored in the Warband Bank.
+        CantDoThatRightNow3 = 120,// You Can't Do That Right Now.
+        NoAccountInventoryLock = 121,// Your Character Cannot Complete This Action.
+        TooManyAccountBankTabs = 122,// You Have Already Purchased The Maximum Amount Of Tabs.
+        NoAccountBankHere = 123,// You Are Too Far Away From A Warband Bank.
+        NoRefundableItemInAccountBank = 124,// Refundable Items Cannot Be Stored In The Warband Bank.
+        NoImmediateContainerInAccountBank = 125,// You Cannot Place That In The Warband Bank.
+        NoOpenImmediateContainerInAccountBank = 126,// You Cannot Open This While It Is In The Warband Bank.
+        CantDeleteInAccountBank = 127,// Items Must Be Moved Out Of The Warband Bank To Be Deleted.
+        BankNotAccessible = 128,// This Character Does Not Have Access To This Bank.
+        CantTradeAccountItem = 129,// You Can't Trade An Item From The Warband Bank.
+    }
+
+    public enum BankType
+    {
+        Character = 0,
+        Guild = 1,
+        Account = 2
     }
 
     public enum BuyResult
@@ -1387,5 +1491,25 @@ namespace Framework.Constants
         NotAtForge = 10,
         HeartLevelTooLow = 11,   // Arg: RequiredLevel
         NotEquipped = 12
+    }
+
+    [Flags]
+    public enum BagSlotFlags
+    {
+        None = 0x00,
+        DisableAutoSort = 0x01,
+        PriorityEquipment = 0x02,
+        PriorityConsumables = 0x04,
+        PriorityTradeGoods = 0x08,
+        PriorityJunk = 0x10,
+        PriorityQuestItems = 0x20,
+        ExcludeJunkSell = 0x40,
+    }
+
+    public enum LootStoreItemType
+    {
+        Item        = 0,
+        Reference   = 1,
+        Currency = 2,
     }
 }

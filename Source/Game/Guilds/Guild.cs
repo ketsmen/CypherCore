@@ -581,7 +581,7 @@ namespace Game.Guilds
 
             GuildInvite invite = new();
 
-            invite.InviterVirtualRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
+            invite.InviterVirtualRealmAddress = player.m_playerData.VirtualPlayerRealm;
             invite.GuildVirtualRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
             invite.GuildGUID = GetGUID();
 
@@ -672,15 +672,13 @@ namespace Game.Guilds
                         SendCommandResult(session, GuildCommandType.RemovePlayer, GuildCommandError.RankTooHigh_S, name);
                     else
                     {
+                        DeleteMember(null, guid, false, true);
                         _LogEvent(GuildEventLogTypes.UninvitePlayer, player.GetGUID().GetCounter(), guid.GetCounter());
 
                         Player pMember = Global.ObjAccessor.FindConnectedPlayer(guid);
                         SendEventPlayerLeft(pMember, player, true);
 
                         SendCommandResult(session, GuildCommandType.RemovePlayer, GuildCommandError.Success, name);
-
-                        // After call to DeleteMember pointer to member becomes invalid
-                        DeleteMember(null, guid, false, true);
                     }
                 }
             }
@@ -1239,9 +1237,8 @@ namespace Game.Guilds
             GuildEventPresenceChange eventPacket = new();
             eventPacket.Guid = player.GetGUID();
             eventPacket.Name = player.GetName();
-            eventPacket.VirtualRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
+            eventPacket.VirtualRealmAddress = player.m_playerData.VirtualPlayerRealm;
             eventPacket.LoggedOn = loggedOn;
-            eventPacket.Mobile = false;
 
             if (broadcast)
                 BroadcastPacket(eventPacket);
@@ -1405,7 +1402,7 @@ namespace Game.Guilds
 
         public bool LoadBankItemFromDB(SQLFields field)
         {
-            byte tabId = field.Read<byte>(52);
+            byte tabId = field.Read<byte>(53);
             if (tabId >= _GetPurchasedTabsSize())
             {
                 Log.outError(LogFilter.Guild, "Invalid tab for item (GUID: {0}, id: {1}) in guild bank, skipped.",
@@ -2413,16 +2410,14 @@ namespace Game.Guilds
             NewsLogEntry news = m_newsLog.AddEvent(trans, new NewsLogEntry(m_id, m_newsLog.GetNextGUID(), type, guid, flags, value));
             DB.Characters.CommitTransaction(trans);
 
-            var packetBuilder = (Player receiver) =>
+            BroadcastWorker(receiver =>
             {
                 GuildNewsPkt newsPacket = new();
                 news.WritePacket(newsPacket);
                 newsPacket.NewsEvents.Last().CompletedDate += receiver.GetSession().GetTimezoneOffset();
 
                 receiver.SendPacket(newsPacket);
-            };
-
-            BroadcastWorker(packetBuilder);
+            });
         }
 
         bool HasAchieved(uint achievementId)
@@ -3373,7 +3368,7 @@ namespace Game.Guilds
 
             public bool LoadItemFromDB(SQLFields field)
             {
-                byte slotId = field.Read<byte>(53);
+                byte slotId = field.Read<byte>(54);
                 uint itemGuid = field.Read<uint>(0);
                 uint itemEntry = field.Read<uint>(1);
                 if (slotId >= GuildConst.MaxBankSlots)

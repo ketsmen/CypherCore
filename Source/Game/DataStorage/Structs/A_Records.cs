@@ -15,7 +15,7 @@ namespace Game.DataStorage
         public uint Id;
         public short InstanceID;
         public AchievementFaction Faction;
-        public ushort Supercedes;
+        public int Supercedes;
         public ushort Category;
         public byte MinimumCriteria;
         public byte Points;
@@ -26,6 +26,8 @@ namespace Game.DataStorage
         public uint CriteriaTree;
         public ushort SharesCriteria;
         public int CovenantID;
+        public int HiddenBeforeDisplaySeason;                                // hidden in UI before this DisplaySeason is active
+        public int LegacyAfterTimeEvent;                                     // category changes clientside to Legacy after this TimeEvent is passed
     }
 
     public sealed class AchievementCategoryRecord
@@ -33,7 +35,7 @@ namespace Game.DataStorage
         public LocalizedString Name;
         public uint Id;
         public short Parent;
-        public sbyte UiOrder;
+        public byte UiOrder;
     }
 
     public sealed class AdventureJournalRecord
@@ -54,8 +56,6 @@ namespace Game.DataStorage
         public ushort BattleMasterListID;
         public byte PriorityMin;
         public byte PriorityMax;
-        public int ItemID;
-        public uint ItemQuantity;
         public ushort CurrencyType;
         public uint CurrencyQuantity;
         public ushort UiMapID;
@@ -85,7 +85,7 @@ namespace Game.DataStorage
         public uint Id;
         public ushort Fallback;
         public byte BehaviorTier;
-        public int BehaviorID;
+        public short BehaviorID;
         public int[] Flags = new int[2];
     }
 
@@ -156,8 +156,18 @@ namespace Game.DataStorage
         public float BoxYaw;
         public sbyte ShapeType;
         public short ShapeID;
-        public int AreaTriggerActionSetID;
+        public uint AreaTriggerActionSetID;
         public sbyte Flags;
+
+        public AreaTriggerShapeType GetShapeType() { return (AreaTriggerShapeType)ShapeType; }
+    }
+
+    public sealed class AreaTriggerActionSetRecord
+    {
+        public uint Id;
+        public int Flags;
+
+        public AreaTriggerActionSetFlag GetFlags() { return (AreaTriggerActionSetFlag)Flags; }
     }
 
     public sealed class ArmorLocationRecord

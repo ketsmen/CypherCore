@@ -2,8 +2,8 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
-using System.Numerics;
 using System;
+using System.Numerics;
 
 namespace Game.DataStorage
 {
@@ -112,21 +112,24 @@ namespace Game.DataStorage
     {
         public uint Id;
         public int CondType;
-        public int TraitTreeID;
+        public uint TraitTreeID;
         public int GrantedRanks;
         public uint QuestID;
         public uint AchievementID;
         public int SpecSetID;
         public int TraitNodeGroupID;
         public int TraitNodeID;
+        public int TraitNodeEntryID;
         public int TraitCurrencyID;
         public int SpentAmountRequired;
         public int Flags;
         public int RequiredLevel;
         public int FreeSharedStringID;
         public int SpendMoreSharedStringID;
+        public int TraitCondAccountElementID;
 
         public TraitConditionType GetCondType() { return (TraitConditionType)CondType; }
+        public bool HasFlag(TraitCondFlags flag) => Flags.HasAnyFlag((int)flag);
     }
 
     public sealed class TraitCostRecord
@@ -152,7 +155,7 @@ namespace Game.DataStorage
     {
         public LocalizedString Requirement;
         public uint Id;
-        public int TraitCurrencyID;
+        public uint TraitCurrencyID;
         public int Amount;
         public uint QuestID;
         public uint AchievementID;
@@ -176,7 +179,7 @@ namespace Game.DataStorage
     public sealed class TraitDefinitionEffectPointsRecord
     {
         public uint Id;
-        public int TraitDefinitionID;
+        public uint TraitDefinitionID;
         public int EffectIndex;
         public int OperationType;
         public int CurveID;
@@ -188,7 +191,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public int VisualStyle;
-        public int LeftTraitNodeID;
+        public uint LeftTraitNodeID;
         public int RightTraitNodeID;
         public int Type;
     }
@@ -196,11 +199,12 @@ namespace Game.DataStorage
     public sealed class TraitNodeRecord
     {
         public uint Id;
-        public int TraitTreeID;
+        public uint TraitTreeID;
         public int PosX;
         public int PosY;
-        public sbyte Type;
+        public byte Type;
         public int Flags;
+        public int TraitSubTreeID;
 
         public TraitNodeType GetNodeType() { return (TraitNodeType)Type; }
     }
@@ -211,6 +215,7 @@ namespace Game.DataStorage
         public int TraitDefinitionID;
         public int MaxRanks;
         public byte NodeEntryType;
+        public int TraitSubTreeID;
 
         public TraitNodeEntryType GetNodeEntryType() { return (TraitNodeEntryType)NodeEntryType; }
     }
@@ -225,14 +230,14 @@ namespace Game.DataStorage
     public sealed class TraitNodeEntryXTraitCostRecord
     {
         public uint Id;
-        public int TraitNodeEntryID;
+        public uint TraitNodeEntryID;
         public int TraitCostID;
     }
 
     public sealed class TraitNodeGroupRecord
     {
         public uint Id;
-        public int TraitTreeID;
+        public uint TraitTreeID;
         public int Flags;
     }
 
@@ -240,20 +245,20 @@ namespace Game.DataStorage
     {
         public uint Id;
         public int TraitCondID;
-        public int TraitNodeGroupID;
+        public uint TraitNodeGroupID;
     }
 
     public sealed class TraitNodeGroupXTraitCostRecord
     {
         public uint Id;
-        public int TraitNodeGroupID;
+        public uint TraitNodeGroupID;
         public int TraitCostID;
     }
 
     public sealed class TraitNodeGroupXTraitNodeRecord
     {
         public uint Id;
-        public int TraitNodeGroupID;
+        public uint TraitNodeGroupID;
         public int TraitNodeID;
         public int Index;
     }
@@ -262,28 +267,37 @@ namespace Game.DataStorage
     {
         public uint Id;
         public int TraitCondID;
-        public int TraitNodeID;
+        public uint TraitNodeID;
     }
 
     public sealed class TraitNodeXTraitCostRecord
     {
         public uint Id;
-        public int TraitNodeID;
+        public uint TraitNodeID;
         public int TraitCostID;
     }
 
     public sealed class TraitNodeXTraitNodeEntryRecord
     {
         public uint Id;
-        public int TraitNodeID;
+        public uint TraitNodeID;
         public int TraitNodeEntryID;
         public int Index;
+    }
+
+    public sealed class TraitSubTreeRecord
+    {
+        public LocalizedString Name;
+        public LocalizedString Description;
+        public uint ID;
+        public int UiTextureAtlasElementID;
+        public uint TraitTreeID;             // Parent tree
     }
 
     public sealed class TraitTreeRecord
     {
         public uint Id;
-        public int TraitSystemID;
+        public uint TraitSystemID;
         public int Unused1000_1;
         public int FirstTraitNodeID;
         public int PlayerConditionID;
@@ -297,14 +311,14 @@ namespace Game.DataStorage
     public sealed class TraitTreeLoadoutRecord
     {
         public uint Id;
-        public int TraitTreeID;
+        public uint TraitTreeID;
         public int ChrSpecializationID;
     }
 
     public sealed class TraitTreeLoadoutEntryRecord
     {
         public uint Id;
-        public int TraitTreeLoadoutID;
+        public uint TraitTreeLoadoutID;
         public int SelectedTraitNodeID;
         public int SelectedTraitNodeEntryID;
         public int NumPoints;
@@ -322,7 +336,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public int Index;
-        public int TraitTreeID;
+        public uint TraitTreeID;
         public int TraitCurrencyID;
     }
 
@@ -342,15 +356,15 @@ namespace Game.DataStorage
         public string Name;
         public uint Id;
         public int ClassMask;
-        public uint TrackingQuestID;
+        public int TrackingQuestID;
         public int Flags;
         public uint TransmogSetGroupID;
         public int ItemNameDescriptionID;
-        public ushort ParentTransmogSetID;
-        public byte Unknown810;
-        public byte ExpansionID;
+        public uint ParentTransmogSetID;
+        public int Unknown810;
+        public int ExpansionID;
         public int PatchID;
-        public short UiOrder;
+        public int UiOrder;
         public uint PlayerConditionID;
     }
 

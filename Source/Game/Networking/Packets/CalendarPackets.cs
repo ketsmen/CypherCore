@@ -177,7 +177,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt64(EventID);
             _worldPacket.WriteUInt8((byte)GetEventType);
             _worldPacket.WriteInt32(TextureID);
-            _worldPacket.WriteUInt32((uint)Flags);
+            _worldPacket.WriteUInt16((ushort)Flags);
             Date.Write(_worldPacket);
             LockDate.Write(_worldPacket);
             _worldPacket.WriteUInt64(EventGuildID);
@@ -216,7 +216,7 @@ namespace Game.Networking.Packets
         {
             _worldPacket.WriteUInt64(EventID);
             Date.Write(_worldPacket);
-            _worldPacket.WriteUInt32((uint)Flags);
+            _worldPacket.WriteUInt16((ushort)Flags);
             _worldPacket.WriteUInt8((byte)EventType);
             _worldPacket.WriteInt32(TextureID);
             _worldPacket.WriteUInt64(EventClubID);
@@ -229,6 +229,7 @@ namespace Game.Networking.Packets
             _worldPacket.WritePackedGuid(OwnerGuid);
 
             _worldPacket.WriteBits(EventName.GetByteCount(), 8);
+            _worldPacket.WriteBit(Unknown_1100);
             _worldPacket.FlushBits();
             _worldPacket.WriteString(EventName);
         }
@@ -245,6 +246,7 @@ namespace Game.Networking.Packets
         public CalendarEventType EventType;
         public CalendarModerationRank ModeratorStatus;
         public string EventName;
+        public bool Unknown_1100;
     }
 
     class CalendarInvitePkt : ClientPacket
@@ -390,7 +392,7 @@ namespace Game.Networking.Packets
             OriginalDate.Write(_worldPacket);
             Date.Write(_worldPacket);
             LockDate.Write(_worldPacket);
-            _worldPacket.WriteUInt32((uint)Flags);
+            _worldPacket.WriteUInt16((ushort)Flags);
             _worldPacket.WriteInt32(TextureID);
             _worldPacket.WriteUInt8((byte)EventType);
 
@@ -722,6 +724,13 @@ namespace Game.Networking.Packets
     //Structs
     struct CalendarAddEventInviteInfo
     {
+        public ObjectGuid Guid;
+        public byte Status;
+        public byte Moderator;
+        public ObjectGuid? BnetAccountID;
+        public ulong? RealmAddress;
+        public ulong? CommunityID;
+
         public void Read(WorldPacket data)
         {
             Guid = data.ReadPackedGuid();
@@ -733,19 +742,12 @@ namespace Game.Networking.Packets
             bool hasUnused801_3 = data.HasBit();
 
             if (hasUnused801_1)
-                Unused801_1 = data.ReadPackedGuid();
+                BnetAccountID = data.ReadPackedGuid();
             if (hasUnused801_2)
-                Unused801_2 = data.ReadUInt64();
+                RealmAddress = data.ReadUInt64();
             if (hasUnused801_3)
-                Unused801_3 = data.ReadUInt64();
+                CommunityID = data.ReadUInt64();
         }
-
-        public ObjectGuid Guid;
-        public byte Status;
-        public byte Moderator;
-        public ObjectGuid? Unused801_1;
-        public ulong? Unused801_2;
-        public ulong? Unused801_3;
     }
 
     class CalendarAddEventInfo
@@ -794,7 +796,7 @@ namespace Game.Networking.Packets
             TextureID = data.ReadUInt32();
             Time = new();
             Time.Read(data);
-            Flags = data.ReadUInt32();
+            Flags = data.ReadUInt16();
 
             byte titleLen = data.ReadBits<byte>(8);
             ushort descLen = data.ReadBits<ushort>(11);
@@ -811,7 +813,7 @@ namespace Game.Networking.Packets
         public byte EventType;
         public uint TextureID;
         public WowTime Time;
-        public uint Flags;
+        public ushort Flags;
     }
 
     struct CalendarSendCalendarInviteInfo
@@ -859,7 +861,7 @@ namespace Game.Networking.Packets
             data.WriteUInt64(EventID);
             data.WriteUInt8((byte)EventType);
             Date.Write(data);
-            data.WriteUInt32((uint)Flags);
+            data.WriteUInt16((ushort)Flags);
             data.WriteInt32(TextureID);
             data.WriteUInt64(EventClubID);
             data.WritePackedGuid(OwnerGuid);

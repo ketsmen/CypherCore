@@ -1,14 +1,18 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Framework.ClientBuild;
 using Framework.Constants;
 using Framework.Cryptography;
 using Framework.Database;
 using Framework.IO;
 using Framework.Networking;
+using Framework.Web;
 using Game.Networking.Packets;
 using System;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace Game.Networking
 {
@@ -75,12 +79,12 @@ namespace Game.Networking
 
             PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_IP_INFO);
             stmt.AddValue(0, ip_address);
-            stmt.AddValue(1, BitConverter.ToUInt32(GetRemoteIpAddress().Address.GetAddressBytes(), 0));
+            stmt.AddValue(1, BitConverter.ToUInt32(GetRemoteIpAddress().GetAddressBytes(), 0));
 
             _queryProcessor.AddCallback(DB.Login.AsyncQuery(stmt).WithCallback(CheckIpCallback));
         }
 
-        void CheckIpCallback(SQLResult result)
+        async void CheckIpCallback(SQLResult result)
         {
             if (!result.IsEmpty())
             {
@@ -109,24 +113,18 @@ namespace Game.Networking
             ByteBuffer packet = new();
             packet.WriteString(ServerConnectionInitialize);
             packet.WriteString("\n");
-            AsyncWrite(packet.GetData());
+            await AsyncWrite(packet.GetData());
         }
 
-        void InitializeHandler(SocketAsyncEventArgs args)
+        async Task InitializeHandler(byte[] data, int receivedLength)
         {
-            if (args.SocketError != SocketError.Success)
-            {
-                CloseSocket();
-                return;
-            }
-
-            if (args.BytesTransferred > 0)
+            if (receivedLength > 0)
             {
                 if (_packetBuffer.GetRemainingSpace() > 0)
                 {
                     // need to receive the header
-                    int readHeaderSize = Math.Min(args.BytesTransferred, _packetBuffer.GetRemainingSpace());
-                    _packetBuffer.Write(args.Buffer, 0, readHeaderSize);
+                    int readHeaderSize = Math.Min(receivedLength, _packetBuffer.GetRemainingSpace());
+                    _packetBuffer.Write(data, 0, readHeaderSize);
 
                     if (_packetBuffer.GetRemainingSpace() > 0)
                     {
@@ -165,25 +163,25 @@ namespace Game.Networking
                     _packetBuffer.Resize(0);
                     _packetBuffer.Reset();
                     HandleSendAuthSession();
-                    AsyncRead();
+                    await AsyncRead();
                     return;
                 }
             }
         }
 
-        public override void ReadHandler(SocketAsyncEventArgs args)
+        public async override void ReadHandler(byte[] data, int receivedLength)
         {
             if (!IsOpen())
                 return;
 
             int currentReadIndex = 0;
-            while (currentReadIndex < args.BytesTransferred)
+            while (currentReadIndex < receivedLength)
             {
                 if (_headerBuffer.GetRemainingSpace() > 0)
                 {
                     // need to receive the header
-                    int readHeaderSize = Math.Min(args.BytesTransferred - currentReadIndex, _headerBuffer.GetRemainingSpace());
-                    _headerBuffer.Write(args.Buffer, currentReadIndex, readHeaderSize);
+                    int readHeaderSize = Math.Min(receivedLength - currentReadIndex, _headerBuffer.GetRemainingSpace());
+                    _headerBuffer.Write(data, currentReadIndex, readHeaderSize);
                     currentReadIndex += readHeaderSize;
 
                     if (_headerBuffer.GetRemainingSpace() > 0)
@@ -201,8 +199,8 @@ namespace Game.Networking
                 if (_packetBuffer.GetRemainingSpace() > 0)
                 {
                     // need more data in the payload
-                    int readDataSize = Math.Min(args.BytesTransferred - currentReadIndex, _packetBuffer.GetRemainingSpace());
-                    _packetBuffer.Write(args.Buffer, currentReadIndex, readDataSize);
+                    int readDataSize = Math.Min(receivedLength - currentReadIndex, _packetBuffer.GetRemainingSpace());
+                    _packetBuffer.Write(data, currentReadIndex, readDataSize);
                     currentReadIndex += readDataSize;
 
                     if (_packetBuffer.GetRemainingSpace() > 0)
@@ -221,7 +219,7 @@ namespace Game.Networking
                 }
             }
 
-            AsyncRead();
+            await AsyncRead();
         }
 
         bool ReadHeader()
@@ -247,14 +245,14 @@ namespace Game.Networking
             WorldPacket packet = new(_packetBuffer.GetData());
             _packetBuffer.Reset();
 
-            if (packet.GetOpcode() >= (int)ClientOpcodes.Max)
+            if (!packet.IsValidOpcode())
             {
                 Log.outError(LogFilter.Network, $"WorldSocket.ReadData(): client {GetRemoteIpAddress()} sent wrong opcode (opcode: {packet.GetOpcode()})");
                 Log.outError(LogFilter.Network, $"Header: {_headerBuffer.GetData().ToHexString()} Data: {_packetBuffer.GetData().ToHexString()}");
                 return ReadDataHandlerResult.Error;
             }
 
-            PacketLog.Write(packet.GetData(), packet.GetOpcode(), GetRemoteIpAddress(), _connectType, true);
+            PacketLog.Write(packet.GetData(), packet.GetOpcode(), GetRemoteIpEndPoint(), _connectType, true);
 
             ClientOpcodes opcode = (ClientOpcodes)packet.GetOpcode();
 
@@ -346,7 +344,7 @@ namespace Game.Networking
             return ReadDataHandlerResult.Ok;
         }
 
-        public void SendPacket(ServerPacket packet)
+        public async void SendPacket(ServerPacket packet)
         {
             if (!IsOpen())
                 return;
@@ -356,19 +354,19 @@ namespace Game.Networking
 
             var data = packet.GetData();
             ServerOpcodes opcode = packet.GetOpcode();
-            PacketLog.Write(data, (uint)opcode, GetRemoteIpAddress(), _connectType, false);
+            PacketLog.Write(data, (uint)opcode, GetRemoteIpEndPoint(), _connectType, false);
 
             ByteBuffer buffer = new();
 
             int packetSize = data.Length;
             if (packetSize > 0x400 && _worldCrypt.IsInitialized)
             {
-                buffer.WriteInt32(packetSize + 2);
-                buffer.WriteUInt32(ZLib.adler32(ZLib.adler32(0x9827D8F1, BitConverter.GetBytes((ushort)opcode), 2), data, (uint)packetSize));
+                buffer.WriteInt32(packetSize + 4);
+                buffer.WriteUInt32(ZLib.adler32(ZLib.adler32(0x9827D8F1, BitConverter.GetBytes((uint)opcode), 4), data, (uint)packetSize));
 
                 byte[] compressedData;
                 uint compressedSize = CompressPacket(data, opcode, out compressedData);
-                buffer.WriteUInt32(ZLib.adler32(0x9827D8F1, compressedData, compressedSize)); 
+                buffer.WriteUInt32(ZLib.adler32(0x9827D8F1, compressedData, compressedSize));
                 buffer.WriteBytes(compressedData, compressedSize);
 
                 packetSize = (int)(compressedSize + 12);
@@ -378,9 +376,9 @@ namespace Game.Networking
             }
 
             buffer = new ByteBuffer();
-            buffer.WriteUInt16((ushort)opcode);
+            buffer.WriteUInt32((uint)opcode);
             buffer.WriteBytes(data);
-            packetSize += 2 /*opcode*/;
+            packetSize += 4 /*opcode*/;
 
             data = buffer.GetData();
 
@@ -392,7 +390,7 @@ namespace Game.Networking
             header.Write(byteBuffer);
             byteBuffer.WriteBytes(data);
 
-            AsyncWrite(byteBuffer.GetData());
+            await AsyncWrite(byteBuffer.GetData());
         }
 
         public void SetWorldSession(WorldSession session)
@@ -403,7 +401,7 @@ namespace Game.Networking
 
         public uint CompressPacket(byte[] data, ServerOpcodes opcode, out byte[] outData)
         {
-            byte[] uncompressedData = BitConverter.GetBytes((ushort)opcode).Combine(data);
+            byte[] uncompressedData = BitConverter.GetBytes((uint)opcode).Combine(data);
 
             uint bufferSize = ZLib.deflateBound(_compressionStream, (uint)data.Length);
             outData = new byte[bufferSize];
@@ -456,15 +454,23 @@ namespace Game.Networking
 
         void HandleAuthSession(AuthSession authSession)
         {
+            RealmJoinTicket joinTicket = JsonSerializer.Deserialize<RealmJoinTicket>(authSession.RealmJoinTicket);
+            if (joinTicket == null)
+            {
+                SendAuthResponseError(BattlenetRpcErrorCode.WowServicesInvalidJoinTicket);
+                CloseSocket();
+                return;
+            }
+
             // Get the account information from the realmd database
             PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_ACCOUNT_INFO_BY_NAME);
-            stmt.AddValue(0, Global.WorldMgr.GetRealm().Id.Index);
-            stmt.AddValue(1, authSession.RealmJoinTicket);
+            stmt.AddValue(0, Global.RealmMgr.GetCurrentRealmId().Index);
+            stmt.AddValue(1, joinTicket.GameAccount);
 
-            _queryProcessor.AddCallback(DB.Login.AsyncQuery(stmt).WithCallback(HandleAuthSessionCallback, authSession));
+            _queryProcessor.AddCallback(DB.Login.AsyncQuery(stmt).WithCallback(HandleAuthSessionCallback, authSession, joinTicket));
         }
 
-        void HandleAuthSessionCallback(AuthSession authSession, SQLResult result)
+        async void HandleAuthSessionCallback(AuthSession authSession, RealmJoinTicket joinTicket, SQLResult result)
         {
             // Stop if the account is not found
             if (result.IsEmpty())
@@ -474,32 +480,33 @@ namespace Game.Networking
                 return;
             }
 
-            RealmBuildInfo buildInfo = Global.RealmMgr.GetBuildInfo(Global.WorldMgr.GetRealm().Build);
+            AccountInfo account = new(result.GetFields());
+
+            ClientBuildInfo buildInfo = ClientBuildHelper.GetBuildInfo(account.game.Build);
             if (buildInfo == null)
             {
                 SendAuthResponseError(BattlenetRpcErrorCode.BadVersion);
-                Log.outError(LogFilter.Network, $"WorldSocket.HandleAuthSessionCallback: Missing auth seed for realm build {Global.WorldMgr.GetRealm().Build} ({GetRemoteIpAddress()}).");
+                Log.outError(LogFilter.Network, $"WorldSocket.HandleAuthSessionCallback: Missing client build info for realm build {account.game.Build} ({GetRemoteIpAddress()}).");
                 CloseSocket();
                 return;
             }
 
-            AccountInfo account = new(result.GetFields());
+            ClientBuildVariantId buildVariant = new() { Platform = joinTicket.Platform, Arch = joinTicket.ClientArch, Type = joinTicket.Type };
+            var clientBuildAuthKey = buildInfo.AuthKeys.Find(p => p.Variant == buildVariant);
+            if (clientBuildAuthKey == null)
+            {
+                SendAuthResponseError(BattlenetRpcErrorCode.BadVersion);
+                Log.outError(LogFilter.Network, $"WorldSocket::HandleAuthSession: Missing client build auth key for build {account.game.Build} variant {buildVariant.Platform}-{buildVariant.Arch}-{buildVariant.Type} ({GetRemoteIpAddress()}).");
+                CloseSocket();
+                return;
+            }
 
             // For hook purposes, we get Remoteaddress at this point.
             var address = GetRemoteIpAddress();
 
             Sha256 digestKeyHash = new();
             digestKeyHash.Process(account.game.KeyData, account.game.KeyData.Length);
-            if (account.game.OS == "Wn64")
-                digestKeyHash.Finish(buildInfo.Win64AuthSeed);
-            else if (account.game.OS == "Mc64")
-                digestKeyHash.Finish(buildInfo.Mac64AuthSeed);
-            else
-            {
-                Log.outError(LogFilter.Network, "WorldSocket.HandleAuthSession: Authentication failed for account: {0} ('{1}') address: {2}", account.game.Id, authSession.RealmJoinTicket, address);
-                CloseSocket();
-                return;
-            }
+            digestKeyHash.Finish(clientBuildAuthKey.Key);
 
             HmacSha256 hmac = new(digestKeyHash.Digest);
             hmac.Process(authSession.LocalChallenge, authSession.LocalChallenge.Count);
@@ -509,7 +516,8 @@ namespace Game.Networking
             // Check that Key and account name are the same on client and server
             if (!hmac.Digest.Compare(authSession.Digest))
             {
-                Log.outError(LogFilter.Network, "WorldSocket.HandleAuthSession: Authentication failed for account: {0} ('{1}') address: {2}", account.game.Id, authSession.RealmJoinTicket, address);
+                SendAuthResponseError(BattlenetRpcErrorCode.Denied);
+                Log.outError(LogFilter.Network, $"WorldSocket.HandleAuthSession: Authentication failed for account: {account.game.Id} ('{joinTicket.GameAccount}') address: {address}");
                 CloseSocket();
                 return;
             }
@@ -540,8 +548,8 @@ namespace Game.Networking
             {
                 // As we don't know if attempted login process by ip works, we update last_attempt_ip right away
                 stmt = LoginDatabase.GetPreparedStatement(LoginStatements.UPD_LAST_ATTEMPT_IP);
-                stmt.AddValue(0, address.Address.ToString());
-                stmt.AddValue(1, authSession.RealmJoinTicket);
+                stmt.AddValue(0, address.ToString());
+                stmt.AddValue(1, joinTicket.GameAccount);
                 DB.Login.Execute(stmt);
                 // This also allows to check for possible "hack" attempts on account
             }
@@ -560,21 +568,21 @@ namespace Game.Networking
                 return;
             }
 
-            if (authSession.RealmID != Global.WorldMgr.GetRealm().Id.Index)
+            if (authSession.RealmID != Global.RealmMgr.GetCurrentRealmId().Index)
             {
                 SendAuthResponseError(BattlenetRpcErrorCode.Denied);
                 Log.outError(LogFilter.Network, "WorldSocket.HandleAuthSession: Client {0} requested connecting with realm id {1} but this realm has id {2} set in config.",
-                    GetRemoteIpAddress().ToString(), authSession.RealmID, Global.WorldMgr.GetRealm().Id.Index);
+                    GetRemoteIpAddress().ToString(), authSession.RealmID, Global.RealmMgr.GetCurrentRealmId().Index);
                 CloseSocket();
                 return;
             }
 
             // Must be done before WorldSession is created
             bool wardenActive = WorldConfig.GetBoolValue(WorldCfg.WardenEnabled);
-            if (wardenActive && account.game.OS != "Win" && account.game.OS != "Wn64" && account.game.OS != "Mc64")
+            if (wardenActive && !ClientBuildHelper.IsValid(account.game.OS))
             {
                 SendAuthResponseError(BattlenetRpcErrorCode.Denied);
-                Log.outError(LogFilter.Network, "WorldSocket.HandleAuthSession: Client {0} attempted to log in using invalid client OS ({1}).", address, account.game.OS);
+                Log.outError(LogFilter.Network, $"WorldSocket.HandleAuthSession: Client {address} attempted to log in using invalid client OS ({account.game.OS}).");
                 CloseSocket();
                 return;
             }
@@ -582,7 +590,7 @@ namespace Game.Networking
             //Re-check ip locking (same check as in auth).
             if (account.battleNet.IsLockedToIP) // if ip is locked
             {
-                if (account.battleNet.LastIP != address.Address.ToString())
+                if (account.battleNet.LastIP != address.ToString())
                 {
                     SendAuthResponseError(BattlenetRpcErrorCode.RiskAccountLocked);
                     Log.outDebug(LogFilter.Network, "HandleAuthSession: Sent Auth Response (Account IP differs).");
@@ -637,29 +645,29 @@ namespace Game.Networking
                 return;
             }
 
-            Log.outDebug(LogFilter.Network, "WorldSocket:HandleAuthSession: Client '{0}' authenticated successfully from {1}.", authSession.RealmJoinTicket, address);
+            Log.outDebug(LogFilter.Network, $"WorldSocket:HandleAuthSession: Client '{joinTicket.GameAccount}' authenticated successfully from {address}.");
 
             if (WorldConfig.GetBoolValue(WorldCfg.AllowLogginIpAddressesInDatabase))
             {
                 // Update the last_ip in the database
                 stmt = LoginDatabase.GetPreparedStatement(LoginStatements.UPD_LAST_IP);
-                stmt.AddValue(0, address.Address.ToString());
-                stmt.AddValue(1, authSession.RealmJoinTicket);
+                stmt.AddValue(0, address.ToString());
+                stmt.AddValue(1, joinTicket.GameAccount);
                 DB.Login.Execute(stmt);
             }
 
             // At this point, we can safely hook a successful login
             Global.ScriptMgr.OnAccountLogin(account.game.Id);
 
-            _worldSession = new WorldSession(account.game.Id, authSession.RealmJoinTicket, account.battleNet.Id, this, account.game.Security, (Expansion)account.game.Expansion,
-                mutetime, account.game.OS, account.game.TimezoneOffset, account.battleNet.Locale, account.game.Recruiter, account.game.IsRectuiter);
+            _worldSession = new WorldSession(account.game.Id, joinTicket.GameAccount, account.battleNet.Id, this, account.game.Security, (Expansion)account.game.Expansion,
+                mutetime, account.game.OS, account.game.TimezoneOffset, account.game.Build, buildVariant, account.game.Locale, account.game.Recruiter, account.game.IsRectuiter);
 
             // Initialize Warden system only if it is enabled by config
             //if (wardenActive)
             //_worldSession.InitWarden(_sessionKey);
 
             _queryProcessor.AddCallback(_worldSession.LoadPermissionsAsync().WithCallback(LoadSessionPermissionsCallback));
-            AsyncRead();
+            await AsyncRead();
         }
 
         void LoadSessionPermissionsCallback(SQLResult result)
@@ -690,7 +698,7 @@ namespace Game.Networking
             _queryProcessor.AddCallback(DB.Login.AsyncQuery(stmt).WithCallback(HandleAuthContinuedSessionCallback, authSession));
         }
 
-        void HandleAuthContinuedSessionCallback(AuthContinuedSession authSession, SQLResult result)
+        async void HandleAuthContinuedSessionCallback(AuthContinuedSession authSession, SQLResult result)
         {
             if (result.IsEmpty())
             {
@@ -728,7 +736,7 @@ namespace Game.Networking
             Buffer.BlockCopy(encryptKeyGen.Digest, 0, _encryptKey, 0, 16);
 
             SendPacket(new EnterEncryptedMode(_encryptKey, true));
-            AsyncRead();
+            await AsyncRead();
         }
 
         void HandleConnectToFailed(ConnectToFailed connectToFailed)
@@ -752,11 +760,11 @@ namespace Game.Networking
                             _worldSession.SendConnectToInstance(ConnectToSerial.WorldAttempt5);
                             break;
                         case ConnectToSerial.WorldAttempt5:
-                            {
-                                Log.outError(LogFilter.Network, "{0} failed to connect 5 times to world socket, aborting login", _worldSession.GetPlayerInfo());
-                                _worldSession.AbortLogin(LoginFailureReason.NoWorld);
-                                break;
-                            }
+                        {
+                            Log.outError(LogFilter.Network, "{0} failed to connect 5 times to world socket, aborting login", _worldSession.GetPlayerInfo());
+                            _worldSession.AbortLogin(LoginFailureReason.NoWorld);
+                            break;
+                        }
                         default:
                             return;
                     }
@@ -839,9 +847,9 @@ namespace Game.Networking
     {
         public AccountInfo(SQLFields fields)
         {
-            //           0              1           2          3                4            5           6          7            8     9                 10     11                12
-            // SELECT a.id, a.session_key, ba.last_ip, ba.locked, ba.lock_country, a.expansion, a.mutetime, ba.locale, a.recruiter, a.os, a.timezone_offset, ba.id, aa.SecurityLevel,
-            //                                                              13                                                            14    15
+            //           0              1           2          3                4            5           6               7         8            9    10                 11     12                13
+            // SELECT a.id, a.session_key, ba.last_ip, ba.locked, ba.lock_country, a.expansion, a.mutetime, a.client_build, a.locale, a.recruiter, a.os, a.timezone_offset, ba.id, aa.SecurityLevel,
+            //                                                              14                                                            15    16
             // bab.unbandate > UNIX_TIMESTAMP() OR bab.unbandate = bab.bandate, ab.unbandate > UNIX_TIMESTAMP() OR ab.unbandate = ab.bandate, r.id
             // FROM account a LEFT JOIN battlenet_accounts ba ON a.battlenet_account = ba.id LEFT JOIN account_access aa ON a.id = aa.AccountID AND aa.RealmID IN (-1, ?)
             // LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id LEFT JOIN account_banned ab ON a.id = ab.id LEFT JOIN account r ON a.id = r.recruiter
@@ -853,18 +861,19 @@ namespace Game.Networking
             battleNet.LockCountry = fields.Read<string>(4);
             game.Expansion = fields.Read<byte>(5);
             game.MuteTime = fields.Read<long>(6);
-            battleNet.Locale = (Locale)fields.Read<byte>(7);
-            game.Recruiter = fields.Read<uint>(8);
-            game.OS = fields.Read<string>(9);
-            game.TimezoneOffset = TimeSpan.FromMinutes(fields.Read<short>(10));
-            battleNet.Id = fields.Read<uint>(11);
-            game.Security = (AccountTypes)fields.Read<byte>(12);
-            battleNet.IsBanned = fields.Read<uint>(13) != 0;
-            game.IsBanned = fields.Read<uint>(14) != 0;
-            game.IsRectuiter = fields.Read<uint>(15) != 0;
+            game.Build = fields.Read<uint>(7);
+            game.Locale = (Locale)fields.Read<byte>(8);
+            game.Recruiter = fields.Read<uint>(9);
+            game.OS = fields.Read<string>(10);
+            game.TimezoneOffset = TimeSpan.FromMinutes(fields.Read<short>(11));
+            battleNet.Id = fields.Read<uint>(12);
+            game.Security = (AccountTypes)fields.Read<byte>(13);
+            battleNet.IsBanned = fields.Read<uint>(14) != 0;
+            game.IsBanned = fields.Read<uint>(15) != 0;
+            game.IsRectuiter = fields.Read<uint>(16) != 0;
 
-            if (battleNet.Locale >= Locale.Total)
-                battleNet.Locale = Locale.enUS;
+            if (game.Locale >= Locale.Total)
+                game.Locale = Locale.enUS;
         }
 
         public bool IsBanned() { return battleNet.IsBanned || game.IsBanned; }
@@ -878,7 +887,6 @@ namespace Game.Networking
             public bool IsLockedToIP;
             public string LastIP;
             public string LockCountry;
-            public Locale Locale;
             public bool IsBanned;
         }
 
@@ -888,6 +896,8 @@ namespace Game.Networking
             public byte[] KeyData;
             public byte Expansion;
             public long MuteTime;
+            public uint Build;
+            public Locale Locale;
             public uint Recruiter;
             public string OS;
             public TimeSpan TimezoneOffset;

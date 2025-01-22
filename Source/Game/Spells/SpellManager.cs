@@ -1,12 +1,10 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
-using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
 using Framework.Dynamic;
 using Game.BattleFields;
-using Game.BattleGrounds;
 using Game.BattlePets;
 using Game.DataStorage;
 using Game.Miscellaneous;
@@ -289,6 +287,11 @@ namespace Game.Entities
                 if (bound.Spell == spell_id2)
                     return true;
             return false;
+        }
+
+        public List<SpellLearnSpellNode> GetSpellLearnedBySpellMapBounds(uint learnedSpellId)
+        {
+            return mSpellLearnedBySpells.LookupByKey(learnedSpellId);
         }
 
         public SpellTargetPosition GetSpellTargetPosition(uint spell_id, uint effIndex)
@@ -851,6 +854,7 @@ namespace Game.Entities
         {
             uint oldMSTime = Time.GetMSTime();
 
+            mSpellLearnedBySpells.Clear();
             mSpellLearnSpells.Clear();
 
             //                                         0      1        2
@@ -866,6 +870,7 @@ namespace Game.Entities
                 uint spell_id = result.Read<uint>(0);
 
                 var node = new SpellLearnSpellNode();
+                node.SourceSpell = spell_id;
                 node.Spell = result.Read<uint>(1);
                 node.OverridesSpell = 0;
                 node.Active = result.Read<bool>(2);
@@ -906,6 +911,7 @@ namespace Game.Entities
                     if (spellEffectInfo.Effect == SpellEffectName.LearnSpell)
                     {
                         var dbc_node = new SpellLearnSpellNode();
+                        dbc_node.SourceSpell = entry.Id;
                         dbc_node.Spell = spellEffectInfo.TriggerSpell;
                         dbc_node.Active = true;                     // all dbc based learned spells is active (show in spell book or hide by client itself)
                         dbc_node.OverridesSpell = 0;
@@ -978,6 +984,7 @@ namespace Game.Entities
                     continue;
 
                 SpellLearnSpellNode dbcLearnNode = new();
+                dbcLearnNode.SourceSpell = spellLearnSpell.SpellID;
                 dbcLearnNode.Spell = spellLearnSpell.LearnSpellID;
                 dbcLearnNode.OverridesSpell = spellLearnSpell.OverridesSpellID;
                 dbcLearnNode.Active = true;
@@ -986,6 +993,9 @@ namespace Game.Entities
                 mSpellLearnSpells.Add(spellLearnSpell.SpellID, dbcLearnNode);
                 ++dbc_count;
             }
+
+            foreach (var (_, learnedSpellNode) in mSpellLearnSpells)
+                mSpellLearnedBySpells.Add(learnedSpellNode.Spell, learnedSpellNode);
 
             Log.outInfo(LogFilter.ServerLoading, "Loaded {0} spell learn spells, {1} found in Spell.dbc in {2} ms", count, dbc_count, Time.GetMSTimeDiffToNow(oldMSTime));
         }
@@ -2224,6 +2234,8 @@ namespace Game.Entities
                     case AuraType.AddPctModifierBySpellLabel:
                     case AuraType.AddFlatModifierBySpellLabel:
                         Cypher.Assert(effect.EffectMiscValue[0] < (int)SpellModOp.Max, $"MAX_SPELLMOD must be at least {effect.EffectMiscValue[0] + 1}");
+                        if (effect.EffectMiscValue[0] >= (int)SpellModOp.Max)
+                            Log.outError(LogFilter.ServerLoading, $"Invalid spell modifier type {effect.EffectMiscValue[0]} found on spell {effect.SpellID} effect index {effect.EffectIndex}, consider increasing MAX_SPELLMOD");
                         break;
                     default:
                         break;
@@ -2247,6 +2259,17 @@ namespace Game.Entities
 
             foreach (SpellCooldownsRecord cooldowns in CliDB.SpellCooldownsStorage.Values)
                 GetLoadHelper(cooldowns.SpellID, cooldowns.DifficultyID).Cooldowns = cooldowns;
+
+            foreach (var (_, empowerStage) in CliDB.SpellEmpowerStageStorage)
+            {
+                SpellEmpowerRecord empower = CliDB.SpellEmpowerStorage.LookupByKey(empowerStage.SpellEmpowerID);
+                if (empower != null)
+                    GetLoadHelper((uint)empower.SpellID, 0).EmpowerStages.Add(empowerStage);
+
+            }
+
+            foreach (var data in loadData)
+                data.Value.EmpowerStages.OrderBy(stageRecord => stageRecord.Stage);
 
             foreach (SpellEquippedItemsRecord equippedItems in CliDB.SpellEquippedItemsStorage.Values)
                 GetLoadHelper(equippedItems.SpellID, 0).EquippedItems = equippedItems;
@@ -2307,84 +2330,87 @@ namespace Game.Entities
             foreach (var data in loadData)
                 data.Value.Visuals.Sort((left, right) => { return right.CasterPlayerConditionID.CompareTo(left.CasterPlayerConditionID); });
 
-            foreach (var data in loadData)
+            foreach (var (key, data) in loadData)
             {
-                SpellNameRecord spellNameEntry = CliDB.SpellNameStorage.LookupByKey(data.Key.Id);
+                SpellNameRecord spellNameEntry = CliDB.SpellNameStorage.LookupByKey(key.Id);
                 if (spellNameEntry == null)
                     continue;
 
                 // fill blanks
-                DifficultyRecord difficultyEntry = CliDB.DifficultyStorage.LookupByKey(data.Key.difficulty);
+                DifficultyRecord difficultyEntry = CliDB.DifficultyStorage.LookupByKey(key.difficulty);
                 if (difficultyEntry != null)
                 {
                     do
                     {
-                        SpellInfoLoadHelper fallbackData = loadData.LookupByKey((data.Key.Id, (Difficulty)difficultyEntry.FallbackDifficultyID));
+                        SpellInfoLoadHelper fallbackData = loadData.LookupByKey((key.Id, (Difficulty)difficultyEntry.FallbackDifficultyID));
                         if (fallbackData != null)
                         {
-                            if (data.Value.AuraOptions == null)
-                                data.Value.AuraOptions = fallbackData.AuraOptions;
+                            if (data.AuraOptions == null)
+                                data.AuraOptions = fallbackData.AuraOptions;
 
-                            if (data.Value.AuraRestrictions == null)
-                                data.Value.AuraRestrictions = fallbackData.AuraRestrictions;
+                            if (data.AuraRestrictions == null)
+                                data.AuraRestrictions = fallbackData.AuraRestrictions;
 
-                            if (data.Value.CastingRequirements == null)
-                                data.Value.CastingRequirements = fallbackData.CastingRequirements;
+                            if (data.CastingRequirements == null)
+                                data.CastingRequirements = fallbackData.CastingRequirements;
 
-                            if (data.Value.Categories == null)
-                                data.Value.Categories = fallbackData.Categories;
+                            if (data.Categories == null)
+                                data.Categories = fallbackData.Categories;
 
-                            if (data.Value.ClassOptions == null)
-                                data.Value.ClassOptions = fallbackData.ClassOptions;
+                            if (data.ClassOptions == null)
+                                data.ClassOptions = fallbackData.ClassOptions;
 
-                            if (data.Value.Cooldowns == null)
-                                data.Value.Cooldowns = fallbackData.Cooldowns;
+                            if (data.Cooldowns == null)
+                                data.Cooldowns = fallbackData.Cooldowns;
 
-                            for (var i = 0; i < data.Value.Effects.Length; ++i)
-                                if (data.Value.Effects[i] == null)
-                                    data.Value.Effects[i] = fallbackData.Effects[i];
+                            for (var i = 0; i < data.Effects.Length; ++i)
+                                if (data.Effects[i] == null)
+                                    data.Effects[i] = fallbackData.Effects[i];
 
-                            if (data.Value.EquippedItems == null)
-                                data.Value.EquippedItems = fallbackData.EquippedItems;
+                            if (data.EmpowerStages.Empty())
+                                data.EmpowerStages = fallbackData.EmpowerStages;
 
-                            if (data.Value.Interrupts == null)
-                                data.Value.Interrupts = fallbackData.Interrupts;
+                            if (data.EquippedItems == null)
+                                data.EquippedItems = fallbackData.EquippedItems;
 
-                            if (data.Value.Labels.Empty())
-                                data.Value.Labels = fallbackData.Labels;
+                            if (data.Interrupts == null)
+                                data.Interrupts = fallbackData.Interrupts;
 
-                            if (data.Value.Levels == null)
-                                data.Value.Levels = fallbackData.Levels;
+                            if (data.Labels.Empty())
+                                data.Labels = fallbackData.Labels;
 
-                            if (data.Value.Misc == null)
-                                data.Value.Misc = fallbackData.Misc;
+                            if (data.Levels == null)
+                                data.Levels = fallbackData.Levels;
+
+                            if (data.Misc == null)
+                                data.Misc = fallbackData.Misc;
 
                             for (var i = 0; i < fallbackData.Powers.Length; ++i)
-                                if (data.Value.Powers[i] == null)
-                                    data.Value.Powers[i] = fallbackData.Powers[i];
+                                if (data.Powers[i] == null)
+                                    data.Powers[i] = fallbackData.Powers[i];
 
-                            if (data.Value.Reagents == null)
-                                data.Value.Reagents = fallbackData.Reagents;
+                            if (data.Reagents == null)
+                                data.Reagents = fallbackData.Reagents;
 
-                            if (data.Value.ReagentsCurrency.Empty())
-                                data.Value.ReagentsCurrency = fallbackData.ReagentsCurrency;
+                            if (data.ReagentsCurrency.Empty())
+                                data.ReagentsCurrency = fallbackData.ReagentsCurrency;
 
-                            if (data.Value.Scaling == null)
-                                data.Value.Scaling = fallbackData.Scaling;
+                            if (data.Scaling == null)
+                                data.Scaling = fallbackData.Scaling;
 
-                            if (data.Value.Shapeshift == null)
-                                data.Value.Shapeshift = fallbackData.Shapeshift;
+                            if (data.Shapeshift == null)
+                                data.Shapeshift = fallbackData.Shapeshift;
 
-                            if (data.Value.TargetRestrictions == null)
-                                data.Value.TargetRestrictions = fallbackData.TargetRestrictions;
+                            if (data.TargetRestrictions == null)
+                                data.TargetRestrictions = fallbackData.TargetRestrictions;
 
-                            if (data.Value.Totems == null)
-                                data.Value.Totems = fallbackData.Totems;
+                            if (data.Totems == null)
+                                data.Totems = fallbackData.Totems;
 
                             // visuals fall back only to first difficulty that defines any visual
                             // they do not stack all difficulties in fallback chain
-                            if (data.Value.Visuals.Empty())
-                                data.Value.Visuals = fallbackData.Visuals;
+                            if (data.Visuals.Empty())
+                                data.Visuals = fallbackData.Visuals;
                         }
 
                         difficultyEntry = CliDB.DifficultyStorage.LookupByKey(difficultyEntry.FallbackDifficultyID);
@@ -2395,7 +2421,7 @@ namespace Game.Entities
                 //second key = id
 
 
-                mSpellInfoMap.Add(spellNameEntry.Id, new SpellInfo(spellNameEntry, data.Key.difficulty, data.Value));
+                mSpellInfoMap.Add(spellNameEntry.Id, new SpellInfo(spellNameEntry, key.difficulty, data));
             }
 
             Log.outInfo(LogFilter.ServerLoading, "Loaded SpellInfo store in {0} ms", Time.GetMSTimeDiffToNow(oldMSTime));
@@ -3679,6 +3705,16 @@ namespace Game.Entities
                 spellInfo.RangeEntry = CliDB.SpellRangeStorage.LookupByKey(6);  // 100yd
             });
 
+            // Inescapable Torment
+            ApplySpellFix([373427], spellInfo =>
+            {
+                // Remove self-damage from passive aura on learn
+                ApplySpellEffectFix(spellInfo, 3, spellEffectInfo =>
+                {
+                    spellEffectInfo.Effect = SpellEffectName.Dummy;
+                });
+            });
+
             //
             // VIOLET HOLD SPELLS
             //
@@ -4319,6 +4355,25 @@ namespace Game.Entities
 
             // ENDOF ANTORUS THE BURNING THRONE SPELLS
 
+            //
+            // STORMSONG VALLEY SPELLS
+            //
+
+            // Void Orb
+            ApplySpellFix([273467], spellInfo =>
+            {
+                ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
+                {
+                    spellEffectInfo.TargetARadiusEntry = CliDB.SpellRadiusStorage.LookupByKey(EffectRadiusIndex.Yards0_5);
+                });
+            });
+
+            // ENDOF STORMSONG VALLEY SPELLS
+
+            //
+            // THE WANDERING ISLE SPELLS
+            //
+
             // Summon Master Li Fei
             ApplySpellFix(new[] { 102445 }, spellInfo =>
             {
@@ -4327,6 +4382,18 @@ namespace Game.Entities
                     spellEffectInfo.TargetA = new SpellImplicitTargetInfo(Targets.DestDb);
                 });
             });
+
+            // Summon Living Air
+            ApplySpellFix([102207], spellInfo =>
+            {
+                ApplySpellEffectFix(spellInfo, 0, spellEffectInfo =>
+                {
+                    spellEffectInfo.TargetA = new SpellImplicitTargetInfo(Targets.DestTargetRandom);
+                });
+            });
+
+            // END OF THE WANDERING ISLE SPELLS
+            //
 
             // Earthquake
             ApplySpellFix(new[] { 61882 }, spellInfo =>
@@ -4392,6 +4459,12 @@ namespace Game.Entities
                 spellInfo.AttributesEx4 |= SpellAttr4.AuraIsBuff;
             });
 
+            // TODO: temporary, remove with dragonriding
+            ApplySpellFix( [404468], spellInfo =>
+            {
+                spellInfo.AttributesCu |= SpellCustomAttributes.AuraCannotBeSaved;
+            });
+
             foreach (var spellInfo in mSpellInfoMap.Values)
             {
                 // Fix range for trajectory triggered spell
@@ -4418,7 +4491,7 @@ namespace Game.Entities
                         case SpellEffectName.Jump:
                         case SpellEffectName.JumpDest:
                         case SpellEffectName.LeapBack:
-                            if (spellInfo.Speed == 0 && spellInfo.SpellFamilyName == 0 && !spellInfo.HasAttribute(SpellAttr9.SpecialDelayCalculation))
+                            if (spellInfo.Speed == 0 && spellInfo.SpellFamilyName == 0 && !spellInfo.HasAttribute(SpellAttr9.MissileSpeedIsDelayInSec))
                                 spellInfo.Speed = MotionMaster.SPEED_CHARGE;
                             break;
                     }
@@ -4848,6 +4921,7 @@ namespace Game.Entities
         MultiMap<uint, uint> mSpellReq = new();
         Dictionary<uint, SpellLearnSkillNode> mSpellLearnSkills = new();
         MultiMap<uint, SpellLearnSpellNode> mSpellLearnSpells = new();
+        MultiMap<uint, SpellLearnSpellNode> mSpellLearnedBySpells = new();
         Dictionary<KeyValuePair<uint, uint>, SpellTargetPosition> mSpellTargetPositions = new();
         MultiMap<uint, SpellGroup> mSpellSpellGroup = new();
         MultiMap<SpellGroup, int> mSpellGroupSpell = new();
@@ -4911,6 +4985,7 @@ namespace Game.Entities
         public SpellClassOptionsRecord ClassOptions;
         public SpellCooldownsRecord Cooldowns;
         public SpellEffectRecord[] Effects = new SpellEffectRecord[SpellConst.MaxEffects];
+        public List<SpellEmpowerStageRecord> EmpowerStages = new();
         public SpellEquippedItemsRecord EquippedItems;
         public SpellInterruptsRecord Interrupts;
         public List<SpellLabelRecord> Labels = new();
@@ -5009,13 +5084,6 @@ namespace Game.Entities
             if (auraSpell != 0)                               // not have expected aura
                 if (player == null || (auraSpell > 0 && !player.HasAura((uint)auraSpell)) || (auraSpell < 0 && player.HasAura((uint)-auraSpell)))
                     return false;
-
-            if (player != null)
-            {
-                Battleground bg = player.GetBattleground();
-                if (bg != null)
-                    return bg.IsSpellAllowed(spellId, player);
-            }
 
             // Extra conditions -- leaving the possibility add extra conditions...
             switch (spellId)

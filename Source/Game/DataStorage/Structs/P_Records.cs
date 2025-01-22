@@ -13,6 +13,36 @@ namespace Game.DataStorage
         public int QuestID;
     }
 
+    public sealed class PathRecord
+    {
+        public uint Id;
+        public byte Type;
+        public byte SplineType;
+        public byte Red;
+        public byte Green;
+        public byte Blue;
+        public byte Alpha;
+        public byte Flags;
+    }
+
+    public sealed class PathNodeRecord
+    {
+        public uint Id;
+        public ushort PathID;
+        public short Sequence;
+        public int LocationID;
+    }
+
+    public sealed class PathPropertyRecord
+    {
+        public uint Id;
+        public ushort PathID;
+        public byte PropertyIndex;
+        public int Value;
+
+        public PathPropertyIndex GetPropertyIndex() { return (PathPropertyIndex)PropertyIndex; }
+    }
+
     public sealed class PhaseRecord
     {
         public uint Id;
@@ -112,16 +142,16 @@ namespace Game.DataStorage
         public uint[] CurrencyCount = new uint[4];
         public uint[] QuestKillMonster = new uint[6];
         public int[] MovementFlags = new int[2];
-        public int[]TraitNodeEntryID = new int[4];
-        public ushort[]TraitNodeEntryMinRank = new ushort[4];
-        public ushort[]TraitNodeEntryMaxRank = new ushort[4];
+        public int[] TraitNodeEntryID = new int[4];
+        public ushort[] TraitNodeEntryMinRank = new ushort[4];
+        public ushort[] TraitNodeEntryMaxRank = new ushort[4];
     }
 
     public sealed class PowerDisplayRecord
     {
         public uint Id;
         public string GlobalStringBaseTag;
-        public byte ActualType;
+        public sbyte ActualType;
         public byte Red;
         public byte Green;
         public byte Blue;
@@ -141,9 +171,9 @@ namespace Game.DataStorage
         public int RegenInterruptTimeMS;
         public float RegenPeace;
         public float RegenCombat;
-        public short Flags;
+        public int Flags;
 
-        public bool HasFlag(PowerTypeFlags powerTypeFlags) { return (Flags & (short)powerTypeFlags) != 0; }
+        public bool HasFlag(PowerTypeFlags powerTypeFlags) { return (Flags & (int)powerTypeFlags) != 0; }
     }
 
     public sealed class PrestigeLevelInfoRecord
@@ -156,7 +186,7 @@ namespace Game.DataStorage
         public int AwardedAchievementID;
 
         public bool HasFlag(PrestigeLevelInfoFlags prestigeLevelInfoFlags) { return (Flags & (byte)prestigeLevelInfoFlags) != 0; }
-        public bool IsDisabled() { return  HasFlag(PrestigeLevelInfoFlags.Disabled); }
+        public bool IsDisabled() { return HasFlag(PrestigeLevelInfoFlags.Disabled); }
     }
 
     public sealed class PvpDifficultyRecord
@@ -200,7 +230,7 @@ namespace Game.DataStorage
     {
         public string Description;
         public uint Id;
-        public int SpecID;
+        public uint SpecID;
         public uint SpellID;
         public uint OverridesSpellID;
         public int Flags;
@@ -233,7 +263,7 @@ namespace Game.DataStorage
         public short MaxRating;
         public int PrevTier;
         public int NextTier;
-        public sbyte BracketID;
+        public byte BracketID;
         public sbyte Rank;
         public int RankIconFileDataID;
     }

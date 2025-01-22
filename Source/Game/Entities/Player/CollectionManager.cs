@@ -226,14 +226,18 @@ namespace Game.Entities
         public void AddHeirloom(uint itemId, HeirloomPlayerFlags flags)
         {
             if (UpdateAccountHeirlooms(itemId, flags))
+            {
+                _owner.GetPlayer().UpdateCriteria(CriteriaType.LearnHeirloom, itemId);
+                _owner.GetPlayer().UpdateCriteria(CriteriaType.LearnAnyHeirloom, 1);
                 _owner.GetPlayer().AddHeirloom(itemId, (uint)flags);
+            }
         }
 
         public bool HasHeirloom(uint itemId)
         {
             return _heirlooms.ContainsKey(itemId);
         }
-        
+
         public void UpgradeHeirloom(uint itemId, uint castItem)
         {
             Player player = _owner.GetPlayer();
@@ -386,12 +390,8 @@ namespace Game.Entities
             _mounts[spellId] = flags;
 
             // Mount condition only applies to using it, should still learn it.
-            if (mount.PlayerConditionID != 0)
-            {
-                PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(mount.PlayerConditionID);
-                if (playerCondition != null && !ConditionManager.IsPlayerMeetingCondition(player, playerCondition))
-                    return false;
-            }
+            if (!ConditionManager.IsPlayerMeetingCondition(player, mount.PlayerConditionID))
+                return false;
 
             if (!learned)
             {
@@ -679,6 +679,8 @@ namespace Game.Entities
                 _temporaryAppearances.Remove(itemModifiedAppearance.Id);
             }
 
+            _owner.GetPlayer().UpdateCriteria(CriteriaType.LearnAnyTransmog, 1);
+
             ItemRecord item = CliDB.ItemStorage.LookupByKey(itemModifiedAppearance.ItemID);
             if (item != null)
             {
@@ -859,7 +861,7 @@ namespace Game.Entities
 
                 } while (knownTransmogIllusions.NextRow());
             }
-            
+
             _transmogIllusions = new(blocks);
 
             // Static illusions known by every player
@@ -919,7 +921,7 @@ namespace Game.Entities
         {
             return transmogIllusionId < _transmogIllusions.Count && _transmogIllusions.Get((int)transmogIllusionId);
         }
-        
+
         public bool HasToy(uint itemId) { return _toys.ContainsKey(itemId); }
         public Dictionary<uint, ToyFlags> GetAccountToys() { return _toys; }
         public Dictionary<uint, HeirloomData> GetAccountHeirlooms() { return _heirlooms; }

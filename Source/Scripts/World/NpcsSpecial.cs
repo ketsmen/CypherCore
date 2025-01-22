@@ -393,7 +393,7 @@ namespace Scripts.World.NpcsSpecial
         bool checkNearbyPlayers()
         {
             // Returns true if no nearby player has aura "Test Ribbon Pole Channel".
-            List<Unit> players = new();
+            List<Player> players = new();
             UnitAuraCheck check = new(true, SpellRibbonDanceCosmetic);
             PlayerListSearcher searcher = new(me, players, check);
             Cell.VisitWorldObjects(me, searcher, 10.0f);
@@ -868,7 +868,7 @@ namespace Scripts.World.NpcsSpecial
 
             me.SetStandState(UnitStandStateType.Kneel);
             // expect database to have RegenHealth=0
-            me.SetHealth(me.CountPctFromMaxHealth(70));
+            me.SetSpawnHealth();
         }
 
         public override void JustEngagedWith(Unit who) { }
@@ -1717,12 +1717,14 @@ namespace Scripts.World.NpcsSpecial
 
                 if (owner.HasAchieved(ArgentSquireIds.AchievementPonyUp) && !me.HasAura(ArgentSquireIds.AuraTiredS) && !me.HasAura(ArgentSquireIds.AuraTiredG))
                 {
-                    me.SetNpcFlag(NPCFlags.Banker | NPCFlags.Mailbox | NPCFlags.Vendor);
+                    me.SetVendor(NPCFlags.Vendor, true);
+                    me.SetNpcFlag(NPCFlags.Banker | NPCFlags.Mailbox);
                     return;
                 }
             }
 
-            me.RemoveNpcFlag(NPCFlags.Banker | NPCFlags.Mailbox | NPCFlags.Vendor);
+            me.SetVendor(NPCFlags.VendorMask, false);
+            me.RemoveNpcFlag(NPCFlags.Banker | NPCFlags.Mailbox);
         }
 
         public override bool OnGossipSelect(Player player, uint menuId, uint gossipListId)
@@ -1731,7 +1733,8 @@ namespace Scripts.World.NpcsSpecial
             {
                 case ArgentSquireIds.GossipOptionBank:
                 {
-                    me.RemoveNpcFlag(NPCFlags.Mailbox | NPCFlags.Vendor);
+                    me.SetVendor(NPCFlags.VendorMask, false);
+                    me.RemoveNpcFlag(NPCFlags.Mailbox);
                     uint _bankAura = IsArgentSquire() ? ArgentSquireIds.AuraBankS : ArgentSquireIds.AuraBankG;
                     if (!me.HasAura(_bankAura))
                         DoCastSelf(_bankAura);
@@ -1753,7 +1756,8 @@ namespace Scripts.World.NpcsSpecial
                 }
                 case ArgentSquireIds.GossipOptionMail:
                 {
-                    me.RemoveNpcFlag(NPCFlags.Banker | NPCFlags.Vendor);
+                    me.SetVendor(NPCFlags.VendorMask, false);
+                    me.RemoveNpcFlag(NPCFlags.Banker);
                     uint _mailAura = IsArgentSquire() ? ArgentSquireIds.AuraPostmanS : ArgentSquireIds.AuraPostmanG;
                     if (!me.HasAura(_mailAura))
                         DoCastSelf(_mailAura);

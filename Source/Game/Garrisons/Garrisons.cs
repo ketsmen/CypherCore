@@ -253,7 +253,7 @@ namespace Game.Garrisons
                 Plot plotInfo = _plots[garrPlotInstanceId];
                 plotInfo.PacketInfo.GarrPlotInstanceID = garrPlotInstanceId;
                 plotInfo.PacketInfo.PlotPos.Relocate(gameObject.Pos.X, gameObject.Pos.Y, gameObject.Pos.Z, 2 * (float)Math.Acos(gameObject.Rot[3]));
-                plotInfo.PacketInfo.PlotType = plot.PlotType;
+                plotInfo.PacketInfo.PlotType = (byte)plot.PlotType;
                 plotInfo.Rotation = new Quaternion(gameObject.Rot[0], gameObject.Rot[1], gameObject.Rot[2], gameObject.Rot[3]);
                 plotInfo.EmptyGameObjectId = gameObject.Id;
                 plotInfo.GarrSiteLevelPlotInstId = plots[i].Id;
@@ -266,20 +266,16 @@ namespace Game.Garrisons
 
         void Enter()
         {
-            WorldLocation loc = new(_siteLevel.MapID);
-            loc.Relocate(_owner);
-            _owner.TeleportTo(loc, TeleportToOptions.Seamless);
+            MapRecord map = CliDB.MapStorage.LookupByKey(_siteLevel.MapID);
+            if (map != null && _owner.GetMapId() == map.ParentMapID)
+                _owner.TeleportTo(new WorldLocation(_siteLevel.MapID, _owner), TeleportToOptions.Seamless);
         }
 
         void Leave()
         {
             MapRecord map = CliDB.MapStorage.LookupByKey(_siteLevel.MapID);
-            if (map != null)
-            {
-                WorldLocation loc = new((uint)map.ParentMapID);
-                loc.Relocate(_owner);
-                _owner.TeleportTo(loc, TeleportToOptions.Seamless);
-            }
+            if (map != null && _owner.GetMapId() == _siteLevel.MapID)
+                _owner.TeleportTo(new WorldLocation((uint)map.ParentMapID, _owner), TeleportToOptions.Seamless);
         }
 
         public uint GetFaction()

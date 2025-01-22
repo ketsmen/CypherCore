@@ -113,6 +113,8 @@ namespace Game.DataStorage
             foreach (var broadcastTextDuration in BroadcastTextDurationStorage.Values)
                 _broadcastTextDurations[(broadcastTextDuration.BroadcastTextID, (CascLocaleBit)broadcastTextDuration.Locale)] = broadcastTextDuration.Duration;
 
+            foreach (var (_, charBaseInfo) in CharBaseInfoStorage)
+                _charBaseInfoByRaceAndClass[(charBaseInfo.RaceID, charBaseInfo.ClassID)] = charBaseInfo;
 
             foreach (var uiDisplay in ChrClassUIDisplayStorage.Values)
             {
@@ -234,7 +236,15 @@ namespace Game.DataStorage
                 _conditionalChrModelsByChrModelId[conditionalChrModel.ChrModelID] = conditionalChrModel;
 
             foreach (ConditionalContentTuningRecord conditionalContentTuning in ConditionalContentTuningStorage.Values)
-                _conditionalContentTuning.Add(conditionalContentTuning.ParentContentTuningID, conditionalContentTuning);
+            {
+                if (!_conditionalContentTuning.ContainsKey(conditionalContentTuning.ParentContentTuningID))
+                    _conditionalContentTuning[conditionalContentTuning.ParentContentTuningID] = new();
+
+                _conditionalContentTuning[conditionalContentTuning.ParentContentTuningID].Add(conditionalContentTuning);
+            }
+
+            foreach (var (parentContentTuningId, conditionalContentTunings) in _conditionalContentTuning)
+                conditionalContentTunings.OrderBy(p => p.OrderIndex);
 
             foreach (ContentTuningXExpectedRecord contentTuningXExpectedStat in ContentTuningXExpectedStorage.Values)
             {
@@ -272,7 +282,7 @@ namespace Game.DataStorage
                     _factionTeams.Add(faction.ParentFactionID, faction.Id);
 
             foreach (FriendshipRepReactionRecord friendshipRepReaction in FriendshipRepReactionStorage.Values)
-                _friendshipRepReactions.Add(friendshipRepReaction.FriendshipRepID, friendshipRepReaction);
+                _friendshipRepReactions.Add((uint)friendshipRepReaction.FriendshipRepID, friendshipRepReaction);
 
             foreach (var key in _friendshipRepReactions.Keys)
                 _friendshipRepReactions[key].Sort(new FriendshipRepReactionRecordComparer());
@@ -410,6 +420,36 @@ namespace Game.DataStorage
                 if (FactionStorage.HasRecord(paragonReputation.FactionID))
                     _paragonReputations[paragonReputation.FactionID] = paragonReputation;
 
+            Dictionary<uint, List<PathNodeRecord>> unsortedNodes = new();
+            foreach (var (_, pathNode) in CliDB.PathNodeStorage)
+            {
+                if (CliDB.PathStorage.HasRecord(pathNode.PathID) && CliDB.LocationStorage.HasRecord((uint)pathNode.LocationID))
+                {
+                    if (!unsortedNodes.ContainsKey(pathNode.PathID))
+                        unsortedNodes[pathNode.PathID] = new();
+
+                    unsortedNodes[pathNode.PathID].Add(pathNode);
+                }
+            }
+
+            foreach (var (pathId, pathNodes) in unsortedNodes)
+            {
+                if (!_paths.ContainsKey(pathId))
+                    _paths[pathId] = new();
+
+                pathNodes.OrderBy(node => node.Sequence);
+                _paths[pathId].Locations.AddRange(pathNodes.Select(node => CliDB.LocationStorage.LookupByKey(node.LocationID).Pos));
+            }
+
+            foreach (var (_, pathProperty) in CliDB.PathPropertyStorage)
+                if (CliDB.PathStorage.HasRecord(pathProperty.PathID))
+                {
+                    if (!_paths.ContainsKey(pathProperty.PathID))
+                        _paths[pathProperty.PathID] = new();
+
+                    _paths[pathProperty.PathID].Properties.Add(pathProperty);
+                }
+
             foreach (var group in PhaseXPhaseGroupStorage.Values)
             {
                 PhaseRecord phase = PhaseStorage.LookupByKey(group.PhaseId);
@@ -442,6 +482,9 @@ namespace Game.DataStorage
 
             foreach (QuestLineXQuestRecord questLineQuest in QuestLineXQuestStorage.Values)
                 _questsByQuestLine.Add(questLineQuest.QuestLineID, questLineQuest);
+
+            foreach (var questLineId in _questsByQuestLine.Keys)
+                _questsByQuestLine[questLineId].OrderByDescending(p => p.OrderIndex);
 
             foreach (QuestPackageItemRecord questPackageItem in QuestPackageItemStorage.Values)
             {
@@ -537,7 +580,7 @@ namespace Game.DataStorage
                 _uiMapAssignmentByWmoGroup[i] = new MultiMap<int, UiMapAssignmentRecord>();
             }
 
-            MultiMap<int, UiMapAssignmentRecord> uiMapAssignmentByUiMap = new();
+            MultiMap<uint, UiMapAssignmentRecord> uiMapAssignmentByUiMap = new();
             foreach (UiMapAssignmentRecord uiMapAssignment in UiMapAssignmentStorage.Values)
             {
                 uiMapAssignmentByUiMap.Add(uiMapAssignment.UiMapID, uiMapAssignment);
@@ -556,7 +599,7 @@ namespace Game.DataStorage
                 }
             }
 
-            Dictionary<Tuple<int, uint>, UiMapLinkRecord> uiMapLinks = new();
+            Dictionary<Tuple<uint, uint>, UiMapLinkRecord> uiMapLinks = new();
             foreach (UiMapLinkRecord uiMapLink in UiMapLinkStorage.Values)
                 uiMapLinks[Tuple.Create(uiMapLink.ParentUiMapID, (uint)uiMapLink.ChildUiMapID)] = uiMapLink;
 
@@ -984,9 +1027,14 @@ namespace Game.DataStorage
             return broadcastText.Text[SharedConst.DefaultLocale];
         }
 
-        public int GetBroadcastTextDuration(int broadcastTextId, Locale locale = Locale.enUS)
+        public int GetBroadcastTextDuration(uint broadcastTextId, Locale locale = Locale.enUS)
         {
             return _broadcastTextDurations.LookupByKey((broadcastTextId, SharedConst.WowLocaleToCascLocaleBit[(int)locale]));
+        }
+
+        public CharBaseInfoRecord GetCharBaseInfo(Race race, Class class_)
+        {
+            return _charBaseInfoByRaceAndClass.LookupByKey((race, class_));
         }
 
         public ChrClassUIDisplayRecord GetUiDisplayForClass(Class unitClass)
@@ -1061,9 +1109,11 @@ namespace Game.DataStorage
 
         public uint GetRedirectedContentTuningId(uint contentTuningId, uint redirectFlag)
         {
-            foreach (var conditionalContentTuning in _conditionalContentTuning.LookupByKey(contentTuningId))
-                if ((conditionalContentTuning.RedirectFlag & redirectFlag) != 0)
-                    return (uint)conditionalContentTuning.RedirectContentTuningID;
+            var conditionalContentTunings = _conditionalContentTuning.LookupByKey(contentTuningId);
+            if (conditionalContentTunings != null)
+                foreach (var conditionalContentTuning in conditionalContentTunings)
+                    if ((conditionalContentTuning.RedirectFlag & redirectFlag) != 0)
+                        return (uint)conditionalContentTuning.RedirectContentTuningID;
 
             return contentTuningId;
         }
@@ -1079,8 +1129,9 @@ namespace Game.DataStorage
 
             static int getLevelAdjustment(ContentTuningCalcType type) => type switch
             {
-                ContentTuningCalcType.PlusOne => 1,
-                ContentTuningCalcType.PlusMaxLevelForExpansion => (int)Global.ObjectMgr.GetMaxLevelForExpansion((Expansion)WorldConfig.GetUIntValue(WorldCfg.Expansion)),
+                ContentTuningCalcType.MinLevel => 1,
+                ContentTuningCalcType.MaxLevel => (int)Global.ObjectMgr.GetMaxLevelForExpansion((Expansion)WorldConfig.GetUIntValue(WorldCfg.Expansion)),
+                ContentTuningCalcType.PrevExpansionMaxLevel => (int)Global.ObjectMgr.GetMaxLevelForExpansion((Expansion)Math.Max(WorldConfig.GetUIntValue(WorldCfg.Expansion) - 1, 0)),
                 _ => 0
             };
 
@@ -1585,16 +1636,17 @@ namespace Game.DataStorage
             Difficulty NotUsed = Difficulty.None;
             return GetDefaultMapDifficulty(mapId, ref NotUsed);
         }
+
         public MapDifficultyRecord GetDefaultMapDifficulty(uint mapId, ref Difficulty difficulty)
         {
-            var dicMapDiff = _mapDifficulties.LookupByKey(mapId);
-            if (dicMapDiff == null)
+            var difficultiesForMap = _mapDifficulties.LookupByKey(mapId);
+            if (difficultiesForMap == null)
                 return null;
 
-            if (dicMapDiff.Empty())
+            if (difficultiesForMap.Empty())
                 return null;
 
-            foreach (var pair in dicMapDiff)
+            foreach (var pair in difficultiesForMap)
             {
                 DifficultyRecord difficultyEntry = DifficultyStorage.LookupByKey(pair.Key);
                 if (difficultyEntry == null)
@@ -1607,9 +1659,9 @@ namespace Game.DataStorage
                 }
             }
 
-            difficulty = (Difficulty)dicMapDiff.First().Key;
+            difficulty = (Difficulty)difficultiesForMap.First().Key;
 
-            return dicMapDiff.First().Value;
+            return difficultiesForMap.First().Value;
         }
 
         public MapDifficultyRecord GetMapDifficultyData(uint mapId, Difficulty difficulty)
@@ -1720,6 +1772,11 @@ namespace Game.DataStorage
         public ParagonReputationRecord GetParagonReputation(uint factionId)
         {
             return _paragonReputations.LookupByKey(factionId);
+        }
+
+        public PathDb2 GetPath(uint pathId)
+        {
+            return _paths.LookupByKey(pathId);
         }
 
         public PvpDifficultyRecord GetBattlegroundBracketByLevel(uint mapid, uint level)
@@ -2134,7 +2191,7 @@ namespace Game.DataStorage
             return nearestMapAssignment.UiMapAssignment;
         }
 
-        Vector2 CalculateGlobalUiMapPosition(int uiMapID, Vector2 uiPosition)
+        Vector2 CalculateGlobalUiMapPosition(uint uiMapID, Vector2 uiPosition)
         {
             UiMapRecord uiMap = UiMapStorage.LookupByKey(uiMapID);
             while (uiMap != null)
@@ -2160,14 +2217,14 @@ namespace Game.DataStorage
             return GetUiMapPosition(x, y, z, mapId, areaId, wmoDoodadPlacementId, wmoGroupId, system, local, out _, out newPos);
         }
 
-        public bool GetUiMapPosition(float x, float y, float z, int mapId, int areaId, int wmoDoodadPlacementId, int wmoGroupId, UiMapSystem system, bool local, out int uiMapId)
+        public bool GetUiMapPosition(float x, float y, float z, int mapId, int areaId, int wmoDoodadPlacementId, int wmoGroupId, UiMapSystem system, bool local, out uint uiMapId)
         {
             return GetUiMapPosition(x, y, z, mapId, areaId, wmoDoodadPlacementId, wmoGroupId, system, local, out uiMapId, out _);
         }
 
-        public bool GetUiMapPosition(float x, float y, float z, int mapId, int areaId, int wmoDoodadPlacementId, int wmoGroupId, UiMapSystem system, bool local, out int uiMapId, out Vector2 newPos)
+        public bool GetUiMapPosition(float x, float y, float z, int mapId, int areaId, int wmoDoodadPlacementId, int wmoGroupId, UiMapSystem system, bool local, out uint uiMapId, out Vector2 newPos)
         {
-            uiMapId = -1;
+            uiMapId = uint.MaxValue;
             newPos = new Vector2();
 
             UiMapAssignmentRecord uiMapAssignment = FindNearestMapAssignment(x, y, z, mapId, areaId, wmoDoodadPlacementId, wmoGroupId, system);
@@ -2271,7 +2328,8 @@ namespace Game.DataStorage
         AzeriteItemMilestonePowerRecord[] _azeriteItemMilestonePowerByEssenceSlot = new AzeriteItemMilestonePowerRecord[SharedConst.MaxAzeriteEssenceSlot];
         MultiMap<uint, AzeritePowerSetMemberRecord> _azeritePowers = new();
         Dictionary<(uint azeriteUnlockSetId, ItemContext itemContext), byte[]> _azeriteTierUnlockLevels = new();
-        Dictionary<(int broadcastTextId, CascLocaleBit cascLocaleBit), int> _broadcastTextDurations = new();
+        Dictionary<(uint broadcastTextId, CascLocaleBit cascLocaleBit), int> _broadcastTextDurations = new();
+        Dictionary<(sbyte, sbyte), CharBaseInfoRecord> _charBaseInfoByRaceAndClass = new();
         ChrClassUIDisplayRecord[] _uiDisplayByClass = new ChrClassUIDisplayRecord[(int)Class.Max];
         uint[][] _powersByClass = new uint[(int)Class.Max][];
         MultiMap<uint, ChrCustomizationChoiceRecord> _chrCustomizationChoicesByOption = new();
@@ -2281,7 +2339,7 @@ namespace Game.DataStorage
         Dictionary<uint, MultiMap<uint, uint>> _chrCustomizationRequiredChoices = new();
         ChrSpecializationRecord[][] _chrSpecializationsByIndex = new ChrSpecializationRecord[(int)Class.Max + 1][];
         Dictionary<int, ConditionalChrModelRecord> _conditionalChrModelsByChrModelId = new();
-        MultiMap<uint, ConditionalContentTuningRecord> _conditionalContentTuning = new();
+        Dictionary<uint, List<ConditionalContentTuningRecord>> _conditionalContentTuning = new();
         List<(uint, int)> _contentTuningLabels = new();
         MultiMap<uint, CurrencyContainerRecord> _currencyContainers = new();
         MultiMap<uint, Vector2> _curvePoints = new();
@@ -2309,6 +2367,7 @@ namespace Game.DataStorage
         Dictionary<uint, List<NameGenRecord>[]> _nameGenData = new();
         List<string>[] _nameValidators = new List<string>[(int)Locale.Total + 1];
         Dictionary<uint, ParagonReputationRecord> _paragonReputations = new();
+        Dictionary<uint, PathDb2> _paths = new();
         MultiMap<uint, uint> _phasesByGroup = new();
         Dictionary<PowerType, PowerTypeRecord> _powerTypes = new();
         Dictionary<uint, byte> _pvpItemBonus = new();
@@ -2598,6 +2657,13 @@ namespace Game.DataStorage
         public short MaxLevelWithDelta;
         public short TargetLevelMin;
         public short TargetLevelMax;
+    }
+
+    public class PathDb2
+    {
+        public uint Id;
+        public List<Vector3> Locations = new();
+        public List<PathPropertyRecord> Properties = new();
     }
 
     public class ShapeshiftFormModelData

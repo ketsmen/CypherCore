@@ -25,7 +25,7 @@ namespace Game
 {
     public partial class WorldSession : IDisposable
     {
-        public WorldSession(uint id, string name, uint battlenetAccountId, WorldSocket sock, AccountTypes sec, Expansion expansion, long mute_time, string os, TimeSpan timezoneOffset, Locale locale, uint recruiter, bool isARecruiter)
+        public WorldSession(uint id, string name, uint battlenetAccountId, WorldSocket sock, AccountTypes sec, Expansion expansion, long mute_time, string os, TimeSpan timezoneOffset, uint build, Framework.ClientBuild.ClientBuildVariantId clientBuildVariant, Locale locale, uint recruiter, bool isARecruiter)
         {
             m_muteTime = mute_time;
             AntiDOS = new DosProtection(this);
@@ -37,6 +37,8 @@ namespace Game
             m_accountExpansion = expansion;
             m_expansion = (Expansion)Math.Min((byte)expansion, WorldConfig.GetIntValue(WorldCfg.Expansion));
             _os = os;
+            _clientBuild = build;
+            _clientBuildVariant = clientBuildVariant;
             m_sessionDbcLocale = Global.WorldMgr.GetAvailableDbcLocale(locale);
             m_sessionDbLocaleIndex = locale;
             _timezoneOffset = timezoneOffset;
@@ -46,7 +48,7 @@ namespace Game
             _battlePetMgr = new BattlePetMgr(this);
             _collectionMgr = new CollectionMgr(this);
 
-            m_Address = sock.GetRemoteIpAddress().Address.ToString();
+            m_Address = sock.GetRemoteIpAddress().ToString();
             ResetTimeOutTime(false);
             DB.Login.Execute("UPDATE account SET online = 1 WHERE id = {0};", GetAccountId());     // One-time query
         }
@@ -383,9 +385,10 @@ namespace Game
             if (packet == null)
                 return;
 
-            if (packet.GetOpcode() == ServerOpcodes.Unknown || packet.GetOpcode() == ServerOpcodes.Max)
+            if (!packet.IsValidOpcode())
             {
-                Log.outError(LogFilter.Network, "Prevented sending of UnknownOpcode to {0}", GetPlayerInfo());
+                string specialName = packet.GetOpcode() == ServerOpcodes.Unknown ? "UNKNOWN_OPCODE" : "INVALID_OPCODE";
+                Log.outError(LogFilter.Network, $"Prevented sending of {specialName} (0x{packet.GetOpcode():04X}) to {GetPlayerInfo()}");
                 return;
             }
 
@@ -477,7 +480,10 @@ namespace Game
 
         public void SendConnectToInstance(ConnectToSerial serial)
         {
-            var instanceAddress = Global.WorldMgr.GetRealm().GetAddressForClient(System.Net.IPAddress.Parse(GetRemoteAddress()));
+            System.Net.IPAddress instanceAddress = null;
+            var currentRealm = Global.RealmMgr.GetCurrentRealm();
+            if (currentRealm != null)
+                instanceAddress = currentRealm.GetAddressForClient(System.Net.IPAddress.Parse(GetRemoteAddress()));
 
             _instanceConnectKey.AccountId = GetAccountId();
             _instanceConnectKey.connectionType = ConnectionType.Instance;
@@ -489,15 +495,18 @@ namespace Game
             connectTo.Payload.Port = (ushort)WorldConfig.GetIntValue(WorldCfg.PortInstance);
             connectTo.Con = (byte)ConnectionType.Instance;
 
-            if (instanceAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            if (instanceAddress != null)
             {
-                connectTo.Payload.Where.IPv4 = instanceAddress.GetAddressBytes();
-                connectTo.Payload.Where.Type = ConnectTo.AddressType.IPv4;
-            }
-            else
-            {
-                connectTo.Payload.Where.IPv6 = instanceAddress.GetAddressBytes();
-                connectTo.Payload.Where.Type = ConnectTo.AddressType.IPv6;
+                if (instanceAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                {
+                    connectTo.Payload.Where.IPv4 = instanceAddress.GetAddressBytes();
+                    connectTo.Payload.Where.Type = ConnectTo.AddressType.IPv4;
+                }
+                else
+                {
+                    connectTo.Payload.Where.IPv6 = instanceAddress.GetAddressBytes();
+                    connectTo.Payload.Where.Type = ConnectTo.AddressType.IPv6;
+                }
             }
 
             SendPacket(connectTo);
@@ -678,6 +687,8 @@ namespace Game
         public Expansion GetAccountExpansion() { return m_accountExpansion; }
         public Expansion GetExpansion() { return m_expansion; }
         public string GetOS() { return _os; }
+        public uint GetClientBuild() { return _clientBuild; }
+        public Framework.ClientBuild.ClientBuildVariantId GetClientBuildVariant() { return _clientBuildVariant; }
         public void SetInQueue(bool state) { m_inQueue = state; }
 
         public bool IsLogingOut() { return _logoutTime != 0 || m_playerLogout; }
@@ -741,9 +752,9 @@ namespace Game
             AccountTypes secLevel = GetSecurity();
 
             Log.outDebug(LogFilter.Rbac, "WorldSession.LoadPermissions [AccountId: {0}, Name: {1}, realmId: {2}, secLevel: {3}]",
-                id, _accountName, Global.WorldMgr.GetRealm().Id.Index, secLevel);
+                id, _accountName, Global.RealmMgr.GetCurrentRealmId().Index, secLevel);
 
-            _RBACData = new RBACData(id, _accountName, (int)Global.WorldMgr.GetRealm().Id.Index, (byte)secLevel);
+            _RBACData = new RBACData(id, _accountName, (int)Global.RealmMgr.GetCurrentRealmId().Index, (byte)secLevel);
             _RBACData.LoadFromDB();
         }
 
@@ -753,9 +764,9 @@ namespace Game
             AccountTypes secLevel = GetSecurity();
 
             Log.outDebug(LogFilter.Rbac, "WorldSession.LoadPermissions [AccountId: {0}, Name: {1}, realmId: {2}, secLevel: {3}]",
-                id, _accountName, Global.WorldMgr.GetRealm().Id.Index, secLevel);
+                id, _accountName, Global.RealmMgr.GetCurrentRealmId().Index, secLevel);
 
-            _RBACData = new RBACData(id, _accountName, (int)Global.WorldMgr.GetRealm().Id.Index, (byte)secLevel);
+            _RBACData = new RBACData(id, _accountName, (int)Global.RealmMgr.GetCurrentRealmId().Index, (byte)secLevel);
             return _RBACData.LoadFromDBAsync();
         }
 
@@ -839,7 +850,7 @@ namespace Game
 
             bool hasPermission = _RBACData.HasPermission(permission);
             Log.outDebug(LogFilter.Rbac, "WorldSession:HasPermission [AccountId: {0}, Name: {1}, realmId: {2}]",
-                           _RBACData.GetId(), _RBACData.GetName(), Global.WorldMgr.GetRealm().Id.Index);
+                           _RBACData.GetId(), _RBACData.GetName(), Global.RealmMgr.GetCurrentRealmId().Index);
 
             return hasPermission;
         }
@@ -847,7 +858,7 @@ namespace Game
         public void InvalidateRBACData()
         {
             Log.outDebug(LogFilter.Rbac, "WorldSession:Invalidaterbac:RBACData [AccountId: {0}, Name: {1}, realmId: {2}]",
-                           _RBACData.GetId(), _RBACData.GetName(), Global.WorldMgr.GetRealm().Id.Index);
+                           _RBACData.GetId(), _RBACData.GetName(), Global.RealmMgr.GetCurrentRealmId().Index);
             _RBACData = null;
         }
 
@@ -944,6 +955,8 @@ namespace Game
         Expansion m_accountExpansion;
         Expansion m_expansion;
         string _os;
+        uint _clientBuild;
+        Framework.ClientBuild.ClientBuildVariantId _clientBuildVariant;
 
         uint expireTime;
         bool forceExit;
@@ -1130,7 +1143,7 @@ namespace Game
 
             stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_BATTLE_PETS);
             stmt.AddValue(0, battlenetAccountId);
-            stmt.AddValue(1, Global.WorldMgr.GetRealmId().Index);
+            stmt.AddValue(1, Global.RealmMgr.GetCurrentRealmId().Index);
             SetQuery(AccountInfoQueryLoad.BattlePets, stmt);
 
             stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_BATTLE_PET_SLOTS);

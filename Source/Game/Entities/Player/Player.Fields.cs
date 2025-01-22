@@ -37,6 +37,7 @@ namespace Game.Entities
         public List<ItemSetEffect> ItemSetEff = new();
         List<EnchantDuration> m_enchantDuration = new();
         List<Item> m_itemDuration = new();
+        List<uint> m_itemPassives = new();
         List<ObjectGuid> m_itemSoulboundTradeable = new();
         List<ObjectGuid> m_refundableItems = new();
         public List<Item> ItemUpdateQueue = new();
@@ -82,9 +83,10 @@ namespace Game.Entities
         public byte m_movementForceModMagnitudeChanges;
         uint m_lastFallTime;
         float m_lastFallZ;
-        WorldLocation teleportDest;
-        uint? m_teleport_instanceId;
+        TeleportLocation teleportDest;
         TeleportToOptions m_teleport_options;
+        uint m_teleportSpellId;
+        int m_newWorldCounter;
         bool mSemaphoreTeleport_Near;
         bool mSemaphoreTeleport_Far;
         PlayerDelayedOperations m_DelayedOperations;
@@ -112,6 +114,7 @@ namespace Game.Entities
         ObjectGuid m_temporaryUnsummonedBattlePet;
         Dictionary<uint, StoredAuraTeleportLocation> m_storedAuraTeleportLocations = new();
         SpellCastRequest _pendingSpellCastRequest;
+        float m_empowerMinHoldStagePercent;
 
         //Mail
         List<Mail> m_mail = new();
@@ -129,8 +132,7 @@ namespace Game.Entities
 
         // Player summoning
         long m_summon_expire;
-        WorldLocation m_summon_location;
-        uint m_summon_instanceId;
+        TeleportLocation m_summon_location;
 
         RestMgr _restMgr;
 
@@ -148,7 +150,6 @@ namespace Game.Entities
         AttackSwingErr? m_swingErrorMsg;
         DateTime m_regenInterruptTimestamp;
         uint m_regenTimerCount;
-        uint m_foodEmoteTimerCount;
         uint m_weaponChangeTimer;
 
         //Quest
@@ -211,14 +212,12 @@ namespace Game.Entities
         public bool IsDebugAreaTriggers { get; set; }
         uint m_zoneUpdateId;
         uint m_areaUpdateId;
-        uint m_zoneUpdateTimer;
 
         uint m_ChampioningFaction;
         byte m_fishingSteps;
 
         // Recall position
-        WorldLocation m_recall_location;
-        uint m_recall_instanceId;
+        TeleportLocation m_recall_location;
         WorldLocation homebind = new();
         uint homebindAreaId;
         uint m_HomebindTimer;
@@ -235,8 +234,6 @@ namespace Game.Entities
         CUFProfile[] _CUFProfiles = new CUFProfile[PlayerConst.MaxCUFProfiles];
         float[] m_powerFraction = new float[(int)PowerType.MaxPerClass];
         int[] m_MirrorTimer = new int[3];
-
-        TimeTracker m_groupUpdateTimer;
 
         ulong m_GuildIdInvited;
         Runes m_runes = new();

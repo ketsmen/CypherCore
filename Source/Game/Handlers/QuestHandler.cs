@@ -348,10 +348,6 @@ namespace Game
             {
                 if (GetPlayer().CanRewardQuest(quest, packet.Choice.LootItemType, packet.Choice.Item.ItemID, true)) // Then check if player can receive the reward item (if inventory is not full, if player doesn't have too many unique items, and so on). If not, the client will close the gossip window
                 {
-                    Battleground bg = _player.GetBattleground();
-                    if (bg != null)
-                        bg.HandleQuestComplete(packet.QuestID, _player);
-
                     GetPlayer().RewardQuest(quest, packet.Choice.LootItemType, packet.Choice.Item.ItemID, obj);
                 }
             }
@@ -650,10 +646,17 @@ namespace Game
                     continue;
                 }
 
-                if (!receiver.SatisfyQuestReputation(quest, false))
+                if (!receiver.SatisfyQuestMinReputation(quest, false))
                 {
                     sender.SendPushToPartyResponse(receiver, QuestPushReason.LowFaction);
                     receiver.SendPushToPartyResponse(sender, QuestPushReason.LowFactionToRecipient, quest);
+                    continue;
+                }
+
+                if (!receiver.SatisfyQuestMaxReputation(quest, false))
+                {
+                    sender.SendPushToPartyResponse(receiver, QuestPushReason.HighFaction);
+                    receiver.SendPushToPartyResponse(sender, QuestPushReason.HighFactionToRecipient, quest);
                     continue;
                 }
 
@@ -716,12 +719,6 @@ namespace Game
         void HandleQuestgiverStatusMultipleQuery(QuestGiverStatusMultipleQuery packet)
         {
             _player.SendQuestGiverStatusMultiple();
-        }
-
-        [WorldPacketHandler(ClientOpcodes.QuestGiverStatusTrackedQuery)]
-        void HandleQuestgiverStatusTrackedQueryOpcode(QuestGiverStatusTrackedQuery questGiverStatusTrackedQuery)
-        {
-            _player.SendQuestGiverStatusMultiple(questGiverStatusTrackedQuery.QuestGiverGUIDs);
         }
 
         [WorldPacketHandler(ClientOpcodes.RequestWorldQuestUpdate)]
@@ -794,6 +791,52 @@ namespace Game
                 foreach (PlayerChoiceResponseRewardEntry faction in reward.Faction)
                     _player.GetReputationMgr().ModifyReputation(CliDB.FactionStorage.LookupByKey(faction.Id), faction.Quantity);
             }
+        }
+
+        [WorldPacketHandler(ClientOpcodes.UiMapQuestLinesRequest)]
+        void HandleUiMapQuestLinesRequest(UiMapQuestLinesRequest uiMapQuestLinesRequest)
+        {
+            var uiMap = CliDB.UiMapStorage.LookupByKey(uiMapQuestLinesRequest.UiMapID);
+            if (uiMap == null)
+                return;
+
+            UiMapQuestLinesResponse response = new();
+            response.UiMapID = uiMap.Id;
+
+            var questLines = Global.ObjectMgr.GetUiMapQuestLinesList(uiMap.Id);
+            foreach (uint questLineId in questLines)
+            {
+                var questLineQuests = Global.DB2Mgr.GetQuestsForQuestLine(questLineId);
+                if (questLineQuests.Empty())
+                    continue;
+
+                bool isQuestLineCompleted = true;
+                foreach (var questLineQuest in questLineQuests)
+                {
+                    Quest quest = Global.ObjectMgr.GetQuestTemplate(questLineQuest.QuestID);
+                    if (quest != null)
+                    {
+                        if (_player.CanTakeQuest(quest, false))
+                            response.QuestLineXQuestIDs.Add(questLineQuest.Id);
+
+                        if (isQuestLineCompleted && !_player.GetQuestRewardStatus(questLineQuest.QuestID))
+                            isQuestLineCompleted = false;
+                    }
+                }
+
+                if (!isQuestLineCompleted)
+                    response.QuestLineIDs.Add(questLineId);
+            }
+
+            var quests = Global.ObjectMgr.GetUiMapQuestsList(uiMap.Id);
+            foreach (uint questId in quests)
+            {
+                Quest quest = Global.ObjectMgr.GetQuestTemplate(questId);
+                if (quest != null && _player.CanTakeQuest(quest, false))
+                    response.QuestIDs.Add(questId);
+            }
+
+            SendPacket(response);
         }
     }
 }

@@ -3,6 +3,7 @@
 
 using Framework.Constants;
 using Framework.Dynamic;
+using Framework.IO;
 using Game.AI;
 using Game.BattleFields;
 using Game.DataStorage;
@@ -33,14 +34,18 @@ namespace Game.Entities
             ObjectTypeId = TypeId.Object;
             ObjectTypeMask = TypeMask.Object;
 
-            m_values = new UpdateFieldHolder();
+            m_values = new UpdateFieldHolder(this);
 
             m_movementInfo = new MovementInfo();
             m_updateFlag.Clear();
 
+            m_entityFragments.Add((int)EntityFragment.CGObject, false);
+
             m_objectData = new ObjectFieldData();
 
             m_staticFloorZ = MapConst.VMAPInvalidHeightValue;
+
+            _heartbeatTimer = SharedConst.HeartbeatInterval;
         }
 
         public virtual void Dispose()
@@ -163,7 +168,19 @@ namespace Game.Entities
             buffer.WriteUInt8((byte)tempObjectType);
 
             BuildMovementUpdate(buffer, flags, target);
-            BuildValuesCreate(buffer, target);
+
+            UpdateFieldFlag fieldFlags = GetUpdateFieldFlagsFor(target);
+
+            WorldPacket tempBuffer = new();
+            tempBuffer.WriteUInt8((byte)fieldFlags);
+            BuildEntityFragments(tempBuffer, m_entityFragments.GetIds());
+            tempBuffer.WriteUInt8(1);  // IndirectFragmentActive: CGObject
+            BuildValuesCreate(tempBuffer, fieldFlags, target);
+
+
+            buffer.WriteUInt32(tempBuffer.GetSize());
+            buffer.WriteBytes(tempBuffer);
+
             data.AddUpdateBlock(buffer);
         }
 
@@ -188,7 +205,21 @@ namespace Game.Entities
             buffer.WriteUInt8((byte)UpdateType.Values);
             buffer.WritePackedGuid(GetGUID());
 
-            BuildValuesUpdate(buffer, target);
+            UpdateFieldFlag fieldFlags = GetUpdateFieldFlagsFor(target);
+
+            WorldPacket tempBuffer = new();
+            tempBuffer.WriteUInt8((byte)(fieldFlags.HasFlag(UpdateFieldFlag.Owner) ? 1 : 0));
+            tempBuffer.WriteUInt8((byte)(m_entityFragments.IdsChanged ? 1 : 0));
+            if (m_entityFragments.IdsChanged)
+            {
+                tempBuffer.WriteUInt8((byte)EntityFragmentSerializationType.Full);
+                BuildEntityFragments(tempBuffer, m_entityFragments.GetIds());
+            }
+            tempBuffer.WriteUInt8(m_entityFragments.ContentsChangedMask);
+
+            BuildValuesUpdate(tempBuffer, fieldFlags, target);
+            buffer.WriteUInt32(tempBuffer.GetSize());
+            buffer.WriteBytes(tempBuffer);
 
             data.AddUpdateBlock(buffer);
         }
@@ -199,9 +230,28 @@ namespace Game.Entities
             buffer.WriteUInt8((byte)UpdateType.Values);
             buffer.WritePackedGuid(GetGUID());
 
-            BuildValuesUpdateWithFlag(buffer, flags, target);
+            WorldPacket tempBuffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(tempBuffer, flags);
+            BuildValuesUpdateWithFlag(tempBuffer, flags, target);
+            buffer.WriteUInt32(tempBuffer.GetSize());
+            buffer.WriteBytes(tempBuffer);
 
             data.AddUpdateBlock(buffer);
+        }
+
+        void BuildEntityFragments(WorldPacket data, EntityFragment[] fragments)
+        {
+            foreach (var frag in fragments)
+                data.WriteUInt8((byte)frag);
+
+            data.WriteUInt8((byte)EntityFragment.End);
+        }
+
+        public void BuildEntityFragmentsForValuesUpdateForPlayerWithMask(WorldPacket data, UpdateFieldFlag flags)
+        {
+            data.WriteUInt8((byte)(flags.HasFlag(UpdateFieldFlag.Owner) ? 1 : 0));
+            data.WriteUInt8(0);                                  // m_entityFragments.IdsChanged
+            data.WriteUInt8(EntityDefinitionsConst.CGObjectUpdateMask);
         }
 
         public void BuildDestroyUpdateBlock(UpdateData data)
@@ -233,13 +283,14 @@ namespace Game.Entities
             target.SendPacket(packet);
         }
 
-        public void BuildMovementUpdate(WorldPacket data, CreateObjectBits flags, Player target)
+        public unsafe void BuildMovementUpdate(WorldPacket data, CreateObjectBits flags, Player target)
         {
             List<uint> PauseTimes = null;
             GameObject go = ToGameObject();
             if (go != null)
                 PauseTimes = go.GetPauseTimes();
 
+            data.WriteBit(IsWorldObject()); // HasPositionFragment
             data.WriteBit(flags.NoBirthAnim);
             data.WriteBit(flags.EnablePortals);
             data.WriteBit(flags.PlayHoverAnim);
@@ -353,23 +404,23 @@ namespace Game.Entities
                     data.WriteFloat(1.0f);                                       // MovementForcesModMagnitude
                 }
 
-                data.WriteFloat(2.0f);                                           // advFlyingAirFriction
-                data.WriteFloat(65.0f);                                          // advFlyingMaxVel
-                data.WriteFloat(1.0f);                                           // advFlyingLiftCoefficient
-                data.WriteFloat(3.0f);                                           // advFlyingDoubleJumpVelMod
-                data.WriteFloat(10.0f);                                          // advFlyingGlideStartMinHeight
-                data.WriteFloat(100.0f);                                         // advFlyingAddImpulseMaxSpeed
-                data.WriteFloat(90.0f);                                          // advFlyingMinBankingRate
-                data.WriteFloat(140.0f);                                         // advFlyingMaxBankingRate
-                data.WriteFloat(180.0f);                                         // advFlyingMinPitchingRateDown
-                data.WriteFloat(360.0f);                                         // advFlyingMaxPitchingRateDown
-                data.WriteFloat(90.0f);                                          // advFlyingMinPitchingRateUp
-                data.WriteFloat(270.0f);                                         // advFlyingMaxPitchingRateUp
-                data.WriteFloat(30.0f);                                          // advFlyingMinTurnVelocityThreshold
-                data.WriteFloat(80.0f);                                          // advFlyingMaxTurnVelocityThreshold
-                data.WriteFloat(2.75f);                                          // advFlyingSurfaceFriction
-                data.WriteFloat(7.0f);                                           // advFlyingOverMaxDeceleration
-                data.WriteFloat(0.4f);                                           // advFlyingLaunchSpeedCoefficient
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.AirFriction));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.MaxVel));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.LiftCoefficient));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.DoubleJumpVelMod));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.GlideStartMinHeight));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.AddImpulseMaxSpeed));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMin(AdvFlyingRateTypeRange.BankingRate));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMax(AdvFlyingRateTypeRange.BankingRate));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMin(AdvFlyingRateTypeRange.PitchingRateDown));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMax(AdvFlyingRateTypeRange.PitchingRateDown));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMin(AdvFlyingRateTypeRange.PitchingRateUp));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMax(AdvFlyingRateTypeRange.PitchingRateUp));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMin(AdvFlyingRateTypeRange.TurnVelocityThreshold));
+                data.WriteFloat(unit.GetAdvFlyingSpeedMax(AdvFlyingRateTypeRange.TurnVelocityThreshold));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.SurfaceFriction));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.OverMaxDeceleration));
+                data.WriteFloat(unit.GetAdvFlyingSpeed(AdvFlyingRateTypeSingle.LaunchSpeedCoefficient));
 
                 data.WriteBit(HasSpline);
                 data.FlushBits();
@@ -437,46 +488,96 @@ namespace Game.Entities
 
                 data.WriteVector3(areaTrigger.GetRollPitchYaw());
 
+                switch (shape.TriggerType)
+                {
+                    case AreaTriggerShapeType.Sphere:
+                        data.WriteInt8(0);
+                        data.WriteFloat(shape.SphereDatas.Radius);
+                        data.WriteFloat(shape.SphereDatas.RadiusTarget);
+                        break;
+                    case AreaTriggerShapeType.Box:
+                        data.WriteInt8(1);
+                        data.WriteFloat(shape.BoxDatas.Extents[0]);
+                        data.WriteFloat(shape.BoxDatas.Extents[1]);
+                        data.WriteFloat(shape.BoxDatas.Extents[2]);
+                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[0]);
+                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[1]);
+                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[2]);
+                        break;
+                    case AreaTriggerShapeType.Polygon:
+                        data.WriteInt8(3);
+                        data.WriteInt32(shape.PolygonVertices.Count);
+                        data.WriteInt32(shape.PolygonVerticesTarget.Count);
+                        data.WriteFloat(shape.PolygonDatas.Height);
+                        data.WriteFloat(shape.PolygonDatas.HeightTarget);
+
+                        foreach (var vertice in shape.PolygonVertices)
+                            data.WriteVector2(vertice);
+
+                        foreach (var vertice in shape.PolygonVerticesTarget)
+                            data.WriteVector2(vertice);
+                        break;
+                    case AreaTriggerShapeType.Cylinder:
+                        data.WriteInt8(4);
+                        data.WriteFloat(shape.CylinderDatas.Radius);
+                        data.WriteFloat(shape.CylinderDatas.RadiusTarget);
+                        data.WriteFloat(shape.CylinderDatas.Height);
+                        data.WriteFloat(shape.CylinderDatas.HeightTarget);
+                        data.WriteFloat(shape.CylinderDatas.LocationZOffset);
+                        data.WriteFloat(shape.CylinderDatas.LocationZOffsetTarget);
+                        break;
+                    case AreaTriggerShapeType.Disk:
+                        data.WriteInt8(7);
+                        data.WriteFloat(shape.DiskDatas.InnerRadius);
+                        data.WriteFloat(shape.DiskDatas.InnerRadiusTarget);
+                        data.WriteFloat(shape.DiskDatas.OuterRadius);
+                        data.WriteFloat(shape.DiskDatas.OuterRadiusTarget);
+                        data.WriteFloat(shape.DiskDatas.Height);
+                        data.WriteFloat(shape.DiskDatas.HeightTarget);
+                        data.WriteFloat(shape.DiskDatas.LocationZOffset);
+                        data.WriteFloat(shape.DiskDatas.LocationZOffsetTarget);
+                        break;
+                    case AreaTriggerShapeType.BoundedPlane:
+                        data.WriteInt8(8);
+                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[0]);
+                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[1]);
+                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[0]);
+                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[1]);
+                        break;
+                    default:
+                        break;
+                }
+
                 bool hasAbsoluteOrientation = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasAbsoluteOrientation);
                 bool hasDynamicShape = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasDynamicShape);
                 bool hasAttached = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasAttached);
                 bool hasFaceMovementDir = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasFaceMovementDir);
                 bool hasFollowsTerrain = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasFollowsTerrain);
-                bool hasUnk1 = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.Unk1);
+                bool hasAlwaysExterior = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.AlwaysExterior);
                 bool hasUnknown1025 = false;
                 bool hasTargetRollPitchYaw = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasTargetRollPitchYaw);
                 bool hasScaleCurveID = createProperties != null && createProperties.ScaleCurveId != 0;
                 bool hasMorphCurveID = createProperties != null && createProperties.MorphCurveId != 0;
                 bool hasFacingCurveID = createProperties != null && createProperties.FacingCurveId != 0;
                 bool hasMoveCurveID = createProperties != null && createProperties.MoveCurveId != 0;
-                bool hasAreaTriggerSphere = shape.IsSphere();
-                bool hasAreaTriggerBox = shape.IsBox();
-                bool hasAreaTriggerPolygon = createProperties != null && shape.IsPolygon();
-                bool hasAreaTriggerCylinder = shape.IsCylinder();
-                bool hasDisk = shape.IsDisk();
-                bool hasBoundedPlane = shape.IsBoundedPlane();
                 bool hasAreaTriggerSpline = areaTrigger.HasSplines();
                 bool hasOrbit = areaTrigger.HasOrbit();
                 bool hasMovementScript = false;
+                bool hasPositionalSoundKitID = false;
 
                 data.WriteBit(hasAbsoluteOrientation);
                 data.WriteBit(hasDynamicShape);
                 data.WriteBit(hasAttached);
                 data.WriteBit(hasFaceMovementDir);
                 data.WriteBit(hasFollowsTerrain);
-                data.WriteBit(hasUnk1);
+                data.WriteBit(hasAlwaysExterior);
                 data.WriteBit(hasUnknown1025);
                 data.WriteBit(hasTargetRollPitchYaw);
                 data.WriteBit(hasScaleCurveID);
                 data.WriteBit(hasMorphCurveID);
                 data.WriteBit(hasFacingCurveID);
                 data.WriteBit(hasMoveCurveID);
-                data.WriteBit(hasAreaTriggerSphere);
-                data.WriteBit(hasAreaTriggerBox);
-                data.WriteBit(hasAreaTriggerPolygon);
-                data.WriteBit(hasAreaTriggerCylinder);
-                data.WriteBit(hasDisk);
-                data.WriteBit(hasBoundedPlane);
+                data.WriteBit(hasPositionalSoundKitID);
                 data.WriteBit(hasAreaTriggerSpline);
                 data.WriteBit(hasOrbit);
                 data.WriteBit(hasMovementScript);
@@ -506,72 +607,8 @@ namespace Game.Entities
                 if (hasMoveCurveID)
                     data.WriteUInt32(createProperties.MoveCurveId);
 
-                if (hasAreaTriggerSphere)
-                {
-                    data.WriteFloat(shape.SphereDatas.Radius);
-                    data.WriteFloat(shape.SphereDatas.RadiusTarget);
-                }
-
-                if (hasAreaTriggerBox)
-                {
-                    unsafe
-                    {
-                        data.WriteFloat(shape.BoxDatas.Extents[0]);
-                        data.WriteFloat(shape.BoxDatas.Extents[1]);
-                        data.WriteFloat(shape.BoxDatas.Extents[2]);
-
-                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[0]);
-                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[1]);
-                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[2]);
-                    }
-                }
-
-                if (hasAreaTriggerPolygon)
-                {
-                    data.WriteInt32(shape.PolygonVertices.Count);
-                    data.WriteInt32(shape.PolygonVerticesTarget.Count);
-                    data.WriteFloat(shape.PolygonDatas.Height);
-                    data.WriteFloat(shape.PolygonDatas.HeightTarget);
-
-                    foreach (var vertice in shape.PolygonVertices)
-                        data.WriteVector2(vertice);
-
-                    foreach (var vertice in shape.PolygonVerticesTarget)
-                        data.WriteVector2(vertice);
-                }
-
-                if (hasAreaTriggerCylinder)
-                {
-                    data.WriteFloat(shape.CylinderDatas.Radius);
-                    data.WriteFloat(shape.CylinderDatas.RadiusTarget);
-                    data.WriteFloat(shape.CylinderDatas.Height);
-                    data.WriteFloat(shape.CylinderDatas.HeightTarget);
-                    data.WriteFloat(shape.CylinderDatas.LocationZOffset);
-                    data.WriteFloat(shape.CylinderDatas.LocationZOffsetTarget);
-                }
-
-                if (hasDisk)
-                {
-                    data.WriteFloat(shape.DiskDatas.InnerRadius);
-                    data.WriteFloat(shape.DiskDatas.InnerRadiusTarget);
-                    data.WriteFloat(shape.DiskDatas.OuterRadius);
-                    data.WriteFloat(shape.DiskDatas.OuterRadiusTarget);
-                    data.WriteFloat(shape.DiskDatas.Height);
-                    data.WriteFloat(shape.DiskDatas.HeightTarget);
-                    data.WriteFloat(shape.DiskDatas.LocationZOffset);
-                    data.WriteFloat(shape.DiskDatas.LocationZOffsetTarget);
-                }
-
-                if (hasBoundedPlane)
-                {
-                    unsafe
-                    {
-                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[0]);
-                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[1]);
-                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[0]);
-                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[1]);
-                    }
-                }
+                if (hasPositionalSoundKitID)
+                    data.WriteUInt32(0);
 
                 //if (hasMovementScript)
                 //    *data << *areaTrigger.GetMovementScript(); // AreaTriggerMovementScriptInfo
@@ -582,17 +619,32 @@ namespace Game.Entities
 
             if (flags.GameObject)
             {
-                bool bit8 = false;
-                uint Int1 = 0;
-
                 GameObject gameObject = ToGameObject();
+                Transport transport = gameObject.ToTransport();
+
+                bool bit8 = false;
 
                 data.WriteUInt32(gameObject.GetWorldEffectID());
 
                 data.WriteBit(bit8);
+                data.WriteBit(transport != null);
+                data.WriteBit(gameObject.GetPathProgressForClient().HasValue);
                 data.FlushBits();
+                if (transport != null)
+                {
+                    data.WriteUInt32(transport.GetTransportPeriod());
+                    data.WriteUInt32(transport.GetTimer());
+                    data.WriteBit(transport.IsStopRequested());
+                    data.WriteBit(transport.IsStopped());
+                    data.WriteBit(false);
+                    data.FlushBits();
+                }
+
                 if (bit8)
-                    data.WriteUInt32(Int1);
+                    data.WriteUInt32(0);
+
+                if (gameObject.GetPathProgressForClient().HasValue)
+                    data.WriteFloat(gameObject.GetPathProgressForClient().Value);
             }
 
             if (flags.SmoothPhasing)
@@ -626,10 +678,10 @@ namespace Game.Entities
                 //        for (std::size_t i = 0; i < 2; ++i)
                 //        {
                 //            *data << ObjectGuid(Players[i].CharacterID);
-                //            *data << int32(Players[i].TrapAbilityID);
-                //            *data << int32(Players[i].TrapStatus);
+                //            data.WriteInt32(Players[i].TrapAbilityID);
+                //            data.WriteInt32(Players[i].TrapStatus);
                 //            *data << uint16(Players[i].RoundTimeSecs);
-                //            *data << int8(Players[i].FrontPet);
+                //            data.WriteInt8(Players[i].FrontPet);
                 //            *data << uint8(Players[i].InputFlags);
 
                 //            data.WriteBits(Players[i].Pets.size(), 2);
@@ -637,45 +689,45 @@ namespace Game.Entities
                 //            for (std::size_t j = 0; j < Players[i].Pets.size(); ++j)
                 //            {
                 //                *data << ObjectGuid(Players[i].Pets[j].BattlePetGUID);
-                //                *data << int32(Players[i].Pets[j].SpeciesID);
-                //                *data << int32(Players[i].Pets[j].CreatureID);
-                //                *data << int32(Players[i].Pets[j].DisplayID);
+                //                data.WriteInt32(Players[i].Pets[j].SpeciesID);
+                //                data.WriteInt32(Players[i].Pets[j].CreatureID);
+                //                data.WriteInt32(Players[i].Pets[j].DisplayID);
                 //                *data << int16(Players[i].Pets[j].Level);
                 //                *data << int16(Players[i].Pets[j].Xp);
-                //                *data << int32(Players[i].Pets[j].CurHealth);
-                //                *data << int32(Players[i].Pets[j].MaxHealth);
-                //                *data << int32(Players[i].Pets[j].Power);
-                //                *data << int32(Players[i].Pets[j].Speed);
-                //                *data << int32(Players[i].Pets[j].NpcTeamMemberID);
-                //                *data << uint16(Players[i].Pets[j].BreedQuality);
+                //                data.WriteInt32(Players[i].Pets[j].CurHealth);
+                //                data.WriteInt32(Players[i].Pets[j].MaxHealth);
+                //                data.WriteInt32(Players[i].Pets[j].Power);
+                //                data.WriteInt32(Players[i].Pets[j].Speed);
+                //                data.WriteInt32(Players[i].Pets[j].NpcTeamMemberID);
+                //                *data << uint8(Players[i].Pets[j].BreedQuality);
                 //                *data << uint16(Players[i].Pets[j].StatusFlags);
-                //                *data << int8(Players[i].Pets[j].Slot);
+                //                data.WriteInt8(Players[i].Pets[j].Slot);
 
                 //                *data << uint(Players[i].Pets[j].Abilities.size());
                 //                *data << uint(Players[i].Pets[j].Auras.size());
                 //                *data << uint(Players[i].Pets[j].States.size());
                 //                for (std::size_t k = 0; k < Players[i].Pets[j].Abilities.size(); ++k)
                 //                {
-                //                    *data << int32(Players[i].Pets[j].Abilities[k].AbilityID);
+                //                    data.WriteInt32(Players[i].Pets[j].Abilities[k].AbilityID);
                 //                    *data << int16(Players[i].Pets[j].Abilities[k].CooldownRemaining);
                 //                    *data << int16(Players[i].Pets[j].Abilities[k].LockdownRemaining);
-                //                    *data << int8(Players[i].Pets[j].Abilities[k].AbilityIndex);
+                //                    data.WriteInt8(Players[i].Pets[j].Abilities[k].AbilityIndex);
                 //                    *data << uint8(Players[i].Pets[j].Abilities[k].Pboid);
                 //                }
 
                 //                for (std::size_t k = 0; k < Players[i].Pets[j].Auras.size(); ++k)
                 //                {
-                //                    *data << int32(Players[i].Pets[j].Auras[k].AbilityID);
+                //                    data.WriteInt32(Players[i].Pets[j].Auras[k].AbilityID);
                 //                    *data << uint(Players[i].Pets[j].Auras[k].InstanceID);
-                //                    *data << int32(Players[i].Pets[j].Auras[k].RoundsRemaining);
-                //                    *data << int32(Players[i].Pets[j].Auras[k].CurrentRound);
+                //                    data.WriteInt32(Players[i].Pets[j].Auras[k].RoundsRemaining);
+                //                    data.WriteInt32(Players[i].Pets[j].Auras[k].CurrentRound);
                 //                    *data << uint8(Players[i].Pets[j].Auras[k].CasterPBOID);
                 //                }
 
                 //                for (std::size_t k = 0; k < Players[i].Pets[j].States.size(); ++k)
                 //                {
                 //                    *data << uint(Players[i].Pets[j].States[k].StateID);
-                //                    *data << int32(Players[i].Pets[j].States[k].StateValue);
+                //                    data.WriteInt32(Players[i].Pets[j].States[k].StateValue);
                 //                }
 
                 //                data.WriteBits(Players[i].Pets[j].CustomName.length(), 7);
@@ -690,26 +742,26 @@ namespace Game.Entities
                 //            *data << uint(Enviros[j].States.size());
                 //            for (std::size_t j = 0; j < Enviros[j].Auras.size(); ++j)
                 //            {
-                //                *data << int32(Enviros[j].Auras[j].AbilityID);
+                //                data.WriteInt32(Enviros[j].Auras[j].AbilityID);
                 //                *data << uint(Enviros[j].Auras[j].InstanceID);
-                //                *data << int32(Enviros[j].Auras[j].RoundsRemaining);
-                //                *data << int32(Enviros[j].Auras[j].CurrentRound);
+                //                data.WriteInt32(Enviros[j].Auras[j].RoundsRemaining);
+                //                data.WriteInt32(Enviros[j].Auras[j].CurrentRound);
                 //                *data << uint8(Enviros[j].Auras[j].CasterPBOID);
                 //            }
 
                 //            for (std::size_t j = 0; j < Enviros[j].States.size(); ++j)
                 //            {
                 //                *data << uint(Enviros[i].States[j].StateID);
-                //                *data << int32(Enviros[i].States[j].StateValue);
+                //                data.WriteInt32(Enviros[i].States[j].StateValue);
                 //            }
                 //        }
 
                 //        *data << uint16(WaitingForFrontPetsMaxSecs);
                 //        *data << uint16(PvpMaxRoundTime);
-                //        *data << int32(CurRound);
+                //        data.WriteInt32(CurRound);
                 //        *data << uint(NpcCreatureID);
                 //        *data << uint(NpcDisplayID);
-                //        *data << int8(CurPetBattleState);
+                //        data.WriteInt8(CurPetBattleState);
                 //        *data << uint8(ForfeitPenalty);
                 //        *data << ObjectGuid(InitialWildPetGUID);
                 //        data.WriteBit(IsPVP);
@@ -777,7 +829,6 @@ namespace Game.Entities
         public virtual void BuildValuesUpdateWithFlag(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
             data.WriteUInt32(0);
-            data.WriteUInt32(0);
         }
 
         public void AddToObjectUpdateIfNeeded()
@@ -789,6 +840,8 @@ namespace Game.Entities
         public virtual void ClearUpdateMask(bool remove)
         {
             m_values.ClearChangesMask(m_objectData);
+            m_entityFragments.IdsChanged = false;
+            m_entityFragments.ContentsChangedMask = EntityDefinitionsConst.CGObjectActiveMask;
 
             if (m_objectUpdated)
             {
@@ -814,8 +867,8 @@ namespace Game.Entities
 
         public virtual Loot GetLootForPlayer(Player player) { return null; }
 
-        public abstract void BuildValuesCreate(WorldPacket data, Player target);
-        public abstract void BuildValuesUpdate(WorldPacket data, Player target);
+        public virtual void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target) { }
+        public virtual void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target) { }
 
         public void SetUpdateFieldValue<T>(IUpdateField<T> updateField, T newValue)
         {
@@ -987,7 +1040,16 @@ namespace Game.Entities
         public virtual void Update(uint diff)
         {
             m_Events.Update(diff);
+
+            _heartbeatTimer -= TimeSpan.FromMilliseconds(diff);
+            while (_heartbeatTimer <= TimeSpan.Zero)
+            {
+                _heartbeatTimer += SharedConst.HeartbeatInterval;
+                Heartbeat();
+            }
         }
+
+        public virtual void Heartbeat() { }
 
         public void SetIsStoredInWorldObjectGridContainer(bool on)
         {
@@ -1522,7 +1584,7 @@ namespace Game.Entities
 
                 BattlegroundMap bgMap = map.ToBattlegroundMap();
                 if (bgMap != null)
-                    return (ZoneScript)bgMap.GetBG();
+                    return (ZoneScript)bgMap.GetBattlegroundScript();
 
                 if (!map.IsBattlegroundOrArena())
                 {
@@ -1592,6 +1654,10 @@ namespace Game.Entities
                 if (summon != null)
                 {
                     summon.SetTempSummonType(despawnType);
+
+                    Creature thisCreature = ToCreature();
+                    if (thisCreature != null)
+                        summon.InheritStringIds(thisCreature);
                     return summon;
                 }
             }
@@ -1665,21 +1731,13 @@ namespace Game.Entities
 
         public void SummonCreatureGroup(byte group, out List<TempSummon> list)
         {
-            Cypher.Assert((IsTypeId(TypeId.GameObject) || IsTypeId(TypeId.Unit)), "Only GOs and creatures can summon npc groups!");
-            list = new List<TempSummon>();
-            var data = Global.ObjectMgr.GetSummonGroup(GetEntry(), IsTypeId(TypeId.GameObject) ? SummonerType.GameObject : SummonerType.Creature, group);
-            if (data.Empty())
-            {
-                Log.outWarn(LogFilter.Scripts, "{0} ({1}) tried to summon non-existing summon group {2}.", GetName(), GetGUID().ToString(), group);
-                return;
-            }
+            list = new();
 
-            foreach (var tempSummonData in data)
+            Cypher.Assert(IsTypeId(TypeId.GameObject) || IsTypeId(TypeId.Unit), "Only GOs and creatures can summon npc groups!");
+            Map.SummonCreatureGroup(GetEntry(), GetTypeId() == TypeId.GameObject ? SummonerType.GameObject : SummonerType.Creature, group, list, tempSummonData =>
             {
-                TempSummon summon = SummonCreature(tempSummonData.entry, tempSummonData.pos, tempSummonData.type, tempSummonData.time);
-                if (summon != null)
-                    list.Add(summon);
-            }
+                return SummonCreature(tempSummonData.entry, tempSummonData.pos, tempSummonData.type, tempSummonData.time);
+            });
         }
 
         public Creature FindNearestCreature(uint entry, float range, bool alive = true)
@@ -2021,6 +2079,8 @@ namespace Game.Entities
                 castTime = 0;
             else if (!(spellInfo.HasAttribute(SpellAttr0.IsAbility) || spellInfo.HasAttribute(SpellAttr0.IsTradeskill) || spellInfo.HasAttribute(SpellAttr3.IgnoreCasterModifiers)) && ((IsPlayer() && spellInfo.SpellFamilyName != 0) || IsCreature()))
                 castTime = unitCaster.CanInstantCast() ? 0 : (int)(castTime * unitCaster.m_unitData.ModCastingSpeed);
+            else if (spellInfo.HasAttribute(SpellAttr0.IsAbility) && spellInfo.HasAttribute(SpellAttr9.HasteAffectsMeleeAbilityCasttime))
+                castTime = (int)(castTime * unitCaster.m_modAttackSpeedPct[(int)WeaponAttackType.BaseAttack]);
             else if (spellInfo.HasAttribute(SpellAttr0.UsesRangedSlot) && !spellInfo.HasAttribute(SpellAttr2.AutoRepeat))
                 castTime = (int)(castTime * unitCaster.m_modAttackSpeedPct[(int)WeaponAttackType.RangedAttack]);
             else if (Global.SpellMgr.IsPartOfSkillLine(SkillType.Cooking, spellInfo.Id) && unitCaster.HasAura(67556)) // cooking with Chef Hat.
@@ -2169,7 +2229,7 @@ namespace Game.Entities
 
             // Damage immunity is only checked if the spell has damage effects, this immunity must not prevent aura apply
             // returns SPELL_MISS_IMMUNE in that case, for other spells, the SMSG_SPELL_GO must show hit
-            if (spellInfo.HasOnlyDamageEffects() && victim.IsImmunedToDamage(spellInfo))
+            if (spellInfo.HasOnlyDamageEffects() && victim.IsImmunedToDamage(this, spellInfo))
                 return SpellMissInfo.Immune;
 
             // All positive spells can`t miss
@@ -2472,8 +2532,13 @@ namespace Game.Entities
             }
 
             Spell spell = new(this, info, args.TriggerFlags, args.OriginalCaster, args.OriginalCastId);
-            foreach (var pair in args.SpellValueOverrides)
-                spell.SetSpellValue(pair.Key, pair.Value);
+            foreach (var spellOverride in args.SpellValueOverrides)
+            {
+                if (spellOverride.Type < (int)SpellValueMod.IntEnd)
+                    spell.SetSpellValue((SpellValueMod)spellOverride.Type, spellOverride.IntValue);
+                else
+                    spell.SetSpellValue((SpellValueModFloat)spellOverride.Type, spellOverride.FloatValue);
+            }
 
             spell.m_CastItem = args.CastItem;
             if (args.OriginalCastItemLevel.HasValue)
@@ -2492,14 +2557,16 @@ namespace Game.Entities
             }
 
             spell.m_customArg = args.CustomArg;
+            spell.m_scriptResult = args.ScriptResult;
+            spell.m_scriptWaitsForSpellHit = args.ScriptWaitsForSpellHit;
 
             return spell.Prepare(targets.Targets, args.TriggeringAura);
         }
 
-        void SendPlayOrphanSpellVisual(ObjectGuid target, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
+        void SendPlayOrphanSpellVisual(Position sourceLocation, ObjectGuid target, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
         {
             PlayOrphanSpellVisual playOrphanSpellVisual = new();
-            playOrphanSpellVisual.SourceLocation = GetPosition();
+            playOrphanSpellVisual.SourceLocation = sourceLocation;
             if (withSourceOrientation)
             {
                 if (IsGameObject())
@@ -2521,10 +2588,10 @@ namespace Game.Entities
             SendMessageToSet(playOrphanSpellVisual, true);
         }
 
-        void SendPlayOrphanSpellVisual(Position targetLocation, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
+        void SendPlayOrphanSpellVisual(Position sourceLocation, Position targetLocation, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
         {
             PlayOrphanSpellVisual playOrphanSpellVisual = new();
-            playOrphanSpellVisual.SourceLocation = GetPosition();
+            playOrphanSpellVisual.SourceLocation = sourceLocation;
             if (withSourceOrientation)
             {
                 if (IsGameObject())
@@ -2544,6 +2611,16 @@ namespace Game.Entities
             playOrphanSpellVisual.SpeedAsTime = speedAsTime;
             playOrphanSpellVisual.LaunchDelay = 0.0f;
             SendMessageToSet(playOrphanSpellVisual, true);
+        }
+
+        void SendPlayOrphanSpellVisual(ObjectGuid target, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
+        {
+            SendPlayOrphanSpellVisual(GetPosition(), target, spellVisualId, travelSpeed, speedAsTime, withSourceOrientation);
+        }
+
+        void SendPlayOrphanSpellVisual(Position targetLocation, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
+        {
+            SendPlayOrphanSpellVisual(GetPosition(), targetLocation, spellVisualId, travelSpeed, speedAsTime, withSourceOrientation);
         }
 
         void SendCancelOrphanSpellVisual(uint id)
@@ -2842,7 +2919,7 @@ namespace Game.Entities
                         {
                             // Set up missile speed based delay
                             float hitDelay = spellInfo.LaunchDelay;
-                            if (spellInfo.HasAttribute(SpellAttr9.SpecialDelayCalculation))
+                            if (spellInfo.HasAttribute(SpellAttr9.MissileSpeedIsDelayInSec))
                                 hitDelay += spellInfo.Speed;
                             else if (spellInfo.Speed > 0.0f)
                                 hitDelay += Math.Max(victim.GetDistance(this), 5.0f) / spellInfo.Speed;
@@ -2876,15 +2953,17 @@ namespace Game.Entities
             return gameobjectList;
         }
 
-        void GetGameObjectListWithOptionsInGrid(List<GameObject> gameObjectContainer, float maxSearchRange, FindGameObjectOptions options)
+        public List<GameObject> GetGameObjectListWithOptionsInGrid(float maxSearchRange, FindGameObjectOptions options)
         {
+            List<GameObject> gameobjectList = new();
             InRangeCheckCustomizer checkCustomizer = new(this, maxSearchRange);
             GameObjectWithOptionsInObjectRangeCheck<InRangeCheckCustomizer> check = new(this, checkCustomizer, options);
-            GameObjectListSearcher searcher = new(this, gameObjectContainer, check);
+            GameObjectListSearcher searcher = new(this, gameobjectList, check);
             if (options.IgnorePhases)
                 searcher.i_phaseShift = PhasingHandler.GetAlwaysVisiblePhaseShift();
 
             Cell.VisitGridObjects(this, searcher, maxSearchRange);
+            return gameobjectList;
         }
 
         public List<Creature> GetCreatureListWithEntryInGrid(uint entry = 0, float maxSearchRange = 250.0f)
@@ -2910,9 +2989,9 @@ namespace Game.Entities
             return creatureList;
         }
 
-        public List<Unit> GetPlayerListInGrid(float maxSearchRange, bool alive = true)
+        public List<Player> GetPlayerListInGrid(float maxSearchRange, bool alive = true)
         {
-            List<Unit> playerList = new();
+            List<Player> playerList = new();
             var checker = new AnyPlayerInObjectRangeCheck(this, maxSearchRange, alive);
             var searcher = new PlayerListSearcher(this, playerList, checker);
 
@@ -3004,7 +3083,7 @@ namespace Game.Entities
             if (!IsInWorld)
                 return;
 
-            List<Unit> targets = new();
+            List<Player> targets = new();
             var check = new AnyPlayerInObjectRangeCheck(this, GetVisibilityRange(), false);
             var searcher = new PlayerListSearcher(this, targets, check);
 
@@ -3625,7 +3704,7 @@ namespace Game.Entities
             GetNearPoint(obj, out x, out y, out z, distance2d, GetAbsoluteAngle(obj));
         }
 
-        public void MovePosition(Position pos, float dist, float angle)
+        public void MovePosition(Position pos, float dist, float angle, float maxHeightChange = 6.0f)
         {
             angle += GetOrientation();
             float destx = pos.posX + dist * (float)Math.Cos(angle);
@@ -3647,7 +3726,7 @@ namespace Game.Entities
             for (byte j = 0; j < 10; ++j)
             {
                 // do not allow too big z changes
-                if (Math.Abs(pos.posZ - destz) > 6)
+                if (Math.Abs(pos.posZ - destz) > maxHeightChange)
                 {
                     destx -= step * (float)Math.Cos(angle);
                     desty -= step * (float)Math.Sin(angle);
@@ -3803,6 +3882,7 @@ namespace Game.Entities
         public TypeMask ObjectTypeMask { get; set; }
         protected TypeId ObjectTypeId { get; set; }
         protected CreateObjectBits m_updateFlag;
+        public EntityFragmentsHolder m_entityFragments = new();
         ObjectGuid m_guid;
         bool _isNewObject;
         bool _isDestroyedObject;
@@ -3845,6 +3925,8 @@ namespace Game.Entities
         ObjectGuid _privateObjectOwner;
 
         SmoothPhasing _smoothPhasing;
+
+        TimeSpan _heartbeatTimer;
 
         public FlaggedArray32<StealthType> m_stealth = new(2);
         public FlaggedArray32<StealthType> m_stealthDetect = new(2);
@@ -3971,7 +4053,7 @@ namespace Game.Entities
         public uint TransportID;
         public float Magnitude;
         public MovementForceType Type;
-        public int Unused910;
+        public int MovementForceID;
 
         public void Read(WorldPacket data)
         {
@@ -3980,7 +4062,7 @@ namespace Game.Entities
             Direction = data.ReadVector3();
             TransportID = data.ReadUInt32();
             Magnitude = data.ReadFloat();
-            Unused910 = data.ReadInt32();
+            MovementForceID = data.ReadInt32();
             Type = (MovementForceType)data.ReadBits<byte>(2);
         }
 
@@ -4148,5 +4230,53 @@ namespace Game.Entities
         public ObjectGuid? OwnerGuid;
         public ObjectGuid? PrivateObjectOwnerGuid;
         public GameObjectTypes? GameObjectType;
+    }
+
+    public class UpdateFieldHolder
+    {
+        UpdateMask _changesMask = new((int)TypeId.Max);
+        WorldObject _owner;
+
+        public UpdateFieldHolder(WorldObject owner)
+        {
+            _owner = owner;
+        }
+
+        public HasChangesMask ModifyValue(HasChangesMask updateData)
+        {
+            _owner.m_entityFragments.ContentsChangedMask |= _owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
+            if ((EntityFragment)updateData._blockBit == EntityFragment.CGObject)
+                _changesMask.Set(updateData.Bit);
+            return updateData;
+        }
+
+        public void ClearChangesMask(HasChangesMask updateData)
+        {
+            _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
+            if ((EntityFragment)updateData._blockBit == EntityFragment.CGObject)
+                _changesMask.Reset(updateData.Bit);
+
+            updateData.ClearChangesMask();
+        }
+
+        public void ClearChangesMask<U>(HasChangesMask updateData, ref UpdateField<U> updateField) where U : new()
+        {
+            _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
+            if ((EntityFragment)updateData._blockBit == EntityFragment.CGObject)
+                _changesMask.Reset(updateData.Bit);
+
+            if (typeof(IHasChangesMask).IsAssignableFrom(typeof(U)))
+                ((IHasChangesMask)updateField._value).ClearChangesMask();
+        }
+
+        public uint GetChangedObjectTypeMask()
+        {
+            return _changesMask.GetBlock(0);
+        }
+
+        public bool HasChanged(TypeId index)
+        {
+            return _changesMask[(int)index];
+        }
     }
 }

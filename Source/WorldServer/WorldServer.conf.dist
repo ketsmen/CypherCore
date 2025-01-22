@@ -680,7 +680,8 @@ DeclinedNames = 0
 #    Expansion
 #        Description: Allow server to use content from expansions. Checks for expansion-related
 #                     map files, client compatibility and class/race character creation.
-#        Default:     9 - (Expansion 9)
+#        Default:     10 - (Expansion 10)
+#					  9 - (Expansion 9)
 #					  8 - (Expansion 8)
 #					  7 - (Expansion 7)
 #					  6 - (Expansion 6)
@@ -691,7 +692,7 @@ DeclinedNames = 0
 #                     1 - (Expansion 1)
 #                     0 - (Disabled, Ignore and disable expansion content (maps, races, classes)
 
-Expansion = 9
+Expansion = 10
 
 #
 #    MinPlayerName
@@ -869,9 +870,9 @@ SkipCinematics = 0
 #        Description: Maximum level that can be reached by players.
 #        Important:   Levels beyond 110 are not recommended at all.
 #        Range:       1-255
-#        Default:     70
+#        Default:     80
 
-MaxPlayerLevel = 70
+MaxPlayerLevel = 80
 
 #
 #    MinDualSpecLevel
@@ -908,9 +909,9 @@ StartDemonHunterPlayerLevel = 8
 #    StartEvokerPlayerLevel
 #        Description: Staring level for evokers after creation.
 #        Range:       1-MaxPlayerLevel
-#        Default:     58
+#        Default:     10
 
-StartEvokerPlayerLevel = 58
+StartEvokerPlayerLevel = 10
 
 #
 #    StartAlliedRacePlayerLevel
@@ -4017,6 +4018,21 @@ Pvp.FactionBalance.Pct10 = 0.7
 #        Default:     0.8
 
 Pvp.FactionBalance.Pct20 = 0.8
+
+#
+###################################################################################################
+
+###################################################################################################
+# LOAD SETTINGS
+#
+# These settings control content loading
+#
+#    Load.Locales
+#        Description: Toggles the loading of Locales.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+Load.Locales = 1
 
 #
 ###################################################################################################

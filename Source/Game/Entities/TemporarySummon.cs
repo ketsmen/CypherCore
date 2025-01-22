@@ -175,7 +175,14 @@ namespace Game.Entities
             m_lifetime = duration;
 
             if (m_type == TempSummonType.ManualDespawn)
-                m_type = (duration <= TimeSpan.Zero) ? TempSummonType.DeadDespawn : TempSummonType.TimedDespawn;
+            {
+                if (duration <= TimeSpan.Zero)
+                    m_type = TempSummonType.DeadDespawn;
+                else if (m_Properties != null && m_Properties.HasFlag(SummonPropertiesFlags.UseDemonTimeout))
+                    m_type = TempSummonType.TimedDespawnOutOfCombat;
+                else
+                    m_type = TempSummonType.TimedDespawn;
+            }
 
             if (summoner != null && summoner.IsPlayer())
             {
@@ -216,7 +223,12 @@ namespace Game.Entities
                 }
 
                 if (!m_Properties.HasFlag(SummonPropertiesFlags.UseCreatureLevel))
-                    SetLevel(unitSummoner.GetLevel());
+                {
+                    int minLevel = m_unitData.ScalingLevelMin + m_unitData.ScalingLevelDelta;
+                    int maxLevel = m_unitData.ScalingLevelMax + m_unitData.ScalingLevelDelta;
+                    uint level = (uint)Math.Clamp(unitSummoner.GetLevel(), minLevel, maxLevel);
+                    SetLevel(level);
+                }
             }
 
             uint faction = m_Properties.Faction;
@@ -553,7 +565,6 @@ namespace Game.Entities
 
         // Death Knight pets
         public bool IsPetGhoul() { return GetEntry() == (uint)PetEntry.Ghoul; } // Ghoul may be guardian or pet
-        public bool IsPetAbomination() { return GetEntry() == (uint)PetEntry.Abomination; } // Sludge Belcher dk talent
 
         // Shaman pet
         public bool IsSpiritWolf() { return GetEntry() == (uint)PetEntry.SpiritWolf; } // Spirit wolf from feral spirits
@@ -684,7 +695,7 @@ namespace Game.Entities
             }
 
             // Power
-            SetPowerType(powerType);
+            SetPowerType(powerType, true, true);
 
             // Damage
             SetBonusDamage(0);
@@ -1240,7 +1251,6 @@ namespace Game.Entities
 
         // Death Knight pets
         Ghoul = 26125,
-        Abomination = 106848,
 
         // Shaman pet
         SpiritWolf = 29264

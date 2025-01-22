@@ -10,9 +10,9 @@ namespace Game.DataStorage
     {
         public LocalizedString Name;
         public uint Id;
-        public int ParentUiMapID;
+        public uint ParentUiMapID;
         public int Flags;
-        public sbyte System;
+        public byte System;
         public UiMapType Type;
         public int BountySetID;
         public uint BountyDisplayLocation;
@@ -22,6 +22,8 @@ namespace Game.DataStorage
         public int BkgAtlasID;
         public int AlternateUiMapGroup;
         public int ContentTuningID;
+        public int AdventureMapTextureKitID;
+        public sbyte MapArtZoneTextPosition;
 
         public bool HasFlag(UiMapFlag uiMapFlag) { return (Flags & (int)uiMapFlag) != 0; }
 }
@@ -32,7 +34,7 @@ namespace Game.DataStorage
         public Vector2 UiMax;
         public Vector3[] Region = new Vector3[2];
         public uint Id;
-        public int UiMapID;
+        public uint UiMapID;
         public int OrderIndex;
         public int MapID;
         public int AreaID;
@@ -45,7 +47,7 @@ namespace Game.DataStorage
         public Vector2 UiMin;
         public Vector2 UiMax;
         public uint Id;
-        public int ParentUiMapID;
+        public uint ParentUiMapID;
         public int OrderIndex;
         public int ChildUiMapID;
         public int PlayerConditionID;
@@ -74,7 +76,7 @@ namespace Game.DataStorage
         public string RightFeatureDesc;
         public int AllianceQuestID;
         public int HordeQuestID;
-        public sbyte ScreenType;
+        public byte ScreenType;
         public int TextureKitID;
         public int SoundKitID;
         public int PlayerConditionID;
@@ -85,9 +87,9 @@ namespace Game.DataStorage
     public sealed class UnitConditionRecord
     {
         public uint Id;
-        public byte Flags;
+        public int Flags;
         public byte[] Variable = new byte[8];
-        public sbyte[] Op = new sbyte[8];
+        public byte[] Op = new byte[8];
         public int[] Value = new int[8];
 
         public bool HasFlag(UnitConditionFlags unitConditionFlags) { return (Flags & (byte)unitConditionFlags) != 0; }

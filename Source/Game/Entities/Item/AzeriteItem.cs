@@ -22,6 +22,8 @@ namespace Game.Entities
             ObjectTypeMask |= TypeMask.AzeriteItem;
             ObjectTypeId = TypeId.AzeriteItem;
 
+            m_entityFragments.Add(EntityFragment.Tag_AzeriteItem, false);
+
             SetUpdateFieldValue(m_values.ModifyValue(m_azeriteItemData).ModifyValue(m_azeriteItemData.DEBUGknowledgeWeek), -1);
         }
 
@@ -296,11 +298,7 @@ namespace Game.Entities
 
         public bool CanUseEssences()
         {
-            PlayerConditionRecord condition = CliDB.PlayerConditionStorage.LookupByKey(PlayerConst.PlayerConditionIdUnlockedAzeriteEssences);
-            if (condition != null)
-                return ConditionManager.IsPlayerMeetingCondition(GetOwner(), condition);
-
-            return false;
+            return ConditionManager.IsPlayerMeetingCondition(GetOwner(), PlayerConst.PlayerConditionIdUnlockedAzeriteEssences);
         }
 
         public bool HasUnlockedEssenceSlot(byte slot)
@@ -408,37 +406,24 @@ namespace Game.Entities
             SetUpdateFieldValue(ref selectedEssences.ModifyValue(selectedEssences.AzeriteEssenceID, slot), azeriteEssenceId);
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_itemData.WriteCreate(buffer, flags, this, target);
-            m_azeriteItemData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_itemData.WriteCreate(data, flags, this, target);
+            m_azeriteItemData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Item))
-                m_itemData.WriteUpdate(buffer, flags, this, target);
+                m_itemData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.AzeriteItem))
-                m_azeriteItemData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
-            data.WriteBytes(buffer);
+                m_azeriteItemData.WriteUpdate(data, flags, this, target);
         }
 
         public override void BuildValuesUpdateWithFlag(WorldPacket data, UpdateFieldFlag flags, Player target)
@@ -447,19 +432,15 @@ namespace Game.Entities
             valuesMask.Set((int)TypeId.Item);
             valuesMask.Set((int)TypeId.AzeriteItem);
 
-            WorldPacket buffer = new();
-            buffer.WriteUInt32(valuesMask.GetBlock(0));
+            data.WriteUInt32(valuesMask.GetBlock(0));
 
             UpdateMask mask = m_itemData.GetStaticUpdateMask();
             m_itemData.AppendAllowedFieldsMaskForFlag(mask, flags);
-            m_itemData.WriteUpdate(buffer, mask, true, this, target);
+            m_itemData.WriteUpdate(data, mask, true, this, target);
 
             UpdateMask mask2 = m_azeriteItemData.GetStaticUpdateMask();
             m_azeriteItemData.AppendAllowedFieldsMaskForFlag(mask2, flags);
-            m_azeriteItemData.WriteUpdate(buffer, mask2, true, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_azeriteItemData.WriteUpdate(data, mask2, true, this, target);
         }
 
         void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedItemMask, UpdateMask requestedAzeriteItemMask, Player target)
@@ -478,6 +459,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.AzeriteItem);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])

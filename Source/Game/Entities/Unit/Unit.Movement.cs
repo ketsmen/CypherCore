@@ -154,6 +154,141 @@ namespace Game.Entities
 
         public float GetSpeedRate(UnitMoveType mtype) { return m_speed_rate[(int)mtype]; }
 
+        public void SetFlightCapabilityID(int flightCapabilityId, bool clientUpdate)
+        {
+            if (flightCapabilityId != 0 && !CliDB.FlightCapabilityStorage.HasRecord((uint)flightCapabilityId))
+                return;
+
+            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.FlightCapabilityID), flightCapabilityId);
+
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.AirFriction, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.MaxVel, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.LiftCoefficient, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.DoubleJumpVelMod, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.GlideStartMinHeight, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.AddImpulseMaxSpeed, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.BankingRate, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.PitchingRateDown, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.PitchingRateUp, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange.TurnVelocityThreshold, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.SurfaceFriction, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.OverMaxDeceleration, clientUpdate);
+            UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle.LaunchSpeedCoefficient, clientUpdate);
+        }
+
+        public void UpdateAdvFlyingSpeed(AdvFlyingRateTypeSingle speedType, bool clientUpdate)
+        {
+            FlightCapabilityRecord flightCapabilityEntry = CliDB.FlightCapabilityStorage.LookupByKey(GetFlightCapabilityID());
+            if (flightCapabilityEntry == null)
+                flightCapabilityEntry = CliDB.FlightCapabilityStorage.LookupByKey(1);
+
+            (ServerOpcodes opcode, float newValue, AuraType rateAura) = speedType switch
+            {
+                AdvFlyingRateTypeSingle.AirFriction => (ServerOpcodes.MoveSetAdvFlyingAirFriction, flightCapabilityEntry.AirFriction, AuraType.ModAdvFlyingAirFriction),
+                AdvFlyingRateTypeSingle.MaxVel => (ServerOpcodes.MoveSetAdvFlyingMaxVel, flightCapabilityEntry.MaxVel, AuraType.ModAdvFlyingMaxVel),
+                AdvFlyingRateTypeSingle.LiftCoefficient => (ServerOpcodes.MoveSetAdvFlyingLiftCoefficient, flightCapabilityEntry.LiftCoefficient, AuraType.ModAdvFlyingLiftCoef),
+                AdvFlyingRateTypeSingle.DoubleJumpVelMod => (ServerOpcodes.MoveSetAdvFlyingDoubleJumpVelMod, flightCapabilityEntry.DoubleJumpVelMod, AuraType.None),
+                AdvFlyingRateTypeSingle.GlideStartMinHeight => (ServerOpcodes.MoveSetAdvFlyingGlideStartMinHeight, flightCapabilityEntry.GlideStartMinHeight, AuraType.None),
+                AdvFlyingRateTypeSingle.AddImpulseMaxSpeed => (ServerOpcodes.MoveSetAdvFlyingAddImpulseMaxSpeed, flightCapabilityEntry.AddImpulseMaxSpeed, AuraType.ModAdvFlyingAddImpulseMaxSpeed),
+                AdvFlyingRateTypeSingle.SurfaceFriction => (ServerOpcodes.MoveSetAdvFlyingSurfaceFriction, flightCapabilityEntry.SurfaceFriction, AuraType.None),
+                AdvFlyingRateTypeSingle.OverMaxDeceleration => (ServerOpcodes.MoveSetAdvFlyingOverMaxDeceleration, flightCapabilityEntry.OverMaxDeceleration, AuraType.ModAdvFlyingOverMaxDeceleration),
+                AdvFlyingRateTypeSingle.LaunchSpeedCoefficient => (ServerOpcodes.MoveSetAdvFlyingLaunchSpeedCoefficient, flightCapabilityEntry.LaunchSpeedCoefficient, AuraType.None),
+                _ => (ServerOpcodes.Unknown, 0, AuraType.None)
+            };
+
+            if (rateAura != AuraType.None)
+            {
+                // take only lowest negative and highest positive auras - these effects do not stack
+                int neg = GetMaxNegativeAuraModifier(rateAura, mod => mod.GetAmount() > 0 && mod.GetAmount() < 100);
+                if (neg != 0)
+                    MathFunctions.ApplyPct(ref newValue, neg);
+
+                int pos = GetMaxPositiveAuraModifier(rateAura, mod => mod.GetAmount() > 100);
+                if (pos != 0)
+                    MathFunctions.ApplyPct(ref newValue, pos);
+            }
+
+            if (m_advFlyingSpeed[(int)speedType] == newValue)
+                return;
+
+            m_advFlyingSpeed[(int)speedType] = newValue;
+
+            if (!clientUpdate)
+                return;
+
+            Player playerMover = GetUnitBeingMoved()?.ToPlayer();
+            if (playerMover != null)
+            {
+                SetAdvFlyingSpeed selfpacket = new(opcode);
+                selfpacket.MoverGUID = GetGUID();
+                selfpacket.SequenceIndex = m_movementCounter++;
+                selfpacket.Speed = newValue;
+                playerMover.GetSession().SendPacket(selfpacket);
+            }
+        }
+
+        public void UpdateAdvFlyingSpeed(AdvFlyingRateTypeRange speedType, bool clientUpdate)
+        {
+            FlightCapabilityRecord flightCapabilityEntry = CliDB.FlightCapabilityStorage.LookupByKey(GetFlightCapabilityID());
+            if (flightCapabilityEntry == null)
+                flightCapabilityEntry = CliDB.FlightCapabilityStorage.LookupByKey(1);
+
+            (ServerOpcodes opcode, float min, float max, AuraType rateAura) = speedType switch
+            {
+                AdvFlyingRateTypeRange.BankingRate => (ServerOpcodes.MoveSetAdvFlyingBankingRate, flightCapabilityEntry.BankingRateMin, flightCapabilityEntry.BankingRateMax, AuraType.ModAdvFlyingBankingRate),
+                AdvFlyingRateTypeRange.PitchingRateDown => (ServerOpcodes.MoveSetAdvFlyingPitchingRateDown, flightCapabilityEntry.PitchingRateDownMin, flightCapabilityEntry.PitchingRateDownMax, AuraType.ModAdvFlyingPitchingRateDown),
+                AdvFlyingRateTypeRange.PitchingRateUp => (ServerOpcodes.MoveSetAdvFlyingPitchingRateUp, flightCapabilityEntry.PitchingRateUpMin, flightCapabilityEntry.PitchingRateUpMax, AuraType.ModAdvFlyingPitchingRateUp),
+                AdvFlyingRateTypeRange.TurnVelocityThreshold => (ServerOpcodes.MoveSetAdvFlyingTurnVelocityThreshold, flightCapabilityEntry.TurnVelocityThresholdMin, flightCapabilityEntry.TurnVelocityThresholdMax, AuraType.None),
+                _ => (ServerOpcodes.Unknown, 0, 0, AuraType.None)
+            };
+
+            if (rateAura != AuraType.None)
+            {
+                // take only lowest negative and highest positive auras - these effects do not stack
+                int neg = GetMaxNegativeAuraModifier(rateAura, mod => mod.GetAmount() > 0 && mod.GetAmount() < 100);
+                if (neg != 0)
+                {
+                    MathFunctions.ApplyPct(ref min, neg);
+                    MathFunctions.ApplyPct(ref max, neg);
+                }
+
+                int pos = GetMaxPositiveAuraModifier(rateAura, mod => mod.GetAmount() > 100);
+                if (pos != 0)
+                {
+                    MathFunctions.ApplyPct(ref min, pos);
+                    MathFunctions.ApplyPct(ref max, pos);
+                }
+            }
+
+            if (m_advFlyingSpeed[(int)speedType] == min && m_advFlyingSpeed[(int)speedType + 1] == max)
+                return;
+
+            m_advFlyingSpeed[(int)speedType] = min;
+            m_advFlyingSpeed[(int)speedType + 1] = max;
+
+            if (!clientUpdate)
+                return;
+
+            Player playerMover = GetUnitBeingMoved()?.ToPlayer();
+            if (playerMover != null)
+            {
+                SetAdvFlyingSpeedRange selfpacket = new(opcode);
+                selfpacket.MoverGUID = GetGUID();
+                selfpacket.SequenceIndex = m_movementCounter++;
+                selfpacket.SpeedMin = min;
+                selfpacket.SpeedMax = max;
+                playerMover.GetSession().SendPacket(selfpacket);
+            }
+        }
+
+        int GetFlightCapabilityID() { return m_unitData.FlightCapabilityID; }
+
+        public float GetAdvFlyingSpeed(AdvFlyingRateTypeSingle speedType) { return m_advFlyingSpeed[(int)speedType]; }
+
+        public float GetAdvFlyingSpeedMin(AdvFlyingRateTypeRange speedType) { return m_advFlyingSpeed[(int)speedType]; }
+
+        public float GetAdvFlyingSpeedMax(AdvFlyingRateTypeRange speedType) { return m_advFlyingSpeed[(int)speedType + 1]; }
+
         public virtual MovementGeneratorType GetDefaultMovementType()
         {
             return MovementGeneratorType.Idle;
@@ -254,7 +389,7 @@ namespace Game.Entities
                 init.DisableTransportPathTransformations(); // It makes no sense to target global orientation
             init.SetFacing(point.GetPositionX(), point.GetPositionY(), point.GetPositionZ());
 
-            //GetMotionMaster()->LaunchMoveSpline(std::move(init), EVENT_FACE, MOTION_PRIORITY_HIGHEST);
+            //GetMotionMaster().LaunchMoveSpline(std::move(init), EVENT_FACE, MOTION_PRIORITY_HIGHEST);
             UpdateSplineMovement((uint)init.Launch());
             Creature creature = ToCreature();
             if (creature != null)
@@ -340,6 +475,36 @@ namespace Game.Entities
                 MoveSplineSetFlag packet = new(disable ? ServerOpcodes.MoveSplineDisableCollision : ServerOpcodes.MoveDisableCollision);
                 packet.MoverGUID = GetGUID();
                 SendMessageToSet(packet, true);
+            }
+
+            return true;
+        }
+
+        bool SetEnableFullSpeedTurning(bool enable)
+        {
+            if (!IsPlayer())
+                return false;
+
+            if (enable == HasUnitMovementFlag2(MovementFlag2.FullSpeedTurning))
+                return false;
+
+            if (enable)
+                AddUnitMovementFlag2(MovementFlag2.FullSpeedTurning);
+            else
+                RemoveUnitMovementFlag2(MovementFlag2.FullSpeedTurning);
+
+            ServerOpcodes[] fullSpeedTurningOpcodeTable = [ServerOpcodes.MoveDisableFullSpeedTurning, ServerOpcodes.MoveEnableFullSpeedTurning];
+            Player playerMover = GetUnitBeingMoved()?.ToPlayer();
+            if (playerMover != null)
+            {
+                MoveSetFlag packet = new(fullSpeedTurningOpcodeTable[enable ? 1 : 0]);
+                packet.MoverGUID = GetGUID();
+                packet.SequenceIndex = m_movementCounter++;
+                playerMover.SendPacket(packet);
+
+                MoveUpdate moveUpdate = new();
+                moveUpdate.Status = m_movementInfo;
+                SendMessageToSet(moveUpdate, playerMover);
             }
 
             return true;
@@ -466,14 +631,6 @@ namespace Game.Entities
                 float vsin = (float)Math.Sin(angle + GetOrientation());
                 SendMoveKnockBack(ToPlayer(), speedXY, -speedZ, vcos, vsin);
             }
-        }
-
-        public void JumpTo(WorldObject obj, float speedZ, bool withOrientation = false)
-        {
-            float x, y, z;
-            obj.GetContactPoint(this, out x, out y, out z);
-            float speedXY = GetExactDist2d(x, y) * 10.0f / speedZ;
-            GetMotionMaster().MoveJump(x, y, z, GetAbsoluteAngle(obj), speedXY, speedZ, EventId.Jump, withOrientation);
         }
 
         public void UpdateSpeed(UnitMoveType mtype)
@@ -667,6 +824,14 @@ namespace Game.Entities
                     GetMap().PlayerRelocation(ToPlayer(), x, y, z, orientation);
                 else
                     GetMap().CreatureRelocation(ToCreature(), x, y, z, orientation);
+
+                var controlZoneAuras = GetAuraEffectsByType(AuraType.ActAsControlZone);
+                foreach (AuraEffect auraEffect in controlZoneAuras)
+                {
+                    GameObject controlZone = GetGameObject(auraEffect.GetSpellInfo().Id);
+                    if (controlZone != null)
+                        GetMap().GameObjectRelocation(controlZone, x, y, z, orientation);
+                }
             }
             else if (turn)
                 UpdateOrientation(orientation);
@@ -683,10 +848,6 @@ namespace Game.Entities
 
             if (isInWater)
                 RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.Swimming);
-
-            // TODO: on heartbeat
-            if (m_vignette != null)
-                Vignettes.Update(m_vignette, this);
 
             return (relocated || turn);
         }
@@ -754,16 +915,6 @@ namespace Game.Entities
                 SendMessageToSet(packet, true);
             }
 
-            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
-            {
-                if (IsGravityDisabled())
-                    SetAnimTier(AnimTier.Fly);
-                else if (IsHovering())
-                    SetAnimTier(AnimTier.Hover);
-                else
-                    SetAnimTier(AnimTier.Ground);
-            }
-
             if (IsAlive())
             {
                 if (IsGravityDisabled() || IsHovering())
@@ -773,6 +924,16 @@ namespace Game.Entities
             }
             else if (IsPlayer()) // To update player who dies while flying/hovering
                 SetPlayHoverAnim(false, false);
+
+            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
+            {
+                if (IsGravityDisabled())
+                    SetAnimTier(AnimTier.Fly);
+                else if (IsHovering())
+                    SetAnimTier(AnimTier.Hover);
+                else
+                    SetAnimTier(AnimTier.Ground);
+            }
 
             return true;
         }
@@ -868,13 +1029,8 @@ namespace Game.Entities
                     continue;
 
                 Player thisPlayer = ToPlayer();
-                if (thisPlayer != null)
-                {
-                    PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(mountCapability.PlayerConditionID);
-                    if (playerCondition != null)
-                        if (!ConditionManager.IsPlayerMeetingCondition(thisPlayer, playerCondition))
-                            continue;
-                }
+                if (thisPlayer != null && !ConditionManager.IsPlayerMeetingCondition(thisPlayer, (uint)mountCapability.PlayerConditionID))
+                    continue;
 
                 return mountCapability;
             }
@@ -897,8 +1053,11 @@ namespace Game.Entities
                 {
                     var capability = CliDB.MountCapabilityStorage.LookupByKey(aurEff.GetAmount());
                     if (capability != null) // aura may get removed by interrupt flag, reapply
+                    {
+                        SetFlightCapabilityID(capability.FlightCapabilityID, true);
                         if (!HasAura(capability.ModSpellAuraID))
                             CastSpell(this, capability.ModSpellAuraID, new CastSpellExtraArgs(aurEff));
+                    }
                 }
             }
         }
@@ -1142,16 +1301,6 @@ namespace Game.Entities
                 SendMessageToSet(packet, true);
             }
 
-            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
-            {
-                if (IsGravityDisabled())
-                    SetAnimTier(AnimTier.Fly);
-                else if (IsHovering())
-                    SetAnimTier(AnimTier.Hover);
-                else
-                    SetAnimTier(AnimTier.Ground);
-            }
-
             if (IsAlive())
             {
                 if (IsGravityDisabled() || IsHovering())
@@ -1161,6 +1310,16 @@ namespace Game.Entities
             }
             else if (IsPlayer()) // To update player who dies while flying/hovering
                 SetPlayHoverAnim(false, false);
+
+            if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
+            {
+                if (IsGravityDisabled())
+                    SetAnimTier(AnimTier.Fly);
+                else if (IsHovering())
+                    SetAnimTier(AnimTier.Hover);
+                else
+                    SetAnimTier(AnimTier.Ground);
+            }
 
             return true;
         }
@@ -1212,17 +1371,18 @@ namespace Game.Entities
         }
 
         public void NearTeleportTo(float x, float y, float z, float orientation, bool casting = false) { NearTeleportTo(new Position(x, y, z, orientation), casting); }
+
         public void NearTeleportTo(Position pos, bool casting = false)
         {
             DisableSpline();
-            if (IsTypeId(TypeId.Player))
+            TeleportLocation target = new() { Location = new(GetMapId(), pos) };
+            if (IsPlayer())
             {
-                WorldLocation target = new(GetMapId(), pos);
                 ToPlayer().TeleportTo(target, (TeleportToOptions.NotLeaveTransport | TeleportToOptions.NotLeaveCombat | TeleportToOptions.NotUnSummonPet | (casting ? TeleportToOptions.Spell : 0)));
             }
             else
             {
-                SendTeleportPacket(pos);
+                SendTeleportPacket(target);
                 UpdatePosition(pos, true);
                 UpdateObjectVisibility();
             }
@@ -1574,6 +1734,58 @@ namespace Game.Entities
             RemoveNpcFlag(NPCFlags.SpellClick | NPCFlags.PlayerVehicle);
         }
 
+        public bool SetCanAdvFly(bool enable)
+        {
+            if (enable == HasExtraUnitMovementFlag2(MovementFlags3.CanAdvFly))
+                return false;
+
+            if (enable)
+                AddExtraUnitMovementFlag2(MovementFlags3.CanAdvFly);
+            else
+                RemoveExtraUnitMovementFlag2(MovementFlags3.CanAdvFly | MovementFlags3.AdvFlying);
+
+            Player playerMover = GetUnitBeingMoved()?.ToPlayer();
+            if (playerMover != null)
+            {
+                MoveSetFlag packet = new(enable ? ServerOpcodes.MoveSetCanAdvFly : ServerOpcodes.MoveUnsetCanAdvFly);
+                packet.MoverGUID = GetGUID();
+                packet.SequenceIndex = m_movementCounter++;
+                playerMover.SendPacket(packet);
+
+                MoveUpdate moveUpdate = new();
+                moveUpdate.Status = m_movementInfo;
+                SendMessageToSet(moveUpdate, playerMover);
+            }
+
+            return true;
+        }
+
+        public bool SetMoveCantSwim(bool cantSwim)
+        {
+            if (cantSwim == HasExtraUnitMovementFlag2(MovementFlags3.CantSwim))
+                return false;
+
+            if (cantSwim)
+                AddExtraUnitMovementFlag2(MovementFlags3.CantSwim);
+            else
+                RemoveExtraUnitMovementFlag2(MovementFlags3.CantSwim);
+
+            Player playerMover = GetUnitBeingMoved()?.ToPlayer();
+            if (playerMover != null)
+            {
+                MoveSetFlag packet = new(cantSwim ? ServerOpcodes.MoveSetCantSwim : ServerOpcodes.MoveUnsetCantSwim);
+                packet.MoverGUID = GetGUID();
+                packet.SequenceIndex = m_movementCounter++;
+                playerMover.SendPacket(packet);
+
+                MoveUpdate moveUpdate = new();
+                moveUpdate.Status = m_movementInfo;
+                SendMessageToSet(moveUpdate, playerMover);
+            }
+
+            return true;
+        }
+
         void SendSetVehicleRecId(uint vehicleId)
         {
             Player player = ToPlayer();
@@ -1814,20 +2026,6 @@ namespace Game.Entities
             MoveSpline.UpdateState((int)diff);
             bool arrived = MoveSpline.Finalized();
 
-            if (MoveSpline.IsCyclic())
-            {
-                splineSyncTimer.Update(diff);
-                if (splineSyncTimer.Passed())
-                {
-                    splineSyncTimer.Reset(5000); // Retail value, do not change
-
-                    FlightSplineSync flightSplineSync = new();
-                    flightSplineSync.Guid = GetGUID();
-                    flightSplineSync.SplineDist = MoveSpline.TimePassed() / MoveSpline.Duration();
-                    SendMessageToSet(flightSplineSync, true);
-                }
-            }
-
             if (arrived)
             {
                 DisableSpline();
@@ -1865,6 +2063,17 @@ namespace Game.Entities
             UpdatePosition(loc.X, loc.Y, loc.Z, loc.W);
         }
 
+        void SendFlightSplineSyncUpdate()
+        {
+            if (!MoveSpline.IsCyclic() || MoveSpline.Finalized())
+                return;
+
+            FlightSplineSync flightSplineSync = new();
+            flightSplineSync.Guid = GetGUID();
+            flightSplineSync.SplineDist = (float)MoveSpline.TimePassed() / MoveSpline.Duration();
+            SendMessageToSet(flightSplineSync, true);
+        }
+
         void InterruptMovementBasedAuras()
         {
             // TODO: Check if orientation transport offset changed instead of only global orientation
@@ -1893,7 +2102,7 @@ namespace Game.Entities
         }
 
         //Teleport
-        public void SendTeleportPacket(Position pos)
+        public void SendTeleportPacket(TeleportLocation teleportLocation)
         {
             // SMSG_MOVE_UPDATE_TELEPORT is sent to nearby players to signal the teleport
             // SMSG_MOVE_TELEPORT is sent to self in order to trigger CMSG_MOVE_TELEPORT_ACK and update the position server side
@@ -1908,20 +2117,11 @@ namespace Game.Entities
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();
             if (playerMover != null)
             {
-                float x, y, z, o;
-                pos.GetPosition(out x, out y, out z, out o);
-
-                ITransport transportBase = GetDirectTransport();
-                if (transportBase != null)
-                    transportBase.CalculatePassengerOffset(ref x, ref y, ref z, ref o);
-
                 MoveTeleport moveTeleport = new();
                 moveTeleport.MoverGUID = GetGUID();
-                moveTeleport.Pos = new Position(x, y, z, o);
-                if (GetTransGUID() != ObjectGuid.Empty)
-                    moveTeleport.TransportGUID = GetTransGUID();
-
-                moveTeleport.Facing = o;
+                moveTeleport.Pos = teleportLocation.Location;
+                moveTeleport.TransportGUID = teleportLocation.TransportGuid;
+                moveTeleport.Facing = teleportLocation.Location.GetOrientation();
                 moveTeleport.SequenceIndex = m_movementCounter++;
                 playerMover.SendPacket(moveTeleport);
 
@@ -1932,15 +2132,21 @@ namespace Game.Entities
                 // This is the only packet sent for creatures which contains MovementInfo structure
                 // we do not update m_movementInfo for creatures so it needs to be done manually here
                 moveUpdateTeleport.Status.Guid = GetGUID();
-                moveUpdateTeleport.Status.Pos.Relocate(pos);
                 moveUpdateTeleport.Status.Time = Time.GetMSTime();
-                var transportBase = GetDirectTransport();
-                if (transportBase != null)
+
+                if (teleportLocation.TransportGuid.HasValue)
                 {
-                    pos.GetPosition(out float tx, out float ty, out float tz, out float to);
-                    transportBase.CalculatePassengerOffset(ref tx, ref ty, ref tz, ref to);
-                    moveUpdateTeleport.Status.transport.pos.Relocate(tx, ty, tz, to);
+                    Transport transport = GetMap().GetTransport(teleportLocation.TransportGuid.Value);
+                    if (transport == null)
+                        return;
+
+                    teleportLocation.Location.GetPosition(out float x, out float y, out float z, out float o);
+                    transport.CalculatePassengerPosition(ref x, ref y, ref z, ref o);
+                    moveUpdateTeleport.Status.Pos.Relocate(x, y, z, o);
+                    moveUpdateTeleport.Status.transport.pos.Relocate(teleportLocation.Location);
                 }
+                else
+                    moveUpdateTeleport.Status.Pos.Relocate(teleportLocation.Location);
             }
 
             // Broadcast the packet to everyone except self.

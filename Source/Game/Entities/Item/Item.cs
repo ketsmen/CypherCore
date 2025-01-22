@@ -24,11 +24,12 @@ namespace Game.Entities
             ObjectTypeMask |= TypeMask.Item;
             ObjectTypeId = TypeId.Item;
 
+            m_entityFragments.Add(EntityFragment.Tag_Item, false);
+
             m_itemData = new ItemData();
 
             uState = ItemUpdateState.New;
             uQueuePos = -1;
-            m_lastPlayedTimeUpdate = GameTime.GetGameTime();
         }
 
         public virtual bool Create(ulong guidlow, uint itemId, ItemContext context, Player owner)
@@ -59,6 +60,7 @@ namespace Game.Entities
 
             SetExpiration(itemProto.GetDuration());
             SetCreatePlayedTime(0);
+            SetCreateTime(GameTime.GetGameTime());
             SetContext(context);
 
             if (itemProto.GetArtifactID() != 0)
@@ -72,10 +74,8 @@ namespace Game.Entities
                         if (itemProto.GetArtifactID() != artifactAppearanceSet.ArtifactID)
                             continue;
 
-                        PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(artifactAppearance.UnlockPlayerConditionID);
-                        if (playerCondition != null)
-                            if (owner == null || !ConditionManager.IsPlayerMeetingCondition(owner, playerCondition))
-                                continue;
+                        if (owner == null || !ConditionManager.IsPlayerMeetingCondition(owner, artifactAppearance.UnlockPlayerConditionID))
+                            continue;
 
                         SetModifier(ItemModifier.ArtifactAppearanceId, artifactAppearance.Id);
                         SetAppearanceModId(artifactAppearance.ItemAppearanceModifierID);
@@ -164,6 +164,7 @@ namespace Game.Entities
                     stmt.AddValue(++index, m_randomBonusListId);
                     stmt.AddValue(++index, (uint)m_itemData.Durability);
                     stmt.AddValue(++index, (uint)m_itemData.CreatePlayedTime);
+                    stmt.AddValue(++index, m_itemData.CreateTime);
                     stmt.AddValue(++index, m_text);
                     stmt.AddValue(++index, GetModifier(ItemModifier.BattlePetSpeciesId));
                     stmt.AddValue(++index, GetModifier(ItemModifier.BattlePetBreedData));
@@ -443,16 +444,17 @@ namespace Game.Entities
             }
 
             SetCreatePlayedTime(fields.Read<uint>(11));
-            SetText(fields.Read<string>(12));
+            SetCreateTime(fields.Read<long>(12));
+            SetText(fields.Read<string>(13));
 
-            SetModifier(ItemModifier.BattlePetSpeciesId, fields.Read<uint>(13));
-            SetModifier(ItemModifier.BattlePetBreedData, fields.Read<uint>(14));
-            SetModifier(ItemModifier.BattlePetLevel, fields.Read<ushort>(14));
-            SetModifier(ItemModifier.BattlePetDisplayId, fields.Read<uint>(16));
+            SetModifier(ItemModifier.BattlePetSpeciesId, fields.Read<uint>(14));
+            SetModifier(ItemModifier.BattlePetBreedData, fields.Read<uint>(15));
+            SetModifier(ItemModifier.BattlePetLevel, fields.Read<ushort>(16));
+            SetModifier(ItemModifier.BattlePetDisplayId, fields.Read<uint>(17));
 
-            SetContext((ItemContext)fields.Read<byte>(17));
+            SetContext((ItemContext)fields.Read<byte>(18));
 
-            var bonusListString = new StringArray(fields.Read<string>(18), ' ');
+            var bonusListString = new StringArray(fields.Read<string>(19), ' ');
             List<uint> bonusListIDs = new();
             for (var i = 0; i < bonusListString.Length; ++i)
             {
@@ -469,34 +471,34 @@ namespace Game.Entities
                     SetSpellCharges(i, value);
             }
 
-            SetModifier(ItemModifier.TransmogAppearanceAllSpecs, fields.Read<uint>(19));
-            SetModifier(ItemModifier.TransmogAppearanceSpec1, fields.Read<uint>(20));
-            SetModifier(ItemModifier.TransmogAppearanceSpec2, fields.Read<uint>(21));
-            SetModifier(ItemModifier.TransmogAppearanceSpec3, fields.Read<uint>(22));
-            SetModifier(ItemModifier.TransmogAppearanceSpec4, fields.Read<uint>(23));
-            SetModifier(ItemModifier.TransmogAppearanceSpec5, fields.Read<uint>(24));
+            SetModifier(ItemModifier.TransmogAppearanceAllSpecs, fields.Read<uint>(20));
+            SetModifier(ItemModifier.TransmogAppearanceSpec1, fields.Read<uint>(21));
+            SetModifier(ItemModifier.TransmogAppearanceSpec2, fields.Read<uint>(22));
+            SetModifier(ItemModifier.TransmogAppearanceSpec3, fields.Read<uint>(23));
+            SetModifier(ItemModifier.TransmogAppearanceSpec4, fields.Read<uint>(24));
+            SetModifier(ItemModifier.TransmogAppearanceSpec5, fields.Read<uint>(25));
 
-            SetModifier(ItemModifier.EnchantIllusionAllSpecs, fields.Read<uint>(25));
-            SetModifier(ItemModifier.EnchantIllusionSpec1, fields.Read<uint>(26));
-            SetModifier(ItemModifier.EnchantIllusionSpec2, fields.Read<uint>(27));
-            SetModifier(ItemModifier.EnchantIllusionSpec3, fields.Read<uint>(28));
-            SetModifier(ItemModifier.EnchantIllusionSpec4, fields.Read<uint>(29));
+            SetModifier(ItemModifier.EnchantIllusionAllSpecs, fields.Read<uint>(26));
+            SetModifier(ItemModifier.EnchantIllusionSpec1, fields.Read<uint>(27));
+            SetModifier(ItemModifier.EnchantIllusionSpec2, fields.Read<uint>(28));
+            SetModifier(ItemModifier.EnchantIllusionSpec3, fields.Read<uint>(29));
             SetModifier(ItemModifier.EnchantIllusionSpec4, fields.Read<uint>(30));
+            SetModifier(ItemModifier.EnchantIllusionSpec4, fields.Read<uint>(31));
 
-            SetModifier(ItemModifier.TransmogSecondaryAppearanceAllSpecs, fields.Read<uint>(31));
-            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec1, fields.Read<uint>(32));
-            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec2, fields.Read<uint>(33));
-            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec3, fields.Read<uint>(34));
-            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec4, fields.Read<uint>(35));
-            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec5, fields.Read<uint>(36));
+            SetModifier(ItemModifier.TransmogSecondaryAppearanceAllSpecs, fields.Read<uint>(32));
+            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec1, fields.Read<uint>(33));
+            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec2, fields.Read<uint>(34));
+            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec3, fields.Read<uint>(35));
+            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec4, fields.Read<uint>(36));
+            SetModifier(ItemModifier.TransmogSecondaryAppearanceSpec5, fields.Read<uint>(37));
 
             int gemFields = 4;
             ItemDynamicFieldGems[] gemData = new ItemDynamicFieldGems[ItemConst.MaxGemSockets];
             for (int i = 0; i < ItemConst.MaxGemSockets; ++i)
             {
                 gemData[i] = new ItemDynamicFieldGems();
-                gemData[i].ItemId = fields.Read<uint>(37 + i * gemFields);
-                var gemBonusListIDs = new StringArray(fields.Read<string>(38 + i * gemFields), ' ');
+                gemData[i].ItemId = fields.Read<uint>(38 + i * gemFields);
+                var gemBonusListIDs = new StringArray(fields.Read<string>(39 + i * gemFields), ' ');
                 if (!gemBonusListIDs.IsEmpty())
                 {
                     uint b = 0;
@@ -507,13 +509,13 @@ namespace Game.Entities
                     }
                 }
 
-                gemData[i].Context = fields.Read<byte>(39 + i * gemFields);
+                gemData[i].Context = fields.Read<byte>(40 + i * gemFields);
                 if (gemData[i].ItemId != 0)
-                    SetGem((ushort)i, gemData[i], fields.Read<uint>(40 + i * gemFields));
+                    SetGem((ushort)i, gemData[i], fields.Read<uint>(41 + i * gemFields));
             }
 
-            SetModifier(ItemModifier.TimewalkerLevel, fields.Read<uint>(49));
-            SetModifier(ItemModifier.ArtifactKnowledgeLevel, fields.Read<uint>(50));
+            SetModifier(ItemModifier.TimewalkerLevel, fields.Read<uint>(50));
+            SetModifier(ItemModifier.ArtifactKnowledgeLevel, fields.Read<uint>(51));
 
             // Enchants must be loaded after all other bonus/scaling data
             var enchantmentTokens = new StringArray(fields.Read<string>(8), ' ');
@@ -591,13 +593,9 @@ namespace Game.Entities
                                     if (_bonusData.GemRelicType[e - EnchantmentSlot.Sock1] != -1)
                                     {
                                         ArtifactPowerPickerRecord artifactPowerPicker = CliDB.ArtifactPowerPickerStorage.LookupByKey(enchant.EffectArg[i]);
-                                        if (artifactPowerPicker != null)
-                                        {
-                                            PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(artifactPowerPicker.PlayerConditionID);
-                                            if (playerCondition == null || (owner != null && ConditionManager.IsPlayerMeetingCondition(owner, playerCondition)))
-                                                if (artifactPower.Label == _bonusData.GemRelicType[e - EnchantmentSlot.Sock1])
-                                                    power.CurrentRankWithBonus += (byte)enchant.EffectPointsMin[i];
-                                        }
+                                        if (artifactPowerPicker != null && owner != null && ConditionManager.IsPlayerMeetingCondition(owner, artifactPowerPicker.PlayerConditionID))
+                                            if (artifactPower.Label == _bonusData.GemRelicType[e - EnchantmentSlot.Sock1])
+                                                power.CurrentRankWithBonus += (byte)enchant.EffectPointsMin[i];
                                     }
                                     break;
                                 default:
@@ -793,7 +791,7 @@ namespace Game.Entities
             return !IsInBag() && (m_slot < EquipmentSlot.End
                 || (m_slot >= ProfessionSlots.Start && m_slot < ProfessionSlots.End));
         }
-        
+
         public bool CanBeTraded(bool mail = false, bool trade = false)
         {
             if (m_lootGenerated)
@@ -876,7 +874,7 @@ namespace Game.Entities
 
             return cost;
         }
-        
+
         bool HasEnchantRequiredSkill(Player player)
         {
             // Check all enchants for required skill
@@ -995,11 +993,11 @@ namespace Game.Entities
             {
                 var oldEnchant = CliDB.SpellItemEnchantmentStorage.LookupByKey(GetEnchantmentId(slot));
                 if (oldEnchant != null && !oldEnchant.HasFlag(SpellItemEnchantmentFlags.DoNotLog))
-                        owner.GetSession().SendEnchantmentLog(GetOwnerGUID(), ObjectGuid.Empty, GetGUID(), GetEntry(), oldEnchant.Id, (uint)slot);
+                    owner.GetSession().SendEnchantmentLog(GetOwnerGUID(), ObjectGuid.Empty, GetGUID(), GetEntry(), oldEnchant.Id, (uint)slot);
 
                 var newEnchant = CliDB.SpellItemEnchantmentStorage.LookupByKey(id);
                 if (newEnchant != null && !newEnchant.HasFlag(SpellItemEnchantmentFlags.DoNotLog))
-                        owner.GetSession().SendEnchantmentLog(GetOwnerGUID(), caster, GetGUID(), GetEntry(), id, (uint)slot);
+                    owner.GetSession().SendEnchantmentLog(GetOwnerGUID(), caster, GetGUID(), GetEntry(), id, (uint)slot);
             }
 
             ApplyArtifactPowerEnchantmentBonuses(slot, GetEnchantmentId(slot), false, owner);
@@ -1230,6 +1228,7 @@ namespace Game.Entities
             newItem.ReplaceAllItemFlags((ItemFieldFlags)(m_itemData.DynamicFlags & ~(uint)(ItemFieldFlags.Refundable | ItemFieldFlags.BopTradeable)));
             newItem.SetExpiration(m_itemData.Expiration);
             newItem.SetBonuses(m_itemData.ItemBonusKey.GetValue().BonusListIDs);
+            newItem.SetFixedLevel(GetModifier(ItemModifier.TimewalkerLevel));
             // player CAN be NULL in which case we must not update random properties because that accesses player's item update queue
             if (player != null)
                 newItem.SetItemRandomBonusList(m_randomBonusListId);
@@ -1273,34 +1272,20 @@ namespace Game.Entities
             return UpdateFieldFlag.None;
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_itemData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize() + 1);
-            data.WriteUInt8((byte)flags);
-            data.WriteBytes(buffer);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_itemData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Item))
-                m_itemData.WriteUpdate(buffer, flags, this, target);
-
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
-            data.WriteBytes(buffer);
+                m_itemData.WriteUpdate(data, flags, this, target);
         }
 
         public override void BuildValuesUpdateWithFlag(WorldPacket data, UpdateFieldFlag flags, Player target)
@@ -1308,15 +1293,11 @@ namespace Game.Entities
             UpdateMask valuesMask = new((int)TypeId.Max);
             valuesMask.Set((int)TypeId.Item);
 
-            WorldPacket buffer = new();
             UpdateMask mask = m_itemData.GetStaticUpdateMask();
 
-            buffer.WriteUInt32(valuesMask.GetBlock(0));
+            data.WriteUInt32(valuesMask.GetBlock(0));
             m_itemData.AppendAllowedFieldsMaskForFlag(mask, flags);
-            m_itemData.WriteUpdate(buffer, mask, true, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_itemData.WriteUpdate(data, mask, true, this, target);
         }
 
         void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedItemMask, Player target)
@@ -1331,6 +1312,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.Item);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])
@@ -1419,40 +1401,14 @@ namespace Game.Entities
                 owner.GetSession().GetCollectionMgr().AddItemAppearance(this);
         }
 
-        public void UpdatePlayedTime(Player owner)
-        {
-            // Get current played time
-            uint current_playtime = m_itemData.CreatePlayedTime;
-            // Calculate time elapsed since last played time update
-            long curtime = GameTime.GetGameTime();
-            uint elapsed = (uint)(curtime - m_lastPlayedTimeUpdate);
-            uint new_playtime = current_playtime + elapsed;
-            // Check if the refund timer has expired yet
-            if (new_playtime <= 2 * Time.Hour)
-            {
-                // No? Proceed.
-                // Update the data field
-                SetCreatePlayedTime(new_playtime);
-                // Flag as changed to get saved to DB
-                SetState(ItemUpdateState.Changed, owner);
-                // Speaks for itself
-                m_lastPlayedTimeUpdate = curtime;
-                return;
-            }
-            // Yes
-            SetNotRefundable(owner);
-        }
-
         public uint GetPlayedTime()
         {
-            long curtime = GameTime.GetGameTime();
-            uint elapsed = (uint)(curtime - m_lastPlayedTimeUpdate);
-            return m_itemData.CreatePlayedTime + elapsed;
+            return m_itemData.CreatePlayedTime;
         }
 
         public bool IsRefundExpired()
         {
-            return (GetPlayedTime() > 2 * Time.Hour);
+            return m_itemData.CreateTime + 2 * Time.Hour <= GameTime.GetGameTime();
         }
 
         public void SetSoulboundTradeable(List<ObjectGuid> allowedLooters)
@@ -1478,7 +1434,7 @@ namespace Game.Entities
         public bool CheckSoulboundTradeExpire()
         {
             // called from owner's update - GetOwner() MUST be valid
-            if (m_itemData.CreatePlayedTime + 2 * Time.Hour < GetOwner().GetTotalPlayedTime())
+            if (m_itemData.CreatePlayedTime + 4 * Time.Hour < GetOwner().GetTotalPlayedTime())
             {
                 ClearSoulboundTradeable(GetOwner());
                 return true; // remove from tradeable list
@@ -1783,7 +1739,7 @@ namespace Game.Entities
                 typeFactor = weaponPrice.Data;
             }
 
-            standardPrice = false;
+            standardPrice = true;
             return (uint)(proto.GetPriceVariance() * typeFactor * baseFactor * qualityFactor * proto.GetPriceRandomValue());
         }
 
@@ -1820,8 +1776,8 @@ namespace Game.Entities
             ItemTemplate itemTemplate = GetTemplate();
             uint minItemLevel = owner.m_unitData.MinItemLevel;
             uint minItemLevelCutoff = owner.m_unitData.MinItemLevelCutoff;
-            uint maxItemLevel = itemTemplate.HasFlag(ItemFlags3.IgnoreItemLevelCapInPvp) ? 0u : owner.m_unitData.MaxItemLevel;
             bool pvpBonus = owner.IsUsingPvpItemLevels();
+            uint maxItemLevel = pvpBonus && itemTemplate.HasFlag(ItemFlags3.IgnoreItemLevelCapInPvp) ? 0u : owner.m_unitData.MaxItemLevel;
 
             uint azeriteLevel = 0;
             AzeriteItem azeriteItem = ToAzeriteItem();
@@ -1905,15 +1861,40 @@ namespace Game.Entities
             return 0f;
         }
 
-        public ItemDisenchantLootRecord GetDisenchantLoot(Player owner)
+        public uint? GetDisenchantLootId()
         {
             if (!_bonusData.CanDisenchant)
                 return null;
 
-            return GetDisenchantLoot(GetTemplate(), (uint)GetQuality(), GetItemLevel(owner));
+            if (_bonusData.DisenchantLootId != 0)
+                return _bonusData.DisenchantLootId;
+
+            // ignore temporary item level scaling (pvp or timewalking)
+            uint itemLevel = GetItemLevel(GetTemplate(), _bonusData, (uint)_bonusData.RequiredLevel, GetModifier(ItemModifier.TimewalkerLevel), 0, 0, 0, false, 0);
+
+            var disenchantLoot = GetBaseDisenchantLoot(GetTemplate(), (uint)GetQuality(), itemLevel);
+            if (disenchantLoot == null)
+                return null;
+
+            return disenchantLoot.Id;
         }
 
-        public static ItemDisenchantLootRecord GetDisenchantLoot(ItemTemplate itemTemplate, uint quality, uint itemLevel)
+        public ushort? GetDisenchantSkillRequired()
+        {
+            if (!_bonusData.CanDisenchant)
+                return null;
+
+            // ignore temporary item level scaling (pvp or timewalking)
+            uint itemLevel = GetItemLevel(GetTemplate(), _bonusData, (uint)_bonusData.RequiredLevel, GetModifier(ItemModifier.TimewalkerLevel), 0, 0, 0, false, 0);
+
+            var disenchantLoot = GetBaseDisenchantLoot(GetTemplate(), (uint)GetQuality(), itemLevel);
+            if (disenchantLoot == null)
+                return null;
+
+            return disenchantLoot.SkillRequired;
+        }
+
+        public static ItemDisenchantLootRecord GetBaseDisenchantLoot(ItemTemplate itemTemplate, uint quality, uint itemLevel)
         {
             if (itemTemplate.HasFlag(ItemFlags.Conjured) || itemTemplate.HasFlag(ItemFlags.NoDisenchant) || itemTemplate.GetBonding() == ItemBondingType.Quest)
                 return null;
@@ -2059,7 +2040,7 @@ namespace Game.Entities
 
             return itemModifiedAppearanceId;
         }
-        
+
         public uint GetVisibleSecondaryModifiedAppearanceId(Player owner)
         {
             uint itemModifiedAppearanceId = GetModifier(ItemConst.SecondaryAppearanceModifierSlotBySpec[owner.GetActiveTalentGroup()]);
@@ -2068,7 +2049,7 @@ namespace Game.Entities
 
             return itemModifiedAppearanceId;
         }
-        
+
         public uint GetVisibleEnchantmentId(Player owner)
         {
             uint enchantmentId = GetModifier(ItemConst.IllusionModifierSlotBySpec[owner.GetActiveTalentGroup()]);
@@ -2290,8 +2271,7 @@ namespace Game.Entities
                                 ArtifactPowerPickerRecord artifactPowerPicker = CliDB.ArtifactPowerPickerStorage.LookupByKey(enchant.EffectArg[i]);
                                 if (artifactPowerPicker != null)
                                 {
-                                    PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(artifactPowerPicker.PlayerConditionID);
-                                    if (playerCondition == null || ConditionManager.IsPlayerMeetingCondition(owner, playerCondition))
+                                    if (ConditionManager.IsPlayerMeetingCondition(owner, artifactPowerPicker.PlayerConditionID))
                                     {
                                         for (int artifactPowerIndex = 0; artifactPowerIndex < m_itemData.ArtifactPowers.Size(); ++artifactPowerIndex)
                                         {
@@ -2334,6 +2314,7 @@ namespace Game.Entities
         }
 
         public void SetArtifactXP(ulong xp) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.ArtifactXP), xp); }
+
         public void GiveArtifactXp(ulong amount, Item sourceItem, ArtifactCategory artifactCategoryId)
         {
             Player owner = GetOwner();
@@ -2366,10 +2347,12 @@ namespace Game.Entities
             owner.SendPacket(artifactXpGain);
 
             SetState(ItemUpdateState.Changed, owner);
+
+            owner.UpdateCriteria(CriteriaType.EarnArtifactXP, amount);
         }
 
         public ItemContext GetContext() { return (ItemContext)(int)m_itemData.Context; }
-        public void SetContext(ItemContext context) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.Context), (int)context); }
+        public void SetContext(ItemContext context) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.Context), (byte)context); }
 
         public void SetPetitionId(uint petitionId)
         {
@@ -2413,7 +2396,7 @@ namespace Game.Entities
         {
             return $"{base.GetDebugInfo()}\nOwner: {GetOwnerGUID()} Count: {GetCount()} BagSlot: {GetBagSlot()} Slot: {GetSlot()} Equipped: {IsEquipped()}";
         }
-        
+
         public static Item NewItemOrBag(ItemTemplate proto)
         {
             if (proto.GetInventoryType() == InventoryType.Bag)
@@ -2453,7 +2436,7 @@ namespace Game.Entities
                 {
                     uint maxLevel = (uint)Global.DB2Mgr.GetCurveXAxisRange(item.GetBonus().PlayerLevelToItemLevelCurveId).Item2;
 
-                    var contentTuning = Global.DB2Mgr.GetContentTuningData(item.GetBonus().ContentTuningId, player.m_playerData.CtrOptions._value.ContentTuningConditionMask, true);
+                    var contentTuning = Global.DB2Mgr.GetContentTuningData(item.GetBonus().ContentTuningId, player.m_playerData.CtrOptions._value.ConditionalFlags, true);
                     if (contentTuning.HasValue)
                         maxLevel = Math.Min(maxLevel, (uint)contentTuning.Value.MaxLevel);
 
@@ -2633,6 +2616,7 @@ namespace Game.Entities
         public int GetEnchantmentCharges(EnchantmentSlot slot) { return m_itemData.Enchantment[(int)slot].Charges; }
 
         public void SetCreatePlayedTime(uint createPlayedTime) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.CreatePlayedTime), createPlayedTime); }
+        public void SetCreateTime(long createTime) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.CreateTime), createTime); }
 
         public string GetText() { return m_text; }
         public void SetText(string text) { m_text = text; }
@@ -2685,8 +2669,8 @@ namespace Game.Entities
         public void SetChildItem(ObjectGuid childItem) { m_childItem = childItem; }
 
         public ItemEffectRecord[] GetEffects() { return _bonusData.Effects[0.._bonusData.EffectCount]; }
-        
-        public override Loot GetLootForPlayer(Player player)  { return loot; }
+
+        public override Loot GetLootForPlayer(Player player) { return loot; }
 
         //Static
         public static bool ItemCanGoIntoBag(ItemTemplate pProto, ItemTemplate pBagProto)
@@ -2791,7 +2775,6 @@ namespace Game.Entities
         int uQueuePos;
         string m_text;
         bool mb_in_trade;
-        long m_lastPlayedTimeUpdate;
         List<ObjectGuid> allowedGUIDs = new();
         uint m_randomBonusListId;        // store separately to easily find which bonus list is the one randomly given for stat rerolling
         ObjectGuid m_childItem;
@@ -2860,13 +2843,11 @@ namespace Game.Entities
             ItemLevelBonus = 0;
             RequiredLevel = proto.GetBaseRequiredLevel();
             for (uint i = 0; i < ItemConst.MaxStats; ++i)
+            {
                 ItemStatType[i] = proto.GetStatModifierBonusStat(i);
-
-            for (uint i = 0; i < ItemConst.MaxStats; ++i)
                 StatPercentEditor[i] = proto.GetStatPercentEditor(i);
-
-            for (uint i = 0; i < ItemConst.MaxStats; ++i)
                 ItemStatSocketCostMultiplier[i] = proto.GetStatPercentageOfSocket(i);
+            }
 
             for (uint i = 0; i < ItemConst.MaxGemSockets; ++i)
             {
@@ -2903,6 +2884,7 @@ namespace Game.Entities
 
             _state.SuffixPriority = int.MaxValue;
             _state.AppearanceModPriority = int.MaxValue;
+            _state.DisenchantLootPriority = int.MaxValue;
             _state.ScalingStatDistributionPriority = int.MaxValue;
             _state.AzeriteTierUnlockSetPriority = int.MaxValue;
             _state.RequiredLevelCurvePriority = int.MaxValue;
@@ -2997,6 +2979,13 @@ namespace Game.Entities
                         HasFixedLevel = type == ItemBonusType.ScalingStatDistributionFixed;
                     }
                     break;
+                case ItemBonusType.DisenchantLootId:
+                    if (values[1] < _state.DisenchantLootPriority)
+                    {
+                        DisenchantLootId = (uint)values[0];
+                        _state.DisenchantLootPriority = values[1];
+                    }
+                    break;
                 case ItemBonusType.Bounding:
                     Bonding = (ItemBondingType)values[0];
                     break;
@@ -3068,6 +3057,7 @@ namespace Game.Entities
         {
             public int SuffixPriority;
             public int AppearanceModPriority;
+            public int DisenchantLootPriority;
             public int ScalingStatDistributionPriority;
             public int AzeriteTierUnlockSetPriority;
             public int RequiredLevelCurvePriority;

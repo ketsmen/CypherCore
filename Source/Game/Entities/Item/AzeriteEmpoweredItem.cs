@@ -22,6 +22,8 @@ namespace Game.Entities
             ObjectTypeMask |= TypeMask.AzeriteEmpoweredItem;
             ObjectTypeId = TypeId.AzeriteEmpoweredItem;
 
+            m_entityFragments.Add(EntityFragment.Tag_AzeriteEmpoweredItem, false);
+
             m_azeriteEmpoweredItemData = new AzeriteEmpoweredItemData();
         }
 
@@ -146,37 +148,24 @@ namespace Game.Entities
             return (long)PlayerConst.MaxMoneyAmount + 1;
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_itemData.WriteCreate(buffer, flags, this, target);
-            m_azeriteEmpoweredItemData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_itemData.WriteCreate(data, flags, this, target);
+            m_azeriteEmpoweredItemData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Item))
-                m_itemData.WriteUpdate(buffer, flags, this, target);
+                m_itemData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.AzeriteEmpoweredItem))
-                m_azeriteEmpoweredItemData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
-            data.WriteBytes(buffer);
+                m_azeriteEmpoweredItemData.WriteUpdate(data, flags, this, target);
         }
 
         void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedItemMask, UpdateMask requestedAzeriteEmpoweredItemMask, Player target)
@@ -194,6 +183,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.AzeriteEmpoweredItem);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])
@@ -224,7 +214,7 @@ namespace Game.Entities
         {
             m_azeritePowers = Global.DB2Mgr.GetAzeritePowers(GetEntry());
             if (m_azeritePowers != null)
-                m_maxTier = m_azeritePowers.Aggregate((a1, a2) => a1.Tier < a2.Tier ? a2 : a1).Tier;
+                m_maxTier = m_azeritePowers.Max(p => p.Tier);
         }
 
         public int GetMaxAzeritePowerTier() { return m_maxTier; }

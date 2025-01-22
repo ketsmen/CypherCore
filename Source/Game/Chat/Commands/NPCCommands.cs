@@ -82,7 +82,7 @@ namespace Game.Chat
             CreatureTemplate cInfo = target.GetCreatureTemplate();
 
             uint faction = target.GetFaction();
-            ulong npcflags = (ulong)target.m_unitData.NpcFlags[1] << 32 | target.m_unitData.NpcFlags[0];
+            ulong npcflags = (ulong)target.m_unitData.NpcFlags2 << 32 | target.m_unitData.NpcFlags;
             ulong mechanicImmuneMask = 0;
             CreatureImmunities immunities = Global.SpellMgr.GetCreatureImmunities(cInfo.CreatureImmunitiesId);
             if (immunities != null)
@@ -141,7 +141,7 @@ namespace Game.Chat
             handler.SendSysMessage(CypherStrings.NpcinfoArmor, target.GetArmor());
             handler.SendSysMessage(CypherStrings.NpcinfoPosition, target.GetPositionX(), target.GetPositionY(), target.GetPositionZ());
             handler.SendSysMessage(CypherStrings.ObjectinfoAiInfo, target.GetAIName(), target.GetScriptName());
-            handler.SendSysMessage(CypherStrings.ObjectinfoStringIds, target.GetStringIds()[0], target.GetStringIds()[1], target.GetStringIds()[2]);
+            handler.SendSysMessage(CypherStrings.ObjectinfoStringIds, target.GetStringId(StringIdType.Template), target.GetStringId(StringIdType.Spawn), target.GetStringId(StringIdType.Script));
             handler.SendSysMessage(CypherStrings.NpcinfoReactstate, target.GetReactState());
             var ai = target.GetAI();
             if (ai != null)
@@ -151,7 +151,7 @@ namespace Game.Chat
                 if (cInfo.FlagsExtra.HasAnyFlag((CreatureFlagsExtra)value))
                     handler.SendSysMessage("{0} (0x{1:X})", (CreatureFlagsExtra)value, value);
 
-            handler.SendSysMessage(CypherStrings.NpcinfoNpcFlags, target.m_unitData.NpcFlags[0]);
+            handler.SendSysMessage(CypherStrings.NpcinfoNpcFlags, target.m_unitData.NpcFlags);
             foreach (uint value in Enum.GetValues(typeof(NPCFlags)))
                 if (npcflags.HasAnyFlag(value))
                     handler.SendSysMessage("{0} (0x{1:X})", (NPCFlags)value, value);
@@ -316,23 +316,23 @@ namespace Game.Chat
                 return false;
             }
 
+            if (!creatureTarget.IsDead())
+            {
+                handler.SendSysMessage(CypherStrings.CommandNotDeadOrNoLoot, creatureTarget.GetName());
+                return false;
+            }
+
             Loot loot = creatureTarget._loot;
-            if (creatureTarget.IsDead() || loot == null || loot.IsLooted())
+            if ((loot == null || loot.IsLooted()) && creatureTarget.m_personalLoot.Count(p => p.Value.IsLooted()) == 0)
             {
                 handler.SendSysMessage(CypherStrings.CommandNotDeadOrNoLoot, creatureTarget.GetName());
                 return false;
             }
 
             handler.SendSysMessage(CypherStrings.CommandNpcShowlootHeader, creatureTarget.GetName(), creatureTarget.GetEntry());
-            handler.SendSysMessage(CypherStrings.CommandNpcShowlootMoney, loot.gold / MoneyConstants.Gold, (loot.gold % MoneyConstants.Gold) / MoneyConstants.Silver, loot.gold % MoneyConstants.Silver);
 
-            if (all.Equals("all", StringComparison.OrdinalIgnoreCase)) // nonzero from strcmp <. not equal
-            {
-                handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel, "Standard items", loot.items.Count);
-                foreach (LootItem item in loot.items)
-                    if (!item.is_looted)
-                        _ShowLootEntry(handler, item.itemid, item.count);
-            }
+            if (loot != null)
+                _ShowLootContents(handler, all == "all", loot);
             else
             {
                 handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel, "Standard items", loot.items.Count);
@@ -340,10 +340,11 @@ namespace Game.Chat
                     if (!item.is_looted && !item.freeforall && item.conditions.IsEmpty())
                         _ShowLootEntry(handler, item.itemid, item.count);
 
-                if (!loot.GetPlayerFFAItems().Empty())
+                foreach (var (lootOwner, personalLoot) in creatureTarget.m_personalLoot)
                 {
-                    handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel2, "FFA items per allowed player");
-                    _IterateNotNormalLootMap(handler, loot.GetPlayerFFAItems(), loot.items);
+                    var character = Global.CharacterCacheStorage.GetCharacterCacheByGuid(lootOwner);
+                    handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel2, $"Personal loot for {(character != null ? character.Name : "")}");
+                    _ShowLootContents(handler, all == "all", personalLoot);
                 }
             }
 
@@ -515,7 +516,7 @@ namespace Game.Chat
             return true;
         }
 
-        static void _ShowLootEntry(CommandHandler handler, uint itemId, byte itemCount, bool alternateString = false)
+        static void _ShowLootEntry(CommandHandler handler, uint itemId, uint itemCount, bool alternateString = false)
         {
             string name = "Unknown item";
 
@@ -526,6 +527,18 @@ namespace Game.Chat
             handler.SendSysMessage(alternateString ? CypherStrings.CommandNpcShowlootEntry2 : CypherStrings.CommandNpcShowlootEntry,
                 itemCount, ItemConst.ItemQualityColors[(int)(itemTemplate != null ? itemTemplate.GetQuality() : ItemQuality.Poor)], itemId, name, itemId);
         }
+
+        static void _ShowLootCurrencyEntry(CommandHandler handler, uint currencyId, uint count, bool alternateString = false)
+        {
+            CurrencyTypesRecord currency = CliDB.CurrencyTypesStorage.LookupByKey(currencyId);
+            string name = "Unknown currency";
+            if (currency != null)
+                name = currency.Name;
+
+            handler.SendSysMessage(CypherStrings.CommandNpcShowLootCurrency, alternateString ? 6 : 3 /*number of bytes from following string*/, "\u2500\u2500",
+                count, ItemConst.ItemQualityColors[currency != null ? currency.Quality : (int)ItemQuality.Poor], currencyId, count, name, currencyId);
+        }
+
         static void _IterateNotNormalLootMap(CommandHandler handler, MultiMap<ObjectGuid, NotNormalLootItem> map, List<LootItem> items)
         {
             foreach (var key in map.Keys)
@@ -542,7 +555,67 @@ namespace Game.Chat
                 {
                     LootItem item = items[it.LootListId];
                     if (!it.is_looted && !item.is_looted)
-                        _ShowLootEntry(handler, item.itemid, item.count, true);
+                    {
+                        switch (item.type)
+                        {
+                            case LootItemType.Item:
+                                _ShowLootEntry(handler, item.itemid, item.count, true);
+                                break;
+                            case LootItemType.Currency:
+                                _ShowLootCurrencyEntry(handler, item.itemid, item.count, true);
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        static void _ShowLootContents(CommandHandler handler, bool all, Loot loot)
+        {
+            handler.SendSysMessage(CypherStrings.CommandNpcShowlootMoney, loot.gold / MoneyConstants.Gold, (loot.gold % MoneyConstants.Gold) / MoneyConstants.Silver, loot.gold % MoneyConstants.Silver);
+
+            if (!all)
+            {
+                handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel, "Standard items", loot.items.Count);
+                foreach (LootItem item in loot.items)
+                {
+                    if (!item.is_looted)
+                    {
+                        switch (item.type)
+                        {
+                            case LootItemType.Item:
+                                _ShowLootEntry(handler, item.itemid, item.count);
+                                break;
+                            case LootItemType.Currency:
+                                _ShowLootCurrencyEntry(handler, item.itemid, item.count);
+                                break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel, "Standard items", loot.items.Count);
+                foreach (LootItem item in loot.items)
+                {
+                    if (!item.is_looted && !item.freeforall && item.conditions.IsEmpty())
+                    {
+                        switch (item.type)
+                        {
+                            case LootItemType.Item:
+                                _ShowLootEntry(handler, item.itemid, item.count);
+                                break;
+                            case LootItemType.Currency:
+                                _ShowLootCurrencyEntry(handler, item.itemid, item.count);
+                                break;
+                        }
+                    }
+                }
+
+                if (!loot.GetPlayerFFAItems().Empty())
+                {
+                    handler.SendSysMessage(CypherStrings.CommandNpcShowlootLabel2, "FFA items per allowed player");
+                    _IterateNotNormalLootMap(handler, loot.GetPlayerFFAItems(), loot.items);
                 }
             }
         }
@@ -839,8 +912,7 @@ namespace Game.Chat
                 {
                     if (a.GetMovementGeneratorType() == MovementGeneratorType.Follow)
                     {
-                        FollowMovementGenerator followMovement = a as FollowMovementGenerator;
-                        return followMovement != null && followMovement.GetTarget() == player;
+                        return a is FollowMovementGenerator followMovement && followMovement.GetTarget() == player;
                     }
                     return false;
                 });
@@ -991,9 +1063,8 @@ namespace Game.Chat
                     return false;
                 }
 
-                creature.SetMaxHealth((uint)(100 + 30 * lvl));
-                creature.SetHealth((uint)(100 + 30 * lvl));
                 creature.SetLevel(lvl);
+                creature.UpdateLevelDependantStats();
                 creature.SaveToDB();
 
                 return true;

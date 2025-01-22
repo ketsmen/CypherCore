@@ -115,7 +115,7 @@ namespace Framework.Constants
         InfiniteAoi = 0x40000000,
         Unused13 = 0x80000000,
 
-        Disallowed = (FeignDeath | IgnoreReputation | ComprehendLang |
+        Disallowed = (/*FeignDeath |*/ IgnoreReputation | ComprehendLang |
             MirrorImage | ForceMovement | DisarmOffhand |
             DisablePredStats | AllowChangingTalents | DisarmRanged |
             /* UNIT_FLAG2_REGENERATE_POWER | */ RestrictPartyInteraction | CannotTurn |
@@ -166,7 +166,7 @@ namespace Framework.Constants
         Disallowed = (Unk0 | /* UnconsciousOnDeath | */ /* AllowMountedCombat | */ GarrisonPet |
                                                                    /* UiCanGetPosition | */ /* AiObstacle | */ AlternativeDefaultLanguage | /* SuppressAllNpcFeedback | */
                                                                    IgnoreCombat | SuppressNpcFeedback | Unk10 | Unk11 |
-                                                                   Unk12 | FakeDead | /* NoFacingOnInteractAndFastFacingChase | */ /* UntargetableFromUi | */
+                                                                   Unk12 | /*FakeDead |*/ /* NoFacingOnInteractAndFastFacingChase | */ /* UntargetableFromUi | */
                                                                    /* NoFacingOnInteractWhileFakeDead | */ AlreadySkinned | /* SuppressAllNpcSounds | */ /* SuppressNpcSounds | */
                                                                    AllowInteractionWhileInCombat | Unk21 | /* DontFadeOut | */ Unk23 |
                                                                    ForceHideNameplate | Unk25 | Unk26 | Unk27 |
@@ -179,7 +179,7 @@ namespace Framework.Constants
         None = 0x00,
         Gossip = 0x01,     // 100%
         QuestGiver = 0x02,     // 100%
-        Unk1 = 0x04,
+        AccountBanker = 0x04, //account banker
         Unk2 = 0x08,
         Trainer = 0x10,     // 100%
         TrainerClass = 0x20,     // 100%
@@ -209,6 +209,8 @@ namespace Framework.Constants
         VaultKeeper = 0x20000000,     // Void Storage
         WildBattlePet = 0x40000000,     // Pet That Player Can Fight (Battle Pet)
         BlackMarket = 0x80000000,     // Black Market
+
+        VendorMask = Vendor | VendorAmmo | VendorFood | VendorPoison | VendorReagent
     }
 
     public enum NPCFlags2
@@ -224,6 +226,7 @@ namespace Framework.Constants
         BlackMarketView = 0x80,
         GarrisonTalentNpc = 0x200,
         ContributionCollector = 0x400,
+        FastSteeringAvoidsObstacles = 0x2000,
         AzeriteRespec = 0x4000,
         IslandsQueue = 0x8000,
         SuppressNpcSoundsExceptEndOfInteraction = 0x10000,
@@ -726,5 +729,15 @@ namespace Framework.Constants
     {
         None = 0,
         Empty = 1
+    }
+
+    public enum VendorDataTypeFlags
+    {
+        Generic = 0x01,
+        Ammo = 0x02,
+        Food = 0x04,
+        Poison = 0x08,
+        Reagent = 0x10,
+        Petition = 0x20,
     }
 }

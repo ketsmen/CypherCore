@@ -16,6 +16,8 @@ namespace Game.Entities
             ObjectTypeMask |= TypeMask.Container;
             ObjectTypeId = TypeId.Container;
 
+            m_entityFragments.Add(EntityFragment.Tag_Container, false);
+
             m_containerData = new ContainerData();
         }
 
@@ -160,37 +162,24 @@ namespace Game.Entities
                     m_bagslot[i].BuildCreateUpdateBlockForPlayer(data, target);
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_itemData.WriteCreate(buffer, flags, this, target);
-            m_containerData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_itemData.WriteCreate(data, flags, this, target);
+            m_containerData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt32(m_values.GetChangedObjectTypeMask());
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Item))
-                m_itemData.WriteUpdate(buffer, flags, this, target);
+                m_itemData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Container))
-                m_containerData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+                m_containerData.WriteUpdate(data, flags, this, target);
         }
 
         void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedItemMask, UpdateMask requestedContainerMask, Player target)
@@ -208,6 +197,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.Container);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])

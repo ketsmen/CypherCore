@@ -254,9 +254,15 @@ namespace Game
         public void ApplyForceReaction(uint faction_id, ReputationRank rank, bool apply)
         {
             if (apply)
+            {
                 _forcedReactions[faction_id] = rank;
+                _player.SetVisibleForcedReaction(faction_id, rank);
+            }
             else
+            {
                 _forcedReactions.Remove(faction_id);
+                _player.RemoveVisibleForcedReaction(faction_id);
+            }
         }
 
         ReputationFlags GetDefaultStateFlags(FactionRecord factionEntry)
@@ -271,21 +277,6 @@ namespace Game
                 flags |= ReputationFlags.ShowPropagated;
 
             return flags;
-        }
-
-        public void SendForceReactions()
-        {
-            SetForcedReactions setForcedReactions = new();
-
-            foreach (var pair in _forcedReactions)
-            {
-                ForcedReaction forcedReaction;
-                forcedReaction.Faction = (int)pair.Key;
-                forcedReaction.Reaction = (int)pair.Value;
-
-                setForcedReactions.Reactions.Add(forcedReaction);
-            }
-            _player.SendPacket(setForcedReactions);
         }
 
         public void SendState(FactionState faction)
@@ -321,12 +312,20 @@ namespace Game
         {
             InitializeFactions initFactions = new();
 
-            foreach (var pair in _factions)
+            foreach (var (_, factionState) in _factions)
             {
-                initFactions.FactionFlags[pair.Key] = pair.Value.Flags;
-                initFactions.FactionStandings[pair.Key] = pair.Value.Standing;
+                FactionData factionData = new();
+                factionData.FactionID = factionState.Id;
+                factionData.Flags = (ushort)factionState.Flags;
+                factionData.Standing = factionState.Standing;
+                initFactions.Factions.Add(factionData);
+
                 // @todo faction bonus
-                pair.Value.needSend = false;
+                FactionBonusData bonus = new();
+                bonus.FactionID = factionState.Id;
+                bonus.FactionHasBonus = false;
+                factionState.needSend = false;
+                initFactions.Bonuses.Add(bonus);
             }
 
             _player.SendPacket(initFactions);

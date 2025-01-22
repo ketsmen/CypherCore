@@ -26,6 +26,9 @@ namespace Framework.Constants
 
         public const uint VisualKitFood = 406;
         public const uint VisualKitDrink = 438;
+
+        public const uint EmpowerHoldTimeAtMax = 1 * Time.InMilliseconds;
+        public const uint EmpowerHardcodedGCD = 359115;
     }
 
 
@@ -148,31 +151,32 @@ namespace Framework.Constants
     public enum SpellAuraInterruptFlags2
     {
         None = 0,
-        Falling = 0x01, // NYI
+        Falling = 0x01, // Implemented in Unit::UpdatePosition
         Swimming = 0x02,
         NotMoving = 0x04, // NYI
         Ground = 0x08,
         Transform = 0x10, // NYI
         Jump = 0x20,
         ChangeSpec = 0x40,
-        AbandonVehicle = 0x80, // NYI
-        StartOfEncounter = 0x100, // NYI
-        EndOfEncounter = 0x200, // NYI
+        AbandonVehicle = 0x80, // Implemented in Unit::_ExitVehicle
+        StartOfRaidEncounterAndStartOfMythicPlus = 0x100, // Implemented in Unit::AtStartOfEncounter
+        EndOfRaidEncounterAndStartOfMythicPlus = 0x200, // Implemented in Unit::AtEndOfEncounter
         Disconnect = 0x400, // NYI
-        EnteringInstance = 0x800, // NYI
-        DuelEnd = 0x1000, // NYI
-        LeaveArenaOrBattleground = 0x2000, // NYI
+        EnteringInstance = 0x800, // Implemented in Map::AddPlayerToMap
+        DuelEnd = 0x1000, // Implemented in Player::DuelComplete
+        LeaveArenaOrBattleground = 0x2000, // Implemented in Battleground::RemovePlayerAtLeave
         ChangeTalent = 0x4000,
         ChangeGlyph = 0x8000,
         SeamlessTransfer = 0x10000, // NYI
-        WarModeLeave = 0x20000, // NYI
+        WarModeLeave = 0x20000, // Implemented in Player::UpdateWarModeAuras
         TouchingGround = 0x40000, // NYI
         ChromieTime = 0x80000, // NYI
         SplineFlightOrFreeFlight = 0x100000, // NYI
-        ProcOrPeriodicAttacking = 0x200000,  // NYI
-        StartOfMythicPlusRun = 0x400000, // Implemented in Unit::AtStartOfEncounter
-        StartOfDungeonEncounter = 0x800000, // Implemented in Unit::AtStartOfEncounter - Similar to StartOfEncounter (but only with bosses, not m+ run or battleground)
-        EndOfDungeonEncounter = 0x1000000, // Implemented in Unit::AtEndOfEncounter - Similar to EndOfEncounter (but only with bosses, not m+ run or battleground)
+        ProcOrPeriodicAttacking = 0x200000, // NYI
+        ChallengeModeStart = 0x400000, // Implemented in Unit::AtStartOfEncounter
+        StartOfEncounter = 0x800000, // Implemented in Unit::AtStartOfEncounter
+        EndOfEncounter = 0x1000000, // Implemented in Unit::AtEndOfEncounter
+        ReleaseEmpower = 0x02000000, // Implemented in Spell::update
     }
 
     // Enum with EffectRadiusIndex and their actual radius
@@ -279,7 +283,6 @@ namespace Framework.Constants
         MageArmor = 9,
         ElementalShield = 10,
         MagePolymorph = 11,
-        WarlockCorruption = 17,
         Food = 19,
         Drink = 20,
         FoodAndDrink = 21,
@@ -771,7 +774,8 @@ namespace Framework.Constants
         CantFlyHere = 318,
         DragonridingRidingRequirement = 319,
         ItemModAppearanceGroupAlreadyKnown = 320,
-        Unknown = 321,
+        ItemCreationDisabledForEvent = 321,
+        Unknown = 322,
 
         // Ok Cast Value - Here In Case A Future Version Removes Success And We Need To Use A Custom Value (Not Sent To Client Either Way)
         SpellCastOk = Success
@@ -1413,8 +1417,48 @@ namespace Framework.Constants
         YouDontHaveTheSwirlingMojoStone = 999, // You Don'T Have The Swirling Mojo Stone Equipped.
         YouMustBeNearADragonflightOathstone = 1000, // You Must Be Near One Of The Five Dragonflight Oathstones In The Dragon Isles.
         CanOnlyUseThisItemWhileAirborne = 1001, // You Can Only Use This Item While Airborne.
+        ThisPlayerIsNotOppositeFaction = 1002, // This Player Is Not Of The Opposite Faction.
+        ThisPlayerAlreadyHasThisMount = 1003, // This Player Already Has This Mount.
+        YourTargetIsInWarMode = 1004, // Your Target Is In War Mode.
+        CooldownReset = 1005, // Cooldown Reset
+        SoilNutrientsMustReplenish = 1006, // The Nutrients Of This Soil Must Replenish Before Further Growth.
+        TargetAlreadyHadSomeFeathersPlucked = 1007, // The Target Has Already Had Some Feathers Plucked. It Would Be Rude To Take More.
+        ThisCreatureHasAlreadyBeenAttunedWith = 1008, // This Creature Has Already Been Attuned With Recently.
+        YouAlreadyHaveSomeMulchPrepared = 1009, // You Already Have Some Mulch Prepared. Use Your Current Mulch First.
+        YouDontKnowHowToGatherThis = 1010, // You Don't Know How To Gather This.
+        YouDontHaveAnyItemsOfThisType = 1011, // You Don't Have Any Items Of This Type.
+        YouDontHaveAnyRadiantRemnants = 1012, // You Don't Have Any Radiant Remnants.
+        TargetsRingIsAlreadyBoundToAnotherPlayer = 1013, // Your Target's Ring Is Already Bound To Another Player.
+        TargetIsNotWearingThisRing = 1014, // Your Target Is Not Also Wearing This Ring.
+        CanOnlyBeUsedOnSocketablePvpTwwItems = 1015, // Can Only Be Used On Socket Eligible Pvp Items From The War Within Expansion.
+        HarvestbotsAlreadyActive = 1016, // Harvestbots Already Active.
+        AirshipDauntlessIsAlreadyActive = 1017, // The Airship Dauntless Is Already Active.
+        CannotSwapSpellsOnCooldownInCombat = 1026, // You Cannot Swap Spells On Cooldown While In Combat.
+        MustEquipCloakOfInfinitePotential = 1027, // You Must First Equip The Cloak Of Infinite Potential.
+        InsufficientBronze = 1028, // You Have Insufficient Bronze To Make This Trade.
+        RequiresSkyriding = 1029, // Requires Skyriding
+        YouAlreadyOverloadedThisGatheringNode = 1030, // You Have Already Overloaded This Gathering Node.
+        YouDontKnowHowToOverloadThisNode = 1031, // You Do Not Know How To Overload This Gathering Node.
+        TimerunnersCannotTeleportOutOfPandaria = 1032, // Timerunners Cannot Teleport Outside Of Pandaria.
+        SpecializeFurtherForTheseNotes = 1033, // Specialize Further Or Improve Your Hasty Handwriting To Make Sense Of These Notes.
+        ThereIsNothingLeftToInvent = 1034, // There Is Nothing Left To Invent And You Cannot Be Convinced Otherwise.
+        PlayerInPartyDoesntHaveThisTierUnlocked = 1035, // A Player In Your Party Does Not Have This Tier Unlocked
+        YouDontHaveAnyRadiantEchoes = 1036, // You Don't Have Any Radiant Echoes.
+        RequiresTwwPathfinderUnlocked = 1037, // Requires The War Within Pathfinder Unlocked To Use In This Area.
+        CanOnlyBeUsedWhileInCombat = 1039, // Can Only Be Used While In Combat.
+        NotHighEnoughLevelToEnterADelve = 1040, // You Are Not High Enough Level To Enter A Delve.
+        WondrousWisdomballIsNonresponsive = 1041, // For Some Reason The Wondrous Wisdomball Is Nonresponsive.
+        YouAlreadyHaveThisCurioInYourCollection = 1042, // You Already Have This Curio In Your Collection.
+        AlreadyHaveIdentifiedPrototype = 1043, // You Must Choose What To Do With Your Current Prototype Before Identifying New Ones.
+        YouAlreadyUsedKhazAlgarContract = 1044, // You Have Already Used A Khaz Algar Contract This Week.
+        YouAlreadyRevealedAllTodayPactLocations = 1051, // You Have Revealed Or Completed All Of Today's Pact Locations.
+        TimerunnersCannotCastThisSpell = 1053, // Timerunners Cannot Cast This Spell.
+        ThisEmblemHasNoMagicStored = 2001, // The Emblem Has No Magic Stored.
         YouMustBeInVisageForm = 2222, // You Must Be In Visage Form To Do This.
-        TooCloseToAnotherMoltenRitual = 2424, // You Can'T Begin A Molten Ritual This Close To Another One.
+        ATrialIsBeingUndergoneNearby = 2223, // A Trial Is Already Being Undergone Nearby.
+        YouCannotUseVantusRuneInStoryMode = 2224, // You Cannot Use A Vantus Rune In Story Mode.
+        TooCloseToAnotherMoltenRitual = 2424, // You Can't Begin A Molten Ritual This Close To Another One.
+        EarthenCannotConsumeRegularFoodOrDrink = 2425, // Earthen Cannot Consume Traditional Food Or Drink.
     }
 
     public enum SpellMissInfo
@@ -1539,7 +1583,7 @@ namespace Framework.Constants
         IgnoreCastItem = 0x08,   //! Will Not Take Away Cast Item Or Update Related Achievement Criteria
         IgnoreAuraScaling = 0x10,   //! Will Ignore Aura Scaling
         IgnoreCastInProgress = 0x20,   //! Will Not Check If A Current Cast Is In Progress
-        // reuse = 0x40,   //
+        IgnoreCastTime = 0x40,   //! Will always be instantly cast
         CastDirectly = 0x80,   //! In Spell.Prepare, Will Be Cast Directly Without Setting Containers For Executed Spell
         // reuse = 0x100,   //
         IgnoreSetFacing = 0x200,   //! Will Not Adjust Facing To Target (If Any)
@@ -1699,7 +1743,7 @@ namespace Framework.Constants
         ToggleFarSight = 0x2000, // Toggle Far Sight (Client Only)
         TrackTargetInChannel = 0x4000, // Track Target In Channel Description While Channeling, Adjust Facing To Face Target
         ImmunityPurgesEffect = 0x8000, // Immunity Purges Effect Description For Immunity Spells, Cancel All Auras That This Spell Would Make You Immune To When The Spell Is Applied
-        ImmunityToHostileAndFriendlyEffects = 0x10000, /*Wrong Impl*/ // Immunity To Hostile & Friendly Effects Description Will Not Pierce Divine Shield, Ice Block And Other Full Invulnerabilities
+        ImmunityToHostileAndFriendlyEffects = 0x10000, //  Immunity applied by this aura will also be checked for friendly spells (school immunity only) - used by Cyclone for example to cause friendly spells and healing over time to be immuned
         NoAutocastAi = 0x20000, // No Autocast (Ai)
         PreventsAnim = 0x40000, /*Nyi*/ // Prevents Anim Description Auras Apply UnitFlagPreventEmotesFromChatText
         ExcludeCaster = 0x80000, // Exclude Caster
@@ -1963,38 +2007,38 @@ namespace Framework.Constants
     }
     public enum SpellAttr9 : uint
     {
-        Unk0 = 0x01, // 0
-        Unk1 = 0x02, // 1
-        RestrictedFlightArea = 0x04, // 2
-        Unk3 = 0x08, // 3
-        SpecialDelayCalculation = 0x10, // 4
-        SummonPlayerTotem = 0x20, // 5
-        Unk6 = 0x40, // 6
-        Unk7 = 0x80, // 7
-        AimedShot = 0x100, // 8
-        NotUsableInArena = 0x200, // 9 Cannot Be Used In Arenas
-        Unk10 = 0x400, // 10
-        Unk11 = 0x800, // 11
-        Unk12 = 0x1000, // 12
-        Slam = 0x2000, // 13
-        UsableInRatedBattlegrounds = 0x4000, // 14 Can Be Used In Rated Battlegrounds
-        Unk15 = 0x8000, // 15
-        Unk16 = 0x10000, // 16
-        Unk17 = 0x20000, // 17
-        Unk18 = 0x40000, // 18
-        Unk19 = 0x80000, // 19
-        Unk20 = 0x100000, // 20
-        Unk21 = 0x200000, // 21
-        Unk22 = 0x400000, // 22
-        Unk23 = 0x800000, // 23
-        Unk24 = 0x1000000, // 24
-        Unk25 = 0x2000000, // 25
-        Unk26 = 0x4000000, // 26
-        Unk27 = 0x8000000, // 27
-        Unk28 = 0x10000000, // 28
-        Unk29 = 0x20000000, // 29
-        Unk30 = 0x40000000, // 30
-        Unk31 = 0x80000000  // 31
+        ForceDestLocation = 0x01, // Force Dest Location DESCRIPTION Ignores collision with terrain (unsure if it also ignores terrain height and can go under map)
+        ModInvisIncludesParty = 0x02, // Mod Invis Includes Party 1@Attr9 DESCRIPTION Causes invisibility auras to ignore "can always see party member invis" rule
+        OnlyWhenIllegallyMounted = 0x04, // Only When Illegally Mounted
+        DoNotLogAuraRefresh = 0x08, // Do Not Log Aura Refresh (client only)
+        MissileSpeedIsDelayInSec = 0x10, // Missile Speed is Delay (in sec)
+        IgnoreTotemRequirementsForCasting = 0x20, // Ignore Totem Requirements for Casting
+        ItemCastGrantsSkillGain = 0x40, // Item Cast Grants Skill Gain
+        DoNotAddToUnlearnList = 0x80, //  NYI - unlearn list not maintained SMSG_SEND_UNLEARN_SPELLS always empty // Do Not Add to Unlearn List
+        CooldownIgnoresRangedWeapon = 0x100, // Cooldown Ignores Ranged Weapon
+        NotInArena = 0x200, // 9 Not In Arena
+        TargetMustBeGrounded = 0x400, // Target Must Be Grounded
+        AllowWhileBanishedAuraState = 0x800, // Doesn't seem to be doing anything, banish behaves like a regular stun now - tested on patch 10.2.7 with spell 17767 (doesn't have this attribute, only SPELL_ATTR5_ALLOW_WHILE_STUNNED and was castable while banished)
+        FaceUnitTargetUponCompletionOfJumpCharge = 0x1000, // Face unit target upon completion of jump charge
+        HasteAffectsMeleeAbilityCasttime = 0x2000, // Haste Affects Melee Ability Casttime
+        IgnoreDefaultRatedBattlegroundRestrictions = 0x4000, // Ignore Default Rated Battleground Restrictions
+        DoNotDisplayPowerCost = 0x8000, // Do Not Display Power Cost (client only)
+        NextModalSpellRequiresSameUnitTarget = 0x10000, // Prevents automatically casting the spell from SpellClassOptions::ModalNextSpell after current spell if target was changed (client only)
+        AutocastOffByDefault = 0x20000, // AutoCast Off By Default
+        IgnoreSchoolLockout = 0x40000, // Ignore School Lockout
+        AllowDarkSimulacrum = 0x80000, // Allow Dark Simulacrum
+        AllowCastWhileChanneling = 0x100000, // Allow Cast While Channeling
+        SuppressVisualKitErrors = 0x200000, // Suppress Visual Kit Errors (client only)
+        SpellcastOverrideInSpellbook = 0x400000, // Spellcast Override In Spellbook (client only)
+        JumpchargeNoFacingControl = 0x800000, // JumpCharge - no facing control
+        IgnoreCasterHealingModifiers = 0x1000000, // Ignore Caster Healing Modifiers
+        DontConsumeChargeIfItemDeleted = 0x2000000, // NYI - some sort of bugfix attribute to prevent double item deletion? // (Programmer Only) Don't consume charge if item deleted
+        ItemPassiveOnClient = 0x4000000, // Item Passive On Client
+        ForceCorpseTarget = 0x8000000, // Causes the spell to continue executing effects on the target even if one of them kills it
+        CannotKillTarget = 0x10000000, // Cannot Kill Target
+        LogPassive = 0x20000000, // Allows passive auras to trigger aura applied/refreshed/removed combat log events
+        NoMovementRadiusBonus = 0x40000000, // No Movement Radius Bonus
+        ChannelPersistsOnPetFollow = 0x80000000  // Channel Persists on Pet Follow
     }
     public enum SpellAttr10 : uint
     {
@@ -2042,7 +2086,7 @@ namespace Framework.Constants
         Unk6 = 0x40, //  6
         RankIgnoresCasterLevel = 0x80, //  7 Spell_C_GetSpellRank returns SpellLevels.MaxLevel * 5 instead of std::min(SpellLevels.MaxLevel, caster.Level) * 5
         Unk8 = 0x100, //  8
-        Unk9 = 0x200, //  9
+        IgnoreSpellcastOverrideShapeshiftRequirements = 0x200, // Ignore Spellcast Override Shapeshift Requirements
         Unk10 = 0x400, // 10
         NotUsableInInstances = 0x800, // 11
         Unk12 = 0x1000, // 12
@@ -2129,8 +2173,8 @@ namespace Framework.Constants
         Unk23 = 0x800000, // 23
         Unk24 = 0x01000000, // 24
         Unk25 = 0x02000000, // 25
-        Unk26 = 0x04000000, // 26
-        Unk27 = 0x08000000, // 27
+        AlwaysAllowNegativeHealingPercentModifiers = 0x04000000, // Always Allow Negative Healing Percent Modifiers
+        DoNotAllowDisableMovementInterrupt = 0x08000000, // 27
         Unk28 = 0x10000000, // 28
         Unk29 = 0x20000000, // 29
         Unk30 = 0x40000000, // 30
@@ -2148,6 +2192,41 @@ namespace Framework.Constants
         Unk7 = 0x80, //  7
         Unk8 = 0x100, //  8
         Unk9 = 0x200, //  9
+        Unk10 = 0x400, // 10
+        Unk11 = 0x800, // 11
+        Unk12 = 0x1000, // 12
+        Unk13 = 0x2000, // 13
+        Unk14 = 0x4000, // 14
+        Unk15 = 0x8000, // 15
+        Unk16 = 0x10000, // 16
+        Unk17 = 0x20000, // 17
+        Unk18 = 0x40000, // 18
+        Unk19 = 0x80000, // 19
+        AuraIsPrivate = 0x100000, // Clientside attribue that prevents the aura from being accessed by addons (but is still visible in UI)
+        Unk21 = 0x200000, // 21
+        Unk22 = 0x400000, // 22
+        Unk23 = 0x800000, // 23
+        Unk24 = 0x1000000, // 24
+        Unk25 = 0x2000000, // 25
+        Unk26 = 0x4000000, // 26
+        Unk27 = 0x8000000, // 27
+        Unk28 = 0x10000000, // 28
+        Unk29 = 0x20000000, // 29
+        Unk30 = 0x40000000, // 30
+        Unk31 = 0x80000000  // 31
+    }
+    public enum SpellAttr15 : uint
+    {
+        Unk0 = 0x01, // 0
+        Unk1 = 0x02, // 1
+        Unk2 = 0x04, // 2
+        Unk3 = 0x08, // 3
+        Unk4 = 0x10, // 4
+        Unk5 = 0x20, // 5
+        Unk6 = 0x40, // 6
+        Unk7 = 0x80, // 7
+        Unk8 = 0x100, // 8
+        Unk9 = 0x200, // 9
         Unk10 = 0x400, // 10
         Unk11 = 0x800, // 11
         Unk12 = 0x1000, // 12
@@ -2521,6 +2600,24 @@ namespace Framework.Constants
         ChangeItemBonuses2 = 313, // MiscValue[0] = ItemBonusTreeID to preserve
         AddSocketBonus = 314, // MiscValue[0] = required ItemBonusTreeID
         LearnTransmogAppearanceFromItemModAppearanceGroup = 315, // MiscValue[0] = ItemModAppearanceGroupID (not in db2)
+        KillCreditLbael1 = 316,
+        KillCreditLabel2 = 317,
+        Unk318 = 318,
+        Unk319 = 319,
+        Unk320 = 320,
+        Unk321 = 321,
+        Unk322 = 322,
+        Unk323 = 323,
+        Unk324 = 324,
+        Unk325 = 325,
+        Unk326 = 326,
+        Unk327 = 327,
+        Unk328 = 328,
+        Unk329 = 329,
+        Unk330 = 330,
+        Unk331 = 331,
+        Unk332 = 332,
+        Unk333 = 333,
 
         TotalSpellEffects
     }
@@ -2538,7 +2635,7 @@ namespace Framework.Constants
     {
         None = 0x0,
 
-        Heartbeat = 0x01,    // 00 Killed by agressor - not sure about this flag
+        Heartbeat = 0x01,    // 00 Heartbeat
         Kill = 0x02,    // 01 Kill target (in most cases need XP/Honor reward)
 
         DealMeleeSwing = 0x04,    // 02 Done melee auto attack
@@ -2618,9 +2715,13 @@ namespace Framework.Constants
     public enum ProcFlags2
     {
         None = 0x00,
-        TargetDies = 0x01,
-        Knockback = 0x02,
-        CastSuccessful = 0x04
+        TargetDies = 0x01, // 32 Kill or assist in killing target (not restricted to killing blow)
+        Knockback = 0x02, // 33 Knockback
+        CastSuccessful = 0x04, // 34 Cast Successful
+
+        SuccessfulDispel = 0x10,    // 36 Successful dispel
+
+        DoEmote = 0x40     // 38 Do Emote
     }
 
     public enum ProcFlagsSpellPhase
@@ -2680,7 +2781,7 @@ namespace Framework.Constants
         Marked = 5,            // C  T| Nyi
         Wounded25Percent = 6,            //   T |
         Defensive2 = 7,            // Cc  | Nyi
-        Banished = 8,            //  C  | Nyi
+        Banished = 8,            //  C  |
         Dazed = 9,            //    T|
         Victorious = 10,           // C   |
         Rampage = 11,           //     | Nyi
@@ -2697,6 +2798,7 @@ namespace Framework.Constants
         RaidEncounter = 22,           // Cctt|
         Healthy75Percent = 23,           // C   |
         WoundHealth35_80 = 24,            //   T |
+        Wounded50Percent = 25, // C T |
         Max,
 
         PerCasterAuraStateMask = (1 << (RaidEncounter2 - 1)) | (1 << (RoguePoisoned - 1))
@@ -2903,9 +3005,7 @@ namespace Framework.Constants
         Raid,
         RaidClass,
         Passenger,
-        Summoned,
-        Threat,
-        Tap
+        Summoned
     }
 
     public enum SpellTargetDirectionTypes

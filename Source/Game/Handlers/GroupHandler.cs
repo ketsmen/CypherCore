@@ -646,8 +646,24 @@ namespace Game
             if (group == null)
                 return false;
 
-            if (group.IsRestrictPingsToAssistants() && !group.IsLeader(player.GetGUID()) && !group.IsAssistant(player.GetGUID()))
-                return false;
+            if (group.IsLeader(player.GetGUID()))
+                return true;
+
+            switch (group.GetRestrictPings())
+            {
+                case RestrictPingsTo.None:
+                    return true;
+                case RestrictPingsTo.Lead:
+                    return false;
+                case RestrictPingsTo.Assist:
+                    if (!group.IsAssistant(player.GetGUID()))
+                        return false;
+                    break;
+                case RestrictPingsTo.TankHealer:
+                    if (!group.GetLfgRoles(player.GetGUID()).HasAnyFlag(LfgRoles.Tank | LfgRoles.Healer))
+                        return false;
+                    break;
+            }
 
             return true;
         }
@@ -662,7 +678,7 @@ namespace Game
             if (!group.IsLeader(GetPlayer().GetGUID()))
                 return;
 
-            group.SetRestrictPingsToAssistants(setRestrictPingsToAssistants.RestrictPingsToAssistants);
+            group.SetRestrictPingsTo(setRestrictPingsToAssistants.RestrictTo);
         }
 
         [WorldPacketHandler(ClientOpcodes.SendPingUnit)]
@@ -681,6 +697,9 @@ namespace Game
             broadcastPingUnit.TargetGUID = pingUnit.TargetGUID;
             broadcastPingUnit.Type = pingUnit.Type;
             broadcastPingUnit.PinFrameID = pingUnit.PinFrameID;
+            broadcastPingUnit.PingDuration = pingUnit.PingDuration;
+            broadcastPingUnit.CreatureID = pingUnit.CreatureID;
+            broadcastPingUnit.SpellOverrideNameID = pingUnit.SpellOverrideNameID;
             broadcastPingUnit.Write();
 
             for (GroupReference itr = group.GetFirstMember(); itr != null; itr = itr.Next())
@@ -709,6 +728,8 @@ namespace Game
             broadcastPingWorldPoint.Point = pingWorldPoint.Point;
             broadcastPingWorldPoint.Type = pingWorldPoint.Type;
             broadcastPingWorldPoint.PinFrameID = pingWorldPoint.PinFrameID;
+            broadcastPingWorldPoint.Transport = pingWorldPoint.Transport;
+            broadcastPingWorldPoint.PingDuration = pingWorldPoint.PingDuration;
             broadcastPingWorldPoint.Write();
 
             for (GroupReference itr = group.GetFirstMember(); itr != null; itr = itr.Next())

@@ -363,7 +363,7 @@ namespace Game.Entities
                     break;
             }
         }
-        
+
         public virtual void CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, bool addTotalPct, out float minDamage, out float maxDamage)
         {
             minDamage = 0f;
@@ -577,12 +577,43 @@ namespace Game.Entities
         //Powers
         public PowerType GetPowerType() { return (PowerType)(byte)m_unitData.DisplayPower; }
 
-        public void SetPowerType(PowerType powerType, bool sendUpdate = true)
+        public void SetPowerType(PowerType power, bool sendUpdate = true, bool onInit = false)
         {
-            if (GetPowerType() == powerType)
+            if (!onInit && GetPowerType() == power)
                 return;
 
-            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayPower), (byte)powerType);
+            PowerTypeRecord powerTypeEntry = Global.DB2Mgr.GetPowerTypeEntry(power);
+            if (powerTypeEntry == null)
+                return;
+
+            if (IsCreature() && !powerTypeEntry.HasFlag(PowerTypeFlags.IsUsedByNPCs))
+                return;
+
+            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayPower), (byte)power);
+
+            // Update max power
+            UpdateMaxPower(power);
+
+            // Update current power
+            if (!onInit)
+            {
+                switch (power)
+                {
+                    case PowerType.Mana: // Keep the same (druid form switching...)
+                    case PowerType.Energy:
+                        break;
+                    case PowerType.Rage: // Reset to zero
+                        SetPower(PowerType.Rage, 0);
+                        break;
+                    case PowerType.Focus: // Make it full
+                        SetFullPower(power);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            else
+                SetInitialPowerValue(power);
 
             if (!sendUpdate)
                 return;
@@ -600,24 +631,18 @@ namespace Game.Entities
                     pet.SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_POWER_TYPE);
             }*/
 
-            // Update max power
-            UpdateMaxPower(powerType);
+        }
 
-            // Update current power
-            switch (powerType)
-            {
-                case PowerType.Mana: // Keep the same (druid form switching...)
-                case PowerType.Energy:
-                    break;
-                case PowerType.Rage: // Reset to zero
-                    SetPower(PowerType.Rage, 0);
-                    break;
-                case PowerType.Focus: // Make it full
-                    SetFullPower(powerType);
-                    break;
-                default:
-                    break;
-            }
+        public void SetInitialPowerValue(PowerType power)
+        {
+            PowerTypeRecord powerTypeEntry = Global.DB2Mgr.GetPowerTypeEntry(power);
+            if (powerTypeEntry == null)
+                return;
+
+            if (powerTypeEntry.HasFlag(PowerTypeFlags.UnitsUseDefaultPowerOnInit))
+                SetPower(power, powerTypeEntry.DefaultPower);
+            else
+                SetFullPower(power);
         }
 
         public void SetOverrideDisplayPowerId(uint powerDisplayId) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.OverrideDisplayPowerID), powerDisplayId); }
@@ -730,7 +755,7 @@ namespace Game.Entities
                 {
                     if (effect.GetMiscValue() == (int)power)
                     {
-                        uint effectAmount = (uint)effect.GetAmount();
+                        int effectAmount = effect.GetAmount();
                         uint triggerSpell = effect.GetSpellEffectInfo().TriggerSpell;
 
                         float oldValueCheck = oldVal;
@@ -802,7 +827,7 @@ namespace Game.Entities
 
             return damage;
         }
-        
+
         // player or player's pet resilience (-1%)
         uint GetDamageReduction(uint damage) { return GetCombatRatingDamageReduction(CombatRating.ResiliencePlayerDamage, 1.0f, 100.0f, damage); }
 
@@ -946,7 +971,7 @@ namespace Game.Entities
             float chance = GetUnitCriticalChanceDone(attackType);
             return victim.GetUnitCriticalChanceTaken(this, attackType, chance);
         }
-        
+
         float GetUnitDodgeChance(WeaponAttackType attType, Unit victim)
         {
             int levelDiff = (int)(victim.GetLevelForTarget(this) - GetLevelForTarget(victim));
@@ -1085,7 +1110,7 @@ namespace Game.Entities
             }
             return Math.Max(resistMech, 0);
         }
-        
+
         public void ApplyModManaCostMultiplier(float manaCostMultiplier, bool apply) { ApplyModUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ManaCostMultiplier), manaCostMultiplier, apply); }
 
         public void ApplyModManaCostModifier(SpellSchools school, int mod, bool apply) { ApplyModUpdateFieldValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ManaCostModifier, (int)school), mod, apply); }
@@ -1545,34 +1570,34 @@ namespace Game.Entities
                 case CombatRating.HasteMelee:
                 case CombatRating.HasteRanged:
                 case CombatRating.HasteSpell:
+                {
+                    // explicit affected values
+                    float multiplier = GetRatingMultiplier(cr);
+                    float oldVal = ApplyRatingDiminishing(cr, oldRating * multiplier);
+                    float newVal = ApplyRatingDiminishing(cr, amount * multiplier);
+                    switch (cr)
                     {
-                        // explicit affected values
-                        float multiplier = GetRatingMultiplier(cr);
-                        float oldVal = ApplyRatingDiminishing(cr, oldRating * multiplier);
-                        float newVal = ApplyRatingDiminishing(cr, amount * multiplier);
-                        switch (cr)
-                        {
-                            case CombatRating.HasteMelee:
-                                ApplyAttackTimePercentMod(WeaponAttackType.BaseAttack, oldVal, false);
-                                ApplyAttackTimePercentMod(WeaponAttackType.OffAttack, oldVal, false);
-                                ApplyAttackTimePercentMod(WeaponAttackType.BaseAttack, newVal, true);
-                                ApplyAttackTimePercentMod(WeaponAttackType.OffAttack, newVal, true);
-                                if (GetClass() == Class.Deathknight)
-                                    UpdateAllRunesRegen();
-                                break;
-                            case CombatRating.HasteRanged:
-                                ApplyAttackTimePercentMod(WeaponAttackType.RangedAttack, oldVal, false);
-                                ApplyAttackTimePercentMod(WeaponAttackType.RangedAttack, newVal, true);
-                                break;
-                            case CombatRating.HasteSpell:
-                                ApplyCastTimePercentMod(oldVal, false);
-                                ApplyCastTimePercentMod(newVal, true);
-                                break;
-                            default:
-                                break;
-                        }
-                        break;
+                        case CombatRating.HasteMelee:
+                            ApplyAttackTimePercentMod(WeaponAttackType.BaseAttack, oldVal, false);
+                            ApplyAttackTimePercentMod(WeaponAttackType.OffAttack, oldVal, false);
+                            ApplyAttackTimePercentMod(WeaponAttackType.BaseAttack, newVal, true);
+                            ApplyAttackTimePercentMod(WeaponAttackType.OffAttack, newVal, true);
+                            if (GetClass() == Class.Deathknight)
+                                UpdateAllRunesRegen();
+                            break;
+                        case CombatRating.HasteRanged:
+                            ApplyAttackTimePercentMod(WeaponAttackType.RangedAttack, oldVal, false);
+                            ApplyAttackTimePercentMod(WeaponAttackType.RangedAttack, newVal, true);
+                            break;
+                        case CombatRating.HasteSpell:
+                            ApplyCastTimePercentMod(oldVal, false);
+                            ApplyCastTimePercentMod(newVal, true);
+                            break;
+                        default:
+                            break;
                     }
+                    break;
+                }
                 case CombatRating.Expertise:
                     if (affectStats)
                     {
@@ -1667,14 +1692,10 @@ namespace Game.Entities
                     continue;
                 }
 
-                PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(corruptionEffect.PlayerConditionID);
-                if (playerCondition != null)
+                if (!ConditionManager.IsPlayerMeetingCondition(this, (uint)corruptionEffect.PlayerConditionID))
                 {
-                    if (!ConditionManager.IsPlayerMeetingCondition(this, playerCondition))
-                    {
-                        RemoveAura(corruptionEffect.Aura);
-                        continue;
-                    }
+                    RemoveAura(corruptionEffect.Aura);
+                    continue;
                 }
 
                 CastSpell(this, corruptionEffect.Aura, true);
@@ -1766,7 +1787,7 @@ namespace Game.Entities
             }
             SetUpdateFieldStatValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.ParryPercentage), value);
         }
-        
+
         float[] dodge_cap =
         {
             65.631440f,     // Warrior            
@@ -1997,7 +2018,7 @@ namespace Game.Entities
 
             return Stats.Intellect;
         }
-        
+
         public override void UpdateMaxHealth()
         {
             UnitMods unitMod = UnitMods.Health;
@@ -2112,7 +2133,7 @@ namespace Game.Entities
 
             return base.GetCreatePowerValue(power);
         }
-        
+
         public override bool UpdateStats(Stats stat)
         {
             return true;

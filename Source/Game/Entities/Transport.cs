@@ -114,6 +114,7 @@ namespace Game.Entities
             m_updateFlag.ServerTime = true;
             m_updateFlag.Stationary = true;
             m_updateFlag.Rotation = true;
+            m_updateFlag.GameObject = true;
         }
 
         public override void Dispose()
@@ -164,7 +165,6 @@ namespace Game.Entities
             }
 
             _pathProgress = goinfo.MoTransport.allowstopping == 0 ? Time.GetMSTime() /*might be called before world update loop begins, don't use GameTime*/ % tInfo.TotalPathTime : 0;
-            SetPathProgressForClient((float)_pathProgress / (float)tInfo.TotalPathTime);
             SetObjectScale(goinfo.size);
             SetPeriod(tInfo.TotalPathTime);
             SetEntry(goinfo.entry);
@@ -227,8 +227,6 @@ namespace Game.Entities
                 // reset cycle
                 _eventsToTrigger.SetAll(true);
             }
-
-            SetPathProgressForClient((float)_pathProgress / (float)GetTransportPeriod());
 
             uint timer = _pathProgress % GetTransportPeriod();
 
@@ -448,12 +446,12 @@ namespace Game.Entities
                     case SummonCategory.Puppet:
                         mask = UnitTypeMask.Puppet;
                         break;
+                    case SummonCategory.PossessedVehicle:
                     case SummonCategory.Vehicle:
                         mask = UnitTypeMask.Minion;
                         break;
                     case SummonCategory.Wild:
                     case SummonCategory.Ally:
-                    case SummonCategory.Unk:
                     {
                         switch (properties.Title)
                         {
@@ -643,7 +641,7 @@ namespace Game.Entities
             if (oldMapId != newMapId)
             {
                 UnloadStaticPassengers();
-                TeleportPassengersAndHideTransport(newMapId, x, y, z, o);
+                TeleportPassengersAndHideTransport(newMapId);
                 return true;
             }
             else
@@ -673,7 +671,7 @@ namespace Game.Entities
             }
         }
 
-        void TeleportPassengersAndHideTransport(uint newMapid, float x, float y, float z, float o)
+        void TeleportPassengersAndHideTransport(uint newMapid)
         {
             if (newMapid == GetMapId())
             {
@@ -714,12 +712,11 @@ namespace Game.Entities
             {
                 float destX, destY, destZ, destO;
                 obj.m_movementInfo.transport.pos.GetPosition(out destX, out destY, out destZ, out destO);
-                ITransport.CalculatePassengerPosition(ref destX, ref destY, ref destZ, ref destO, x, y, z, o);
 
                 switch (obj.GetTypeId())
                 {
                     case TypeId.Player:
-                        if (!obj.ToPlayer().TeleportTo(newMapid, destX, destY, destZ, destO, TeleportToOptions.NotLeaveTransport))
+                        if (!obj.ToPlayer().TeleportTo(new TeleportLocation() { Location = new WorldLocation(newMapid, destX, destY, destZ, destO), TransportGuid = GetTransGUID() }, TeleportToOptions.NotLeaveTransport))
                             RemovePassenger(obj);
                         break;
                     case TypeId.DynamicObject:
@@ -761,7 +758,7 @@ namespace Game.Entities
         {
             return _transportInfo.PathLegs[_currentPathLeg].MapId;
         }
-        
+
         public HashSet<WorldObject> GetPassengers() { return _passengers; }
 
         public ObjectGuid GetTransportGUID() { return GetGUID(); }
@@ -770,6 +767,11 @@ namespace Game.Entities
         public uint GetTransportPeriod() { return m_gameObjectData.Level; }
         public void SetPeriod(uint period) { SetLevel(period); }
         public uint GetTimer() { return _pathProgress; }
+        public bool IsStopRequested() { return _requestStopTimestamp.HasValue; }
+        public bool IsStopped()
+        {
+            return HasDynamicFlag(GameObjectDynamicLowFlags.Stopped);
+        }
 
         TransportTemplate _transportInfo;
 

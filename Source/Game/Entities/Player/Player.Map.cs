@@ -154,7 +154,6 @@ namespace Game.Entities
 
             uint oldZone = m_zoneUpdateId;
             m_zoneUpdateId = newZone;
-            m_zoneUpdateTimer = 1 * Time.InMilliseconds;
 
             GetMap().UpdatePlayerZoneStats(oldZone, newZone);
 
@@ -370,7 +369,7 @@ namespace Game.Entities
                     var mapDifficultyConditions = Global.DB2Mgr.GetMapDifficultyConditions(mapDiff.Id);
                     foreach (var pair in mapDifficultyConditions)
                     {
-                        if (!ConditionManager.IsPlayerMeetingCondition(this, pair.Item2))
+                        if (!ConditionManager.IsPlayerMeetingCondition(this, pair.Item2.Id))
                         {
                             failedMapDifficultyXCondition = pair.Item1;
                             break;

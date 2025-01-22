@@ -1,6 +1,7 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Framework.ClientBuild;
 using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
@@ -66,9 +67,9 @@ namespace Game.Entities
                         }
 
 
-                        ulong counter = result.Read<ulong>(51);
-                        ObjectGuid bagGuid = counter != 0 ? ObjectGuid.Create(HighGuid.Item, counter) : ObjectGuid.Empty;
-                        byte slot = result.Read<byte>(52);
+                        ulong dbId = result.Read<ulong>(52);
+                        ObjectGuid bagGuid = dbId != 0 ? ObjectGuid.Create(HighGuid.Item, dbId) : ObjectGuid.Empty;
+                        byte slot = result.Read<byte>(53);
 
                         GetSession().GetCollectionMgr().CheckHeirloomUpgrades(item);
                         GetSession().GetCollectionMgr().AddItemAppearance(item);
@@ -226,10 +227,10 @@ namespace Game.Entities
                     }
                     if (item.IsRefundable())
                     {
-                        if (item.GetPlayedTime() > (2 * Time.Hour))
+                        if (item.IsRefundExpired())
                         {
                             Log.outDebug(LogFilter.Player, "LoadInventory: player (GUID: {0}, name: {1}) has item (GUID: {2}, entry: {3}) with expired refund time ({4}). Deleting refund data and removing " +
-                                "efundable flag.", GetGUID().ToString(), GetName(), item.GetGUID().ToString(), item.GetEntry(), item.GetPlayedTime());
+                                "efundable flag.", GetGUID().ToString(), GetName(), item.GetGUID().ToString(), item.GetEntry(), GetTotalPlayedTime() - item.GetPlayedTime());
 
                             stmt = CharacterDatabase.GetPreparedStatement(CharStatements.DEL_ITEM_REFUND_INSTANCE);
                             stmt.AddValue(0, item.GetGUID().ToString());
@@ -587,6 +588,9 @@ namespace Game.Entities
                 }
                 while (auraResult.NextRow());
             }
+
+            // TODO: finish dragonriding - this forces old flight mode
+            AddAura(404468, this);
         }
         bool _LoadHomeBind(SQLResult result)
         {
@@ -1057,15 +1061,14 @@ namespace Game.Entities
             MultiMap<int, TraitEntryPacket> traitEntriesByConfig = new();
             if (!entriesResult.IsEmpty())
             {
-                //                    0            1,                2     3             4
-                // SELECT traitConfigId, traitNodeId, traitNodeEntryId, rank, grantedRanks FROM character_trait_entry WHERE guid = ?
+                //         0              1            2                 3
+                // SELECT traitConfigId, traitNodeId, traitNodeEntryId, rank FROM character_trait_entry WHERE guid = ?
                 do
                 {
                     TraitEntryPacket traitEntry = new();
                     traitEntry.TraitNodeID = entriesResult.Read<int>(1);
                     traitEntry.TraitNodeEntryID = entriesResult.Read<int>(2);
                     traitEntry.Rank = entriesResult.Read<int>(3);
-                    traitEntry.GrantedRanks = entriesResult.Read<int>(4);
 
                     if (!TraitMgr.IsValidEntry(traitEntry))
                         continue;
@@ -1095,7 +1098,7 @@ namespace Game.Entities
                             traitConfig.SkillLineID = configsResult.Read<uint>(5);
                             break;
                         case TraitConfigType.Generic:
-                            traitConfig.TraitSystemID = configsResult.Read<int>(6);
+                            traitConfig.TraitSystemID = configsResult.Read<uint>(6);
                             break;
                         default:
                             break;
@@ -1103,20 +1106,44 @@ namespace Game.Entities
 
                     traitConfig.Name = configsResult.Read<string>(7);
 
-                    foreach (var traitEntry in traitEntriesByConfig.LookupByKey(traitConfig.ID))
-                        traitConfig.Entries.Add(traitEntry);
+                    foreach (var grantedEntry in TraitMgr.GetGrantedTraitEntriesForConfig(traitConfig, this))
+                        traitConfig.Entries.Add(new TraitEntryPacket(grantedEntry));
 
-                    if (TraitMgr.ValidateConfig(traitConfig, this) != TalentLearnResult.LearnOk)
+                    var loadedEntriesNode = traitEntriesByConfig.LookupByKey(traitConfig.ID);
+                    if (loadedEntriesNode != null)
+                    {
+                        foreach (var loadedEntry in loadedEntriesNode)
+                        {
+                            var itr = traitConfig.Entries.Find(entry => entry.TraitNodeID == loadedEntry.TraitNodeID && entry.TraitNodeEntryID == loadedEntry.TraitNodeEntryID);
+                            if (itr == null)
+                            {
+                                traitConfig.Entries.Add(traitConfig.Entries.Last());
+                                traitConfig.Entries[^1].TraitNodeID = loadedEntry.TraitNodeID;
+                                traitConfig.Entries[^1].TraitNodeEntryID = loadedEntry.TraitNodeEntryID;
+                            }
+                            itr.Rank = loadedEntry.Rank;
+                        }
+                    }
+
+                    if (TraitMgr.ValidateConfig(traitConfig, this, false, true) != TalentLearnResult.LearnOk)
                     {
                         traitConfig.Entries.Clear();
+                        traitConfig.SubTrees.Clear();
                         foreach (TraitEntry grantedEntry in TraitMgr.GetGrantedTraitEntriesForConfig(traitConfig, this))
                             traitConfig.Entries.Add(new TraitEntryPacket(grantedEntry));
+
+                        // rebuild subtrees
+                        TraitMgr.ValidateConfig(traitConfig, this, false, true);
                     }
 
                     AddTraitConfig(traitConfig);
 
                 } while (configsResult.NextRow());
             }
+
+            // Remove orphaned trait entries from database
+            foreach (var (traitConfigID, _) in traitEntriesByConfig)
+                m_traitConfigStates[traitConfigID] = PlayerSpellState.Removed;
 
             bool hasConfigForSpec(int specId)
             {
@@ -1332,7 +1359,7 @@ namespace Game.Entities
 
                 do
                 {
-                    ulong mailId = mailItemsResult.Read<ulong>(52);
+                    ulong mailId = mailItemsResult.Read<ulong>(53);
                     _LoadMailedItem(GetGUID(), this, mailId, mailById[mailId], mailItemsResult.GetFields(), additionalData.LookupByKey(mailItemsResult.Read<ulong>(0)));
                 }
                 while (mailItemsResult.NextRow());
@@ -1366,7 +1393,7 @@ namespace Game.Entities
             }
 
             Item item = Bag.NewItemOrBag(proto);
-            ObjectGuid ownerGuid = fields.Read<ulong>(51) != 0 ? ObjectGuid.Create(HighGuid.Player, fields.Read<ulong>(51)) : ObjectGuid.Empty;
+            ObjectGuid ownerGuid = fields.Read<ulong>(52) != 0 ? ObjectGuid.Create(HighGuid.Player, fields.Read<ulong>(52)) : ObjectGuid.Empty;
             if (!item.LoadFromDB(itemGuid, ownerGuid, fields, itemEntry))
             {
                 Log.outError(LogFilter.Player, $"Player._LoadMailedItems: Item (GUID: {itemGuid}) in mail ({mailId}) doesn't exist, deleted from mail.");
@@ -1735,7 +1762,8 @@ namespace Game.Entities
                 Item item = GetItemByGuid(guid);
                 if (item != null)
                 {
-                    item.UpdatePlayedTime(this);
+                    if (item.IsRefundable() && item.IsRefundExpired())
+                        item.SetNotRefundable(this);
                     continue;
                 }
                 else
@@ -2429,7 +2457,6 @@ namespace Game.Entities
                                 stmt.AddValue(2, traitEntry.TraitNodeID);
                                 stmt.AddValue(3, traitEntry.TraitNodeEntryID);
                                 stmt.AddValue(4, traitEntry.Rank);
-                                stmt.AddValue(5, traitEntry.GrantedRanks);
                                 trans.Append(stmt);
                             }
                         }
@@ -2827,7 +2854,17 @@ namespace Game.Entities
             uint xp = result.Read<uint>(fieldIndex++);
             ulong money = result.Read<ulong>(fieldIndex++);
             byte inventorySlots = result.Read<byte>(fieldIndex++);
+            BagSlotFlags inventoryBagFlags = (BagSlotFlags)result.Read<uint>(fieldIndex++);
+            BagSlotFlags[] bagSlotFlags = new BagSlotFlags[5];
+            for (var i = 0; i < bagSlotFlags.Length; ++i)
+                bagSlotFlags[i] = (BagSlotFlags)result.Read<uint>(fieldIndex++);
+
             byte bankSlots = result.Read<byte>(fieldIndex++);
+            BagSlotFlags[] bankBagSlotFlags = new BagSlotFlags[7];
+            BagSlotFlags bankBagFlags = (BagSlotFlags)result.Read<uint>(fieldIndex++);
+            for (var i = 0; i < bankBagSlotFlags.Length; ++i)
+                bankBagSlotFlags[i] = (BagSlotFlags)result.Read<uint>(fieldIndex++);
+
             PlayerRestState restState = (PlayerRestState)result.Read<byte>(fieldIndex++);
             PlayerFlags playerFlags = (PlayerFlags)result.Read<uint>(fieldIndex++);
             PlayerFlagsEx playerFlagsEx = (PlayerFlagsEx)result.Read<uint>(fieldIndex++);
@@ -2990,7 +3027,16 @@ namespace Game.Entities
 
             SetCustomizations(customizations, false);
             SetInventorySlotCount(inventorySlots);
+            SetBackpackAutoSortDisabled(inventoryBagFlags.HasFlag(BagSlotFlags.DisableAutoSort));
+            SetBackpackSellJunkDisabled(inventoryBagFlags.HasFlag(BagSlotFlags.ExcludeJunkSell));
+            for (int bagIndex = 0; bagIndex < bagSlotFlags.Length; ++bagIndex)
+                ReplaceAllBagSlotFlags(bagIndex, bagSlotFlags[bagIndex]);
+
             SetBankBagSlotCount(bankSlots);
+            SetBankAutoSortDisabled(bankBagFlags.HasFlag(BagSlotFlags.DisableAutoSort));
+            for (int bagIndex = 0; bagIndex < bankBagSlotFlags.Length; ++bagIndex)
+                ReplaceAllBankBagSlotFlags(bagIndex, bankBagSlotFlags[bagIndex]);
+
             SetNativeGender(gender);
             SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.Inebriation), drunk);
             ReplaceAllPlayerFlags(playerFlags);
@@ -3612,10 +3658,8 @@ namespace Game.Entities
                 if (GetSession().GetCollectionMgr().HasTransmogIllusion(transmogIllusion.Id))
                     continue;
 
-                var playerCondition = CliDB.PlayerConditionStorage.LookupByKey(transmogIllusion.UnlockConditionID);
-                if (playerCondition != null)
-                    if (!ConditionManager.IsPlayerMeetingCondition(this, playerCondition))
-                        continue;
+                if (!ConditionManager.IsPlayerMeetingCondition(this, (uint)transmogIllusion.UnlockConditionID))
+                    continue;
 
                 GetSession().GetCollectionMgr().AddTransmogIllusion(transmogIllusion.Id);
             }
@@ -3678,7 +3722,24 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetXP());
                 stmt.AddValue(index++, GetMoney());
                 stmt.AddValue(index++, GetInventorySlotCount());
+
+                BagSlotFlags inventoryFlags = BagSlotFlags.None;
+                if (m_activePlayerData.BackpackAutoSortDisabled)
+                    inventoryFlags |= BagSlotFlags.DisableAutoSort;
+                if (m_activePlayerData.BackpackSellJunkDisabled)
+                    inventoryFlags |= BagSlotFlags.ExcludeJunkSell;
+                stmt.AddValue(index++, (uint)inventoryFlags);
+                foreach (uint bagSlotFlag in m_activePlayerData.BagSlotFlags)
+                    stmt.AddValue(index++, bagSlotFlag);
                 stmt.AddValue(index++, GetBankBagSlotCount());
+
+                inventoryFlags = BagSlotFlags.None;
+                if (m_activePlayerData.BankAutoSortDisabled)
+                    inventoryFlags |= BagSlotFlags.DisableAutoSort;
+                stmt.AddValue(index++, (uint)inventoryFlags);
+                foreach (uint bankBagSlotFlag in m_activePlayerData.BankBagSlotFlags)
+                    stmt.AddValue(index++, bankBagSlotFlag);
+
                 stmt.AddValue(index++, m_activePlayerData.RestInfo[(int)RestTypes.XP].StateID);
                 stmt.AddValue(index++, m_playerData.PlayerFlags);
                 stmt.AddValue(index++, m_playerData.PlayerFlagsEx);
@@ -3744,8 +3805,8 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetLootSpecId());
 
                 ss.Clear();
-                for (int i = 0; i < m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size(); ++i)
-                    ss.Append($"{(uint)(m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] >> 32) & 0xFFFFFFFF)} ");
+                for (int i = 0; i < m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values.Size(); ++i)
+                    ss.Append($"{(uint)(m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values[i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values[i] >> 32) & 0xFFFFFFFF)} ");
 
                 stmt.AddValue(index++, ss.ToString());
 
@@ -3778,7 +3839,11 @@ namespace Game.Entities
                 stmt.AddValue(index++, ss.ToString());
 
                 stmt.AddValue(index++, m_activePlayerData.MultiActionBars);
-                stmt.AddValue(index++, Global.RealmMgr.GetMinorMajorBugfixVersionForBuild(Global.WorldMgr.GetRealm().Build));
+                var currentRealm = Global.RealmMgr.GetCurrentRealm();
+                if (currentRealm != null)
+                    stmt.AddValue(index++, ClientBuildHelper.GetMinorMajorBugfixVersionForBuild(currentRealm.Build));
+                else
+                    stmt.AddValue(index++, 0);
             }
             else
             {
@@ -3792,7 +3857,24 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetXP());
                 stmt.AddValue(index++, GetMoney());
                 stmt.AddValue(index++, GetInventorySlotCount());
+
+                BagSlotFlags inventoryFlags = BagSlotFlags.None;
+                if (m_activePlayerData.BackpackAutoSortDisabled)
+                    inventoryFlags |= BagSlotFlags.DisableAutoSort;
+                if (m_activePlayerData.BackpackSellJunkDisabled)
+                    inventoryFlags |= BagSlotFlags.ExcludeJunkSell;
+                stmt.AddValue(index++, (uint)inventoryFlags);
+                foreach (uint bagSlotFlag in m_activePlayerData.BagSlotFlags)
+                    stmt.AddValue(index++, bagSlotFlag);
                 stmt.AddValue(index++, GetBankBagSlotCount());
+
+                inventoryFlags = BagSlotFlags.None;
+                if (m_activePlayerData.BankAutoSortDisabled)
+                    inventoryFlags |= BagSlotFlags.DisableAutoSort;
+                stmt.AddValue(index++, (uint)inventoryFlags);
+                foreach (uint bankBagSlotFlag in m_activePlayerData.BankBagSlotFlags)
+                    stmt.AddValue(index++, bankBagSlotFlag);
+
                 stmt.AddValue(index++, m_activePlayerData.RestInfo[(int)RestTypes.XP].StateID);
                 stmt.AddValue(index++, m_playerData.PlayerFlags);
                 stmt.AddValue(index++, m_playerData.PlayerFlagsEx);
@@ -3811,15 +3893,15 @@ namespace Game.Entities
                 }
                 else
                 {
-                    stmt.AddValue(index++, (ushort)GetTeleportDest().GetMapId());
+                    stmt.AddValue(index++, (ushort)GetTeleportDest().Location.GetMapId());
                     stmt.AddValue(index++, 0);
                     stmt.AddValue(index++, (byte)GetDungeonDifficultyID());
                     stmt.AddValue(index++, (byte)GetRaidDifficultyID());
                     stmt.AddValue(index++, (byte)GetLegacyRaidDifficultyID());
-                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().GetPositionX()));
-                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().GetPositionY()));
-                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().GetPositionZ()));
-                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().GetOrientation()));
+                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().Location.GetPositionX()));
+                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().Location.GetPositionY()));
+                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().Location.GetPositionZ()));
+                    stmt.AddValue(index++, finiteAlways(GetTeleportDest().Location.GetOrientation()));
                 }
 
                 stmt.AddValue(index++, finiteAlways(GetTransOffsetX()));
@@ -3879,8 +3961,8 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetLootSpecId());
 
                 ss.Clear();
-                for (int i = 0; i < m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size(); ++i)
-                    ss.Append($"{(uint)(m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][i] >> 32) & 0xFFFFFFFF)} ");
+                for (int i = 0; i < m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values.Size(); ++i)
+                    ss.Append($"{(uint)(m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values[i] & 0xFFFFFFFF)} {(uint)((m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values[i] >> 32) & 0xFFFFFFFF)} ");
 
                 stmt.AddValue(index++, ss.ToString());
 
@@ -3918,7 +4000,11 @@ namespace Game.Entities
                 stmt.AddValue(index++, GetHonorLevel());
                 stmt.AddValue(index++, m_activePlayerData.RestInfo[(int)RestTypes.Honor].StateID);
                 stmt.AddValue(index++, finiteAlways(_restMgr.GetRestBonus(RestTypes.Honor)));
-                stmt.AddValue(index++, Global.RealmMgr.GetMinorMajorBugfixVersionForBuild(Global.WorldMgr.GetRealm().Build));
+                var currentRealm = Global.RealmMgr.GetCurrentRealm();
+                if (currentRealm != null)
+                    stmt.AddValue(index++, ClientBuildHelper.GetMinorMajorBugfixVersionForBuild(currentRealm.Build));
+                else
+                    stmt.AddValue(index++, 0);
 
                 // Index
                 stmt.AddValue(index, GetGUID().GetCounter());
@@ -3980,17 +4066,19 @@ namespace Game.Entities
             GetSession().GetCollectionMgr().SaveAccountItemAppearances(loginTransaction);
             GetSession().GetCollectionMgr().SaveAccountTransmogIllusions(loginTransaction);
 
+            var currentRealmId = Global.RealmMgr.GetCurrentRealmId();
+
             stmt = LoginDatabase.GetPreparedStatement(LoginStatements.DEL_BNET_LAST_PLAYER_CHARACTERS);
             stmt.AddValue(0, GetSession().GetAccountId());
-            stmt.AddValue(1, Global.WorldMgr.GetRealmId().Region);
-            stmt.AddValue(2, Global.WorldMgr.GetRealmId().Site);
+            stmt.AddValue(1, currentRealmId.Region);
+            stmt.AddValue(2, currentRealmId.Site);
             loginTransaction.Append(stmt);
 
             stmt = LoginDatabase.GetPreparedStatement(LoginStatements.INS_BNET_LAST_PLAYER_CHARACTERS);
             stmt.AddValue(0, GetSession().GetAccountId());
-            stmt.AddValue(1, Global.WorldMgr.GetRealmId().Region);
-            stmt.AddValue(2, Global.WorldMgr.GetRealmId().Site);
-            stmt.AddValue(3, Global.WorldMgr.GetRealmId().Index);
+            stmt.AddValue(1, currentRealmId.Region);
+            stmt.AddValue(2, currentRealmId.Site);
+            stmt.AddValue(3, currentRealmId.Index);
             stmt.AddValue(4, GetName());
             stmt.AddValue(5, GetGUID().GetCounter());
             stmt.AddValue(6, GameTime.GetGameTime());
@@ -4163,7 +4251,7 @@ namespace Game.Entities
 
                             do
                             {
-                                ulong mailId = resultItems.Read<ulong>(52);
+                                ulong mailId = resultItems.Read<ulong>(53);
                                 Item mailItem = _LoadMailedItem(playerGuid, null, mailId, null, resultItems.GetFields(), additionalData.LookupByKey(resultItems.Read<ulong>(0)));
                                 if (mailItem != null)
                                     itemsByMail.Add(mailId, mailItem);
@@ -4488,12 +4576,12 @@ namespace Game.Entities
 
                     stmt = LoginDatabase.GetPreparedStatement(LoginStatements.DEL_BATTLE_PET_DECLINED_NAME_BY_OWNER);
                     stmt.AddValue(0, guid);
-                    stmt.AddValue(1, Global.WorldMgr.GetRealmId().Index);
+                    stmt.AddValue(1, Global.RealmMgr.GetCurrentRealmId().Index);
                     loginTransaction.Append(stmt);
 
                     stmt = LoginDatabase.GetPreparedStatement(LoginStatements.DEL_BATTLE_PETS_BY_OWNER);
                     stmt.AddValue(0, guid);
-                    stmt.AddValue(1, Global.WorldMgr.GetRealmId().Index);
+                    stmt.AddValue(1, Global.RealmMgr.GetCurrentRealmId().Index);
                     loginTransaction.Append(stmt);
 
                     Corpse.DeleteFromDB(playerGuid, trans);

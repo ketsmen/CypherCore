@@ -56,7 +56,7 @@ namespace Framework.Constants
         public const uint mmapMagic = 0x4D4D4150; // 'MMAP'
         public const int mmapVersion = 15;
 
-        public const string VMapMagic = "VMAP_4.C";
+        public const string VMapMagic = "VMAP_4.D";
         public const float VMAPInvalidHeightValue = -200000.0f;
 
         public const uint MaxDungeonEncountersPerBoss = 4;
@@ -70,11 +70,10 @@ namespace Framework.Constants
 
     public enum InstanceResetWarningType
     {
-        WarningHours = 1,                    // WARNING! %s is scheduled to reset in %d hour(s).
-        WarningMin = 2,                    // WARNING! %s is scheduled to reset in %d minute(s)!
-        WarningMinSoon = 3,                    // WARNING! %s is scheduled to reset in %d minute(s). Please exit the zone or you will be returned to your bind location!
-        Welcome = 4,                    // Welcome to %s. This raid instance is scheduled to reset in %s.
-        Expired = 5
+        Welcome = 1,      // Welcome to %s. Instance locks are scheduled to expire in %s.
+        Expired = 2,      // Your instance lock for %s has expired.
+        WelcomeDaily = 3, // Welcome to %s. The daily reset is scheduled to occur in %s and will reset this instance.
+        WarningTime = 4,  // any GlobalStrings tag that has 1 formattable argument, like DELVES_INSTANCE_RESET_WARNING
     }
 
     public enum InstanceResetMethod

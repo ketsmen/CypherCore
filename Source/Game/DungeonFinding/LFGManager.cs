@@ -53,8 +53,8 @@ namespace Game.DungeonFinding
 
             SetLeader(guid, ObjectGuid.Create(HighGuid.Player, field.Read<ulong>(0)));
 
-            uint dungeon = field.Read<uint>(18);
-            LfgState state = (LfgState)field.Read<byte>(19);
+            uint dungeon = field.Read<uint>(19);
+            LfgState state = (LfgState)field.Read<byte>(20);
 
             if (dungeon == 0 || state == 0)
                 return;
@@ -1323,7 +1323,7 @@ namespace Game.DungeonFinding
 
                 player.FinishTaxiFlight();
 
-                if (!player.TeleportTo(mapid, x, y, z, orientation))
+                if (!player.TeleportTo(new Game.Entities.TeleportLocation(){ Location = new WorldLocation(mapid, x, y, z, orientation), LfgDungeonsId = dungeon.id }))
                     error = LfgTeleportResult.NoReturnLocation;
             }
             else
@@ -1430,10 +1430,12 @@ namespace Game.DungeonFinding
                     continue;
                 }
 
+                player.UpdateCriteria(CriteriaType.CompletedLFGDungeon, 1);
+
                 // Update achievements
                 if (dungeon.difficulty == Difficulty.Heroic)
                 {
-                    byte lfdRandomPlayers = 0;
+                    byte lfdRandomPlayers;
                     byte numParty = PlayersStore[guid].GetNumberOfPartyMembersAtJoin();
                     if (numParty != 0)
                         lfdRandomPlayers = (byte)(5 - numParty);
@@ -1661,7 +1663,7 @@ namespace Game.DungeonFinding
                 }
                 else
                 {
-                    var levels = Global.DB2Mgr.GetContentTuningData(dungeon.contentTuningId, player.m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                    var levels = Global.DB2Mgr.GetContentTuningData(dungeon.contentTuningId, player.m_playerData.CtrOptions.GetValue().ConditionalFlags);
                     if (levels.HasValue)
                     {
                         if (levels.Value.MinLevel > level)

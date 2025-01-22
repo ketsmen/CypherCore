@@ -29,7 +29,7 @@ namespace Game.DataStorage
         public LocalizedString Name;
         public string Description;
         public LfgType TypeID;
-        public sbyte Subtype;
+        public byte Subtype;
         public sbyte Faction;
         public int IconTextureFileID;
         public int RewardsBgTextureFileID;
@@ -53,6 +53,7 @@ namespace Game.DataStorage
         public ushort BonusReputationAmount;
         public ushort MentorItemLevel;
         public byte MentorCharLevel;
+        public byte MaxPremadeGroupSize;
         public uint ContentTuningID;
         public LfgFlags[] Flags = new LfgFlags[2];
 
@@ -94,6 +95,13 @@ namespace Game.DataStorage
         public float[] Float = new float[18];
         public uint[] Int = new uint[4];
         public float[] Coefficient = new float[4];
+    }
+
+    public sealed class LocationRecord
+    {
+        public uint Id;
+        public Vector3 Pos;
+        public float[] Rot = new float[3];
     }
 
     public sealed class LockRecord

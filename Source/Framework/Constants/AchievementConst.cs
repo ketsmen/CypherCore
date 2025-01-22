@@ -450,8 +450,21 @@ namespace Framework.Constants
         PlayerWeaponHighWatermarkAboveOrEqual = 375, /*NYI*/
         PlayerHeadHighWatermarkAboveOrEqual = 376, /*NYI*/
         PlayerHasDisplayedCurrencyLessThan = 377, /*NYI*/ // Player has {CurrencyTypes} less than {#Amount} (value visible in ui is taken into account, not raw value)
-
+        PlayerDataFlagAccountIsSet = 378, /*NYI*/ // Player {PlayerDataFlagAccount} is set
+        PlayerDataFlagCharacterIsSet = 379, /*NYI*/ // Player {PlayerDataFlagCharacter} is set
         PlayerIsOnMapWithExpansion = 380, // Player is on map that has {ExpansionID}
+
+        PlayerHasCompletedQuestOnAccount = 382, /*NYI*/ // Player has previously completed quest "{QuestV2}" on account
+        PlayerHasCompletedQuestlineOnAccount = 383, /*NYI*/ // Player has completed questline "{Questline}" on account
+        PlayerHasCompletedQuestlineQuestCountOnAccount = 384, /*NYI*/ // Player has completed "{#Quests}" quests in questline "{Questline}" on account
+        PlayerHasActiveTraitSubTree = 385, // Player has active trait config with {TraitSubTree}
+
+        PlayerIsInSoloRBG = 387, /*NYI*/ // Player is in solo RBG (BG Blitz)
+        PlayerHasCompletedCampaign = 388, /*NYI*/ // Player has completed campaign "{Campaign}"
+        TargetCreatureClassificationEqual = 389, // Creature classification is {CreatureClassification}
+        PlayerDataElementCharacterEqual = 390, /*NYI*/ // Player {PlayerDataElementCharacter} is greater than {#Amount}
+        PlayerDataElementAccountEqual = 391, /*NYI*/ // Player {PlayerDataElementAccount} is greater than {#Amount}
+        PlayerHasCompletedQuestOrIsReadyToTurnIn = 392, // Player has previously completed quest "{QuestV2}" or is ready to turn it in
     }
 
     public enum CriteriaFailEvent : byte
@@ -541,7 +554,7 @@ namespace Framework.Constants
         TrackedWorldStateUIModified = 30,  // Tracked WorldStateUI value "{WorldStateUI}" is modified
         PVPKillInArea = 31,  // Kill someone in PVP in "{AreaTable}"
         WinArena = 32,  // Win arena "{Map}"
-        ParticipateInArena = 33,  /*NYI*/ // Participate in arena "{Map}"
+        ParticipateInArena = 33,  // Participate in arena "{Map}"
         LearnOrKnowSpell = 34,  // Learn or Know spell "{Spell}"
         EarnHonorableKill = 35,  // Earn an honorable kill
         AcquireItem = 36,  // Acquire item "{Item}"
@@ -581,7 +594,7 @@ namespace Framework.Constants
         KillPlayer = 70,  // Kill a player (no honor check)
         CompleteChallengeMode = 71,  /*NYI*/ // Complete a challenge mode on map "{Map}"
         CatchFishInFishingHole = 72,  // Catch fish in the "{GameObjects}" fishing hole
-        PlayerTriggerGameEvent = 73,  /*NYI*/ // Player will Trigger game event "{GameEvents}"
+        PlayerTriggerGameEvent = 73,  // Player will Trigger game event "{GameEvents}"
         Login = 74,  // Login (USE SPARINGLY!)
         LearnSpellFromSkillLine = 75,  // Learn spell from the "{SkillLine}" skill line
         WinDuel = 76,  // Win a duel
@@ -626,7 +639,7 @@ namespace Framework.Constants
         EarnAchievementPoints = 115, // Earn achievement points
         RollDisenchant = 116, /*NYI*/ // Roll disenchant and get {#Disenchant Roll}
         RollAnyDisenchant = 117, /*NYI*/ // Roll any number on disenchant
-        CompletedLFGDungeon = 118, /*NYI*/ // Completed an LFG dungeon
+        CompletedLFGDungeon = 118, // Completed an LFG dungeon
         CompletedLFGDungeonWithStrangers = 119, // Completed an LFG dungeon with strangers
         KickInitiatorInLFGDungeon = 120, /*NYI*/ // Kicked in an LFG dungeon (initiator)
         KickVoterInLFGDungeon = 121, /*NYI*/ // Kicked in an LFG dungeon (voter)
@@ -659,10 +672,10 @@ namespace Framework.Constants
         KickVoterInLFRDungeon = 148, /*NYI*/ // Kicked in an LFR dungeon (voter)
         KickTargetInLFRDungeon = 149, /*NYI*/ // Kicked in an LFR dungeon (target)
         GroupedTankLeftEarlyInLFRDungeon = 150, /*NYI*/ // Grouped tank left early in an LFR dungeon
-        CompleteAnyScenario = 151, /*NYI*/ // Complete a Scenario
-        CompleteScenario = 152, /*NYI*/ // Complete scenario "{Scenario}"
-        EnterAreaTriggerWithActionSet = 153, /*NYI*/ // Enter area trigger "{AreaTriggerActionSet}"
-        LeaveAreaTriggerWithActionSet = 154, /*NYI*/ // Leave area trigger "{AreaTriggerActionSet}"
+        CompleteAnyScenario = 151, // Complete a Scenario
+        CompleteScenario = 152, // Complete scenario "{Scenario}"
+        EnterAreaTriggerWithActionSet = 153, // Enter area trigger "{AreaTriggerActionSet}"
+        LeaveAreaTriggerWithActionSet = 154, // Leave area trigger "{AreaTriggerActionSet}"
         LearnedNewPet = 155, // (Account Only) Learned a new pet
         UniquePetsOwned = 156, // (Account Only) Unique pets owned
         AccountObtainPetThroughBattle = 157, /*NYI*/ // (Account Only) Obtain a pet through battle
@@ -696,12 +709,12 @@ namespace Framework.Constants
         LearnToy = 185, /*NYI*/ // Learn Toy "{Item}"
         LearnAnyToy = 186, /*NYI*/ // Learn Any Toy
         QualityUpgradedForGarrisonFollower = 187, /*NYI*/ // Garrison Follower: Quality Upgraded
-        LearnHeirloom = 188, /*NYI*/ // Learn Heirloom "{Item}"
-        LearnAnyHeirloom = 189, /*NYI*/ // Learn Any Heirloom
-        EarnArtifactXP = 190, /*NYI*/ // Earn Artifact XP
-        AnyArtifactPowerRankPurchased = 191, /*NYI*/ // Artifact Power Ranks Purchased
+        LearnHeirloom = 188, // Learn Heirloom "{Item}"
+        LearnAnyHeirloom = 189, // Learn Any Heirloom
+        EarnArtifactXP = 190, // Earn Artifact XP
+        AnyArtifactPowerRankPurchased = 191, // Artifact Power Ranks Purchased
         LearnTransmog = 192, /*NYI*/ // Learn Transmog "{ItemModifiedAppearance}"
-        LearnAnyTransmog = 193, /*NYI*/ // Learn Any Transmog
+        LearnAnyTransmog = 193, // Learn Any Transmog
         HonorLevelIncrease = 194, // (Player) honor level increase
         PrestigeLevelIncrease = 195, /*NYI*/ // (Player) prestige level increase
         ActivelyReachLevel = 196, // Actively level to level {#Level}
@@ -751,7 +764,13 @@ namespace Framework.Constants
         CompleteTrackingQuest = 250, /*NYI*/
 
         GainLevels = 253, // Gain levels
-        Count = 257
+
+        CompleteQuestsCountOnAccount = 257, /*NYI*/
+
+        WarbandBankTabPurchased = 260, /*NYI*/
+        ReachRenownLevel = 261,
+        LearnTaxiNode = 262,
+        Count = 264
     }
 
     public enum CriteriaDataType

@@ -152,7 +152,7 @@ namespace Game.Networking.Packets
                 {
                     _worldPacket.WritePackedGuid(powerDrainTarget.Victim);
                     _worldPacket.WriteUInt32(powerDrainTarget.Points);
-                    _worldPacket.WriteUInt32(powerDrainTarget.PowerType);
+                    _worldPacket.WriteInt8((sbyte)powerDrainTarget.PowerType);
                     _worldPacket.WriteFloat(powerDrainTarget.Amplitude);
                 }
 
@@ -382,7 +382,7 @@ namespace Game.Networking.Packets
             _worldPacket.WritePackedGuid(CasterGUID);
 
             _worldPacket.WriteUInt32(SpellID);
-            _worldPacket.WriteUInt32((uint)Type);
+            _worldPacket.WriteInt8((sbyte)Type);
             _worldPacket.WriteInt32(Amount);
             _worldPacket.WriteInt32(OverEnergize);
 
@@ -565,17 +565,7 @@ namespace Game.Networking.Packets
             if (hitInfo.HasAnyFlag(HitInfo.Block | HitInfo.Unk12))
                 attackRoundInfo.WriteFloat(Unk);
 
-            attackRoundInfo.WriteUInt8((byte)ContentTuning.TuningType);
-            attackRoundInfo.WriteUInt8(ContentTuning.TargetLevel);
-            attackRoundInfo.WriteUInt8(ContentTuning.Expansion);
-            attackRoundInfo.WriteInt16(ContentTuning.PlayerLevelDelta);
-            attackRoundInfo.WriteInt8(ContentTuning.TargetScalingLevelDelta);
-            attackRoundInfo.WriteFloat(ContentTuning.PlayerItemLevel);
-            attackRoundInfo.WriteFloat(ContentTuning.TargetItemLevel);
-            attackRoundInfo.WriteUInt32(ContentTuning.ScalingHealthItemLevelCurveID);
-            attackRoundInfo.WriteUInt32((uint)ContentTuning.Flags);
-            attackRoundInfo.WriteUInt32(ContentTuning.PlayerContentTuningID);
-            attackRoundInfo.WriteUInt32(ContentTuning.TargetContentTuningID);
+            ContentTuning.Write(attackRoundInfo);
 
             WriteLogDataBit();
             FlushBits();
@@ -673,7 +663,7 @@ namespace Game.Networking.Packets
     {
         public ObjectGuid Victim;
         public uint Points;
-        public uint PowerType;
+        public PowerType PowerType;
         public float Amplitude;
     }
 

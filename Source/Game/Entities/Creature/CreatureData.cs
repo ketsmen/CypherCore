@@ -23,7 +23,7 @@ namespace Game.Entities
         public string IconName;
         public List<uint> GossipMenuIds = new();
         public Dictionary<Difficulty, CreatureDifficulty> difficultyStorage = new();
-        public uint RequiredExpansion;
+        public int RequiredExpansion;
         public uint VignetteID;
         public uint Faction;
         public ulong Npcflag;
@@ -141,7 +141,12 @@ namespace Game.Entities
         public void InitializeQueryData()
         {
             for (var loc = Locale.enUS; loc < Locale.Total; ++loc)
+            {
+                if (!WorldConfig.GetBoolValue(WorldCfg.LoadLocales) && loc != SharedConst.DefaultLocale)
+                    continue;
+
                 QueryData[(int)loc] = BuildQueryData(loc, Difficulty.None);
+            }
         }
 
         public QueryCreatureResponse BuildQueryData(Locale locale, Difficulty difficulty)
@@ -179,7 +184,7 @@ namespace Game.Entities
             stats.EnergyMulti = creatureDifficulty.ManaModifier;
 
             stats.CreatureMovementInfoID = MovementId;
-            stats.RequiredExpansion = RequiredExpansion;
+            stats.RequiredExpansion = (uint)RequiredExpansion;
             stats.HealthScalingExpansion = creatureDifficulty.HealthScalingExpansion;
             stats.VignetteID = VignetteID;
             stats.Class = (int)UnitClass;
@@ -266,8 +271,7 @@ namespace Game.Entities
         public sbyte equipmentId;
         public float WanderDistance;
         public uint currentwaypoint;
-        public uint curhealth;
-        public uint curmana;
+        public uint curHealthPct;
         public byte movementType;
         public ulong? npcflag;
         public uint? unit_flags;                                  // enum UnitFlags mask values

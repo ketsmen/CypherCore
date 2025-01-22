@@ -27,8 +27,8 @@ namespace Game
 
             var oldMSTime = Time.GetMSTime();
 
-            //                                          0       1         2
-            SQLResult result = DB.World.Query("SELECT  PathId, MoveType, Flags FROM waypoint_path");
+            //                                          0       1         2      3
+            SQLResult result = DB.World.Query("SELECT  PathId, MoveType, Flags, Velocity FROM waypoint_path");
             if (result.IsEmpty())
             {
                 Log.outInfo(LogFilter.ServerLoading, "Loaded 0 waypoint paths. DB table `waypoint_path` is empty!");
@@ -68,7 +68,6 @@ namespace Game
             while (result.NextRow());
 
             Log.outInfo(LogFilter.ServerLoading, $"Loaded {count} waypoint path nodes in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
-            DoPostLoadingChecks();
         }
 
         void LoadPathFromDB(SQLFields fields)
@@ -76,7 +75,6 @@ namespace Game
             uint pathId = fields.Read<uint>(0);
 
             WaypointPath path = new();
-            path.Id = pathId;
             path.MoveType = (WaypointMoveType)fields.Read<byte>(1);
 
             if (path.MoveType >= WaypointMoveType.Max)
@@ -84,7 +82,19 @@ namespace Game
                 Log.outError(LogFilter.Sql, $"PathId {pathId} in `waypoint_path` has invalid MoveType {path.MoveType}, ignoring");
                 return;
             }
+
+            path.Id = pathId;
             path.Flags = (WaypointPathFlags)fields.Read<byte>(2);
+
+            if (!fields.IsNull(3))
+            {
+                float velocity = fields.Read<float>(3);
+                if (velocity > 0.0f)
+                    path.Velocity = velocity;
+                else
+                    Log.outError(LogFilter.Sql, $"PathId {pathId} in `waypoint_path` has invalid velocity {velocity}, using default velocity instead");
+            }
+
             path.Nodes.Clear();
 
             _pathStorage.Add(pathId, path);
@@ -107,23 +117,29 @@ namespace Game
             if (!fields.IsNull(5))
                 o = fields.Read<float>(5);
 
+            TimeSpan delay = default;
+            uint delayMs = fields.Read<uint>(6);
+            if (delayMs != 0)
+                delay = TimeSpan.FromMilliseconds(delayMs);
+
             GridDefines.NormalizeMapCoord(ref x);
             GridDefines.NormalizeMapCoord(ref y);
 
-            WaypointNode waypoint = new(fields.Read<uint>(1), x, y, z, o, fields.Read<uint>(6));
+            WaypointNode waypoint = new(fields.Read<uint>(1), x, y, z, o, delay);
             _pathStorage[pathId].Nodes.Add(waypoint);
         }
 
         void DoPostLoadingChecks()
         {
-            foreach (var path in _pathStorage)
+            foreach (var (pathId, pathInfo) in _pathStorage)
             {
-                WaypointPath pathInfo = path.Value;
+                pathInfo.BuildSegments();
+
                 if (pathInfo.Nodes.Empty())
-                    Log.outError(LogFilter.Sql, $"PathId {pathInfo.Id} in `waypoint_path` has no assigned nodes in `waypoint_path_node`");
+                    Log.outError(LogFilter.Sql, $"PathId {pathId} in `waypoint_path` has no assigned nodes in `waypoint_path_node`");
 
                 if (pathInfo.Flags.HasFlag(WaypointPathFlags.FollowPathBackwardsFromEndToStart) && pathInfo.Nodes.Count < 2)
-                    Log.outError(LogFilter.Sql, $"PathId {pathInfo.Id} in `waypoint_path` has FollowPathBackwardsFromEndToStart set, but only {pathInfo.Nodes.Count} nodes, requires {2}");
+                    Log.outError(LogFilter.Sql, $"PathId {pathId} in `waypoint_path` has FollowPathBackwardsFromEndToStart set, but only {pathInfo.Nodes.Count} nodes, requires {2}");
             }
         }
 
@@ -159,6 +175,10 @@ namespace Game
             {
                 LoadPathNodesFromDB(result.GetFields());
             } while (result.NextRow());
+
+            WaypointPath path = _pathStorage.LookupByKey(pathId);
+            if (path != null)
+                path.BuildSegments();
         }
 
         public void VisualizePath(Unit owner, WaypointPath path, uint? displayId)
@@ -292,7 +312,7 @@ namespace Game
     public class WaypointNode
     {
         public WaypointNode() { MoveType = WaypointMoveType.Run; }
-        public WaypointNode(uint id, float x, float y, float z, float? orientation = null, uint delay = 0)
+        public WaypointNode(uint id, float x, float y, float z, float? orientation = null, TimeSpan delay = default)
         {
             Id = id;
             X = x;
@@ -308,23 +328,53 @@ namespace Game
         public float Y;
         public float Z;
         public float? Orientation;
-        public uint Delay;
+        public TimeSpan Delay;
         public WaypointMoveType MoveType;
     }
 
     public class WaypointPath
     {
-        public WaypointPath() { }
-        public WaypointPath(uint id, List<WaypointNode> nodes)
-        {
-            Id = id;
-            Nodes = nodes;
-        }
-
         public List<WaypointNode> Nodes = new();
+        public List<WaypointSegment> ContinuousSegments = new();
         public uint Id;
         public WaypointMoveType MoveType;
         public WaypointPathFlags Flags = WaypointPathFlags.None;
+        public float? Velocity;
+
+        public WaypointPath() { }
+        public WaypointPath(uint id, List<WaypointNode> nodes, WaypointMoveType moveType = WaypointMoveType.Walk, WaypointPathFlags flags = WaypointPathFlags.None)
+        {
+            Id = id;
+            Nodes = nodes;
+            Flags = flags;
+            MoveType = moveType;
+        }
+
+        public void BuildSegments()
+        {
+            ContinuousSegments.Add(new WaypointSegment(0, 0));
+            for (int i = 0; i < Nodes.Count; ++i)
+            {
+                var g = ContinuousSegments[^1];
+                ++g.Last;
+
+                // split on delay
+                if (i + 1 != Nodes.Count && Nodes[i].Delay != TimeSpan.Zero)
+                    ContinuousSegments.Add(new WaypointSegment(i, 1));
+            }
+        }
+    }
+
+    public class WaypointSegment
+    {
+        public int First;
+        public int Last;
+
+        public WaypointSegment(int first, int last)
+        {
+            First = first;
+            Last = last;
+        }
     }
 
     public enum WaypointMoveType
@@ -342,5 +392,8 @@ namespace Game
     {
         None = 0x00,
         FollowPathBackwardsFromEndToStart = 0x01,
+        ExactSplinePath = 0x02,
+
+        FlyingPath = ExactSplinePath   // flying paths are always exact splines
     }
 }

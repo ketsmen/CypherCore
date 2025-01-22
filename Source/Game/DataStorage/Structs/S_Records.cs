@@ -19,9 +19,9 @@ namespace Game.DataStorage
 
     public sealed class ScenarioStepRecord
     {
-        public uint Id;
         public string Description;
         public string Title;
+        public uint Id;
         public ushort ScenarioID;
         public uint CriteriaTreeId;
         public uint RewardQuestID;
@@ -88,7 +88,7 @@ namespace Game.DataStorage
         public sbyte CanLink;
         public uint ParentSkillLineID;
         public int ParentTierIndex;
-        public ushort Flags;
+        public int Flags;
         public int SpellBookSpellID;
         public int ExpansionNameSharedStringID;
         public int HordeExpansionNameSharedStringID;
@@ -122,7 +122,7 @@ namespace Game.DataStorage
     public sealed class SkillLineXTraitTreeRecord
     {
         public uint Id;
-        public int SkillLineID;
+        public uint SkillLineID;
         public int TraitTreeID;
         public int OrderIndex;
     }
@@ -133,8 +133,8 @@ namespace Game.DataStorage
         public long RaceMask;
         public ushort SkillID;
         public int ClassMask;
-        public ushort Flags;
-        public sbyte Availability;
+        public int Flags;
+        public int Availability;
         public sbyte MinLevel;
         public ushort SkillTierID;
 
@@ -327,6 +327,21 @@ namespace Game.DataStorage
         public uint SpellID;
     }
 
+    public sealed class SpellEmpowerRecord
+    {
+        public uint Id;
+        public int SpellID;
+        public int Unused1000;
+    }
+
+    public sealed class SpellEmpowerStageRecord
+    {
+        public uint Id;
+        public int Stage;
+        public int DurationMs;
+        public uint SpellEmpowerID;
+    }
+
     public sealed class SpellEquippedItemsRecord
     {
         public uint Id;
@@ -359,6 +374,7 @@ namespace Game.DataStorage
         public string HordeName;
         public int Duration;
         public uint[] EffectArg = new uint[ItemConst.MaxItemEnchantmentEffects];
+        public int Flags;
         public float[] EffectScalingPoints = new float[ItemConst.MaxItemEnchantmentEffects];
         public uint IconFileDataID;
         public int MinItemLevel;
@@ -367,7 +383,6 @@ namespace Game.DataStorage
         public uint TransmogCost;
         public ushort[] EffectPointsMin = new ushort[ItemConst.MaxItemEnchantmentEffects];
         public ushort ItemVisual;
-        public ushort Flags;
         public ushort RequiredSkillID;
         public ushort RequiredSkillRank;
         public ushort ItemLevel;
@@ -431,10 +446,11 @@ namespace Game.DataStorage
     public sealed class SpellMiscRecord
     {
         public uint Id;
-        public int[] Attributes = new int[15];
+        public int[] Attributes = new int[16];
         public byte DifficultyID;
         public ushort CastingTimeIndex;
         public ushort DurationIndex;
+        public ushort PvPDurationIndex;
         public ushort RangeIndex;
         public byte SchoolMask;
         public float Speed;
@@ -632,6 +648,17 @@ namespace Game.DataStorage
         public int DissolveEffectID;
         public int ModelPosition;
         public sbyte Unknown901;
+        public ushort Unknown1100;
+    }
+
+    public sealed class SpellVisualKitRecord
+    {
+        public uint ID;
+        public int ClutterLevel;
+        public int FallbackSpellVisualKitId;
+        public ushort DelayMin;
+        public ushort DelayMax;
+        public int[] Flags = new int[2];
     }
 
     public sealed class SpellVisualMissileRecord
@@ -651,19 +678,10 @@ namespace Game.DataStorage
         public uint Flags;
         public ushort SpellMissileMotionID;
         public uint AnimKitID;
-        public sbyte ClutterLevel;
+        public int ClutterLevel;
         public int DecayTimeAfterImpact;
+        public ushort Unused1100;
         public uint SpellVisualMissileSetID;
-    }
-
-    public sealed class SpellVisualKitRecord
-    {
-        public uint Id;
-        public sbyte FallbackPriority;
-        public int FallbackSpellVisualKitId;
-        public ushort DelayMin;
-        public ushort DelayMax;
-        public int[] Flags = new int[2];
     }
 
     public sealed class SpellXSpellVisualRecord

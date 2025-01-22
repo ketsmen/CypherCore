@@ -103,7 +103,7 @@ namespace Game
             AreaGroupID = fields.Read<uint>(100);
             LimitTime = fields.Read<uint>(101);
             AllowableRaces = new(fields.Read<ulong>(102));
-            TreasurePickerID = fields.Read<int>(103);
+            ResetByScheduler = fields.Read<bool>(103);
             Expansion = fields.Read<int>(104);
             ManagedWorldStateID = fields.Read<int>(105);
             QuestSessionBonus = fields.Read<int>(106);
@@ -133,8 +133,11 @@ namespace Game
 
             if (playerConditionId != 0 && !CliDB.PlayerConditionStorage.ContainsKey(playerConditionId))
             {
-                Log.outError(LogFilter.Sql, $"Table `quest_reward_display_spell` has non-existing PlayerCondition ({playerConditionId}) set for quest {Id}. and spell {spellId} Set to 0.");
-                playerConditionId = 0;
+                if (!Global.ConditionMgr.HasConditionsForNotGroupedEntry(ConditionSourceType.PlayerCondition, playerConditionId))
+                {
+                    Log.outError(LogFilter.Sql, $"Table `quest_reward_display_spell` has serverside PlayerCondition ({playerConditionId}) set for quest {Id}. and spell {spellId} without conditions. Set to 0.");
+                    playerConditionId = 0;
+                }
             }
 
             if (type >= QuestCompleteSpellType.Max)
@@ -298,9 +301,12 @@ namespace Game
             }
         }
 
-        void LoadConditionalConditionalQuestDescription(SQLFields fields)
+        public void LoadConditionalConditionalQuestDescription(SQLFields fields)
         {
             Locale locale = fields.Read<string>(4).ToEnum<Locale>();
+            if (!WorldConfig.GetBoolValue(WorldCfg.LoadLocales) && locale != SharedConst.DefaultLocale)
+                return;
+
             if (locale >= Locale.Total)
             {
                 Log.outError(LogFilter.Sql, $"Table `quest_description_conditional` has invalid locale {fields.Read<string>(4)} set for quest {fields.Read<uint>(0)}. Skipped.");
@@ -319,9 +325,12 @@ namespace Game
             ObjectManager.AddLocaleString(fields.Read<string>(3), locale, text.Text);
         }
 
-        void LoadConditionalConditionalRequestItemsText(SQLFields fields)
+        public void LoadConditionalConditionalRequestItemsText(SQLFields fields)
         {
             Locale locale = fields.Read<string>(4).ToEnum<Locale>();
+            if (!WorldConfig.GetBoolValue(WorldCfg.LoadLocales) && locale != SharedConst.DefaultLocale)
+                return;
+
             if (locale >= Locale.Total)
             {
                 Log.outError(LogFilter.Sql, $"Table `quest_request_items_conditional` has invalid locale {fields.Read<string>(4)} set for quest {fields.Read<uint>(0)}. Skipped.");
@@ -341,9 +350,12 @@ namespace Game
             ObjectManager.AddLocaleString(fields.Read<string>(3), locale, text.Text);
         }
 
-        void LoadConditionalConditionalOfferRewardText(SQLFields fields)
+        public void LoadConditionalConditionalOfferRewardText(SQLFields fields)
         {
             Locale locale = fields.Read<string>(4).ToEnum<Locale>();
+            if (!WorldConfig.GetBoolValue(WorldCfg.LoadLocales) && locale != SharedConst.DefaultLocale)
+                return;
+
             if (locale >= Locale.Total)
             {
                 Log.outError(LogFilter.Sql, $"Table `quest_offer_reward_conditional` has invalid locale {fields.Read<string>(4)} set for quest {fields.Read<uint>(0)}. Skipped.");
@@ -363,9 +375,12 @@ namespace Game
             ObjectManager.AddLocaleString(fields.Read<string>(3), locale, text.Text);
         }
 
-        void LoadConditionalConditionalQuestCompletionLog(SQLFields fields)
+        public void LoadConditionalConditionalQuestCompletionLog(SQLFields fields)
         {
             Locale locale = fields.Read<string>(4).ToEnum<Locale>();
+            if (!WorldConfig.GetBoolValue(WorldCfg.LoadLocales) && locale != SharedConst.DefaultLocale)
+                return;
+
             if (locale >= Locale.Total)
             {
                 Log.outError(LogFilter.Sql, $"Table `quest_completion_log_conditional` has invalid locale {fields.Read<string>(4)} set for quest {fields.Read<uint>(0)}. Skipped.");
@@ -383,6 +398,11 @@ namespace Game
             text.PlayerConditionId = fields.Read<int>(1);
             text.QuestgiverCreatureId = fields.Read<int>(2);
             ObjectManager.AddLocaleString(fields.Read<string>(3), locale, text.Text);
+        }
+
+        public void LoadTreasurePickers(SQLFields fields)
+        {
+            TreasurePickerID.Add(fields.Read<int>(1));
         }
 
         public uint XPValue(Player player)
@@ -481,7 +501,18 @@ namespace Game
 
             return false;
         }
-        
+
+        public bool IsMeta()
+        {
+            var questInfo = CliDB.QuestInfoStorage.LookupByKey(QuestInfoID);
+            if (questInfo != null)
+                return (questInfo.Modifiers & 0x800) != 0;
+
+            return false;
+        }
+
+        public bool IsResetByScheduler() { return ResetByScheduler; }
+
         public void BuildQuestRewards(QuestRewards rewards, Player player)
         {
             rewards.ChoiceItemCount = GetRewChoiceItemsCount();
@@ -495,10 +526,8 @@ namespace Game
             var displaySpellIndex = 0;
             foreach (QuestRewardDisplaySpell displaySpell in RewardDisplaySpell)
             {
-                PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(displaySpell.PlayerConditionId);
-                if (playerCondition != null)
-                    if (!ConditionManager.IsPlayerMeetingCondition(player, playerCondition))
-                        continue;
+                if (!ConditionManager.IsPlayerMeetingCondition(player, displaySpell.PlayerConditionId))
+                    continue;
 
                 rewards.SpellCompletionDisplayID[displaySpellIndex] = (int)displaySpell.SpellId;
                 if (++displaySpellIndex >= rewards.SpellCompletionDisplayID.Length)
@@ -508,7 +537,7 @@ namespace Game
             rewards.SpellCompletionID = RewardSpell;
             rewards.SkillLineID = RewardSkillId;
             rewards.NumSkillUps = RewardSkillPoints;
-            rewards.TreasurePickerID = (uint)TreasurePickerID;
+            rewards.TreasurePickerID = TreasurePickerID;
 
             for (int i = 0; i < SharedConst.QuestRewardChoicesCount; ++i)
             {
@@ -520,8 +549,8 @@ namespace Game
 
             for (int i = 0; i < SharedConst.QuestRewardItemCount; ++i)
             {
-                rewards.ItemID[i] = RewardItemId[i];
-                rewards.ItemQty[i] = RewardItemCount[i];
+                rewards.Items[i].ItemID = RewardItemId[i];
+                rewards.Items[i].ItemQty = RewardItemCount[i];
             }
 
             for (int i = 0; i < SharedConst.QuestRewardReputationsCount; ++i)
@@ -534,8 +563,8 @@ namespace Game
 
             for (int i = 0; i < SharedConst.QuestRewardCurrencyCount; ++i)
             {
-                rewards.CurrencyID[i] = RewardCurrencyId[i];
-                rewards.CurrencyQty[i] = RewardCurrencyCount[i];
+                rewards.Currencies[i].CurrencyID = RewardCurrencyId[i];
+                rewards.Currencies[i].CurrencyQty = RewardCurrencyCount[i];
             }
         }
 
@@ -603,7 +632,12 @@ namespace Game
         public void InitializeQueryData()
         {
             for (var loc = Locale.enUS; loc < Locale.Total; ++loc)
+            {
+                if (!WorldConfig.GetBoolValue(WorldCfg.LoadLocales) && loc != SharedConst.DefaultLocale)
+                    continue;
+
                 response[(int)loc] = BuildQueryData(loc, null);
+            }
         }
 
         public QueryQuestInfoResponse BuildQueryData(Locale loc, Player player)
@@ -765,6 +799,7 @@ namespace Game
             response.Info.CompleteSoundKitID = SoundTurnIn;
             response.Info.AreaGroupID = AreaGroupID;
             response.Info.TimeAllowed = LimitTime;
+            response.Info.ResetByScheduler = IsResetByScheduler();
 
             response.Write();
             return response;
@@ -811,7 +846,7 @@ namespace Game
         public bool IsDailyOrWeekly() { return Flags.HasAnyFlag(QuestFlags.Daily | QuestFlags.Weekly); }
         public bool IsDFQuest() { return SpecialFlags.HasAnyFlag(QuestSpecialFlags.DfQuest); }
         public bool IsPushedToPartyOnAccept() { return HasSpecialFlag(QuestSpecialFlags.AutoPushToParty); }
-        
+
         public uint GetRewChoiceItemsCount() { return _rewChoiceItemsCount; }
         public uint GetRewItemsCount() { return _rewItemsCount; }
         public uint GetRewCurrencyCount() { return _rewCurrencyCount; }
@@ -876,7 +911,7 @@ namespace Game
         public uint AreaGroupID;
         public long LimitTime;
         public RaceMask<ulong> AllowableRaces { get; set; }
-        public int TreasurePickerID;
+        public List<int> TreasurePickerID = new();
         public int Expansion;
         public int ManagedWorldStateID;
         public int QuestSessionBonus;
@@ -890,6 +925,7 @@ namespace Game
         public string PortraitTurnInText = "";
         public string PortraitTurnInName = "";
         public string QuestCompletionLog = "";
+        public bool ResetByScheduler;
 
         // quest_description_conditional
         public List<QuestConditionalText> ConditionalQuestDescription = new();
@@ -1013,7 +1049,7 @@ namespace Game
     }
 
     public struct QuestRewardDisplaySpell
-    {    
+    {
         public uint SpellId;
         public uint PlayerConditionId;
         public QuestCompleteSpellType Type;
@@ -1077,7 +1113,7 @@ namespace Game
             }
             return false;
         }
-        
+
         public bool IsStoringFlag()
         {
             switch (Type)

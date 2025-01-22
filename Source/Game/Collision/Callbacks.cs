@@ -15,6 +15,7 @@ namespace Game.Collision
         public virtual void Invoke(Vector3 point, GameObjectModel obj) { }
         public virtual bool Invoke(Ray ray, uint entry, ref float distance, bool pStopAtFirstHit) { return false; }
         public virtual bool Invoke(Ray r, IModel obj, ref float distance) { return false; }
+        public virtual bool Invoke(Ray r, GameObjectModel obj, ref float distance) { return false; }
     }
 
     public class TriBoundFunc
@@ -40,34 +41,41 @@ namespace Game.Collision
 
     public class WModelAreaCallback : WorkerCallback
     {
-        public WModelAreaCallback(List<GroupModel> vals, Vector3 down)
+        List<GroupModel> prims;
+        public GroupModel[] hit = new GroupModel[3];
+
+        public WModelAreaCallback(List<GroupModel> vals)
         {
             prims = vals;
-            hit = null;
-            zDist = float.PositiveInfinity;
-            zVec = down;
         }
 
-        List<GroupModel> prims;
-        public GroupModel hit;
-        public float zDist;
-        Vector3 zVec;
-        public override void Invoke(Vector3 point, uint entry)
+        public override bool Invoke(Ray ray, uint entry, ref float distance, bool stopAtFirstHit)
         {
-            float group_Z;
-            if (prims[(int)entry].IsInsideObject(point, zVec, out group_Z))
+            GroupModel.InsideResult result = prims[(int)entry].IsInsideObject(ray, out float group_Z);
+            if (result != GroupModel.InsideResult.OutOfBounds)
             {
-                if (group_Z < zDist)
+                if (result != GroupModel.InsideResult.MaybeInside)
                 {
-                    zDist = group_Z;
-                    hit = prims[(int)entry];
+                    if (group_Z < distance)
+                    {
+                        distance = group_Z;
+                        hit[(int)result] = prims[(int)entry];
+                        return true;
+                    }
+
                 }
+                else
+                    hit[(int)result] = prims[(int)entry];
             }
+            return false;
         }
     }
 
     public class WModelRayCallBack : WorkerCallback
     {
+        List<GroupModel> models;
+        public bool hit;
+
         public WModelRayCallBack(List<GroupModel> mod)
         {
             models = mod;
@@ -79,8 +87,6 @@ namespace Game.Collision
             if (result) hit = true;
             return hit;
         }
-        List<GroupModel> models;
-        public bool hit;
     }
 
     public class GModelRayCallback : WorkerCallback
@@ -212,6 +218,26 @@ namespace Game.Collision
 
         bool _didHit;
         PhaseShift _phaseShift;
+    }
+
+    class DynamicTreeLosCallback : WorkerCallback
+    {
+        bool _didHit;
+        PhaseShift _phaseShift;
+
+        public DynamicTreeLosCallback(PhaseShift phaseShift)
+        {
+            _phaseShift = phaseShift;
+        }
+
+        public override bool Invoke(Ray r, GameObjectModel obj, ref float distance)
+        {
+            if (!obj.IsLosBlockingDisabled())
+                _didHit = obj.IntersectRay(r, ref distance, true, _phaseShift, ModelIgnoreFlags.Nothing);
+            return _didHit;
+        }
+
+        public bool DidHit() { return _didHit; }
     }
 
     public class DynamicTreeLocationInfoCallback : WorkerCallback

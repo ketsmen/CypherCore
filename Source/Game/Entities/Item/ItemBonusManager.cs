@@ -15,7 +15,7 @@ namespace Game.Entities
         static MultiMap<uint /*azeriteUnlockMappingSetId*/, AzeriteUnlockMappingRecord> _azeriteUnlockMappings = new();
         static MultiMap<uint /*itemBonusTreeId*/, ChallengeModeItemBonusOverrideRecord> _challengeModeItemBonusOverrides = new();
         static MultiMap<uint /*itemBonusListId*/, ItemBonusRecord> _itemBonusLists = new();
-        static MultiMap<int, ItemBonusListGroupEntryRecord> _itemBonusListGroupEntries = new();
+        static MultiMap<uint, ItemBonusListGroupEntryRecord> _itemBonusListGroupEntries = new();
         static Dictionary<short /*itemLevelDelta*/, uint /*itemBonusListId*/> _itemLevelDeltaToBonusListContainer = new();
         static SortedMultiMap<uint /*itemLevelSelectorQualitySetId*/, ItemLevelSelectorQualityRecord> _itemLevelQualitySelectorQualities = new();
         static MultiMap<uint /*itemBonusTreeId*/, ItemBonusTreeNodeRecord> _itemBonusTrees = new();
@@ -50,6 +50,9 @@ namespace Game.Entities
 
         public static ItemContext GetContextForPlayer(MapDifficultyRecord mapDifficulty, Player player)
         {
+            if (mapDifficulty == null)
+                return ItemContext.None;
+
             ItemContext evalContext(ItemContext currentContext, ItemContext newContext)
             {
                 if (newContext == ItemContext.None)
@@ -68,7 +71,7 @@ namespace Game.Entities
 
             if (mapDifficulty.ItemContextPickerID != 0)
             {
-                uint contentTuningId = Global.DB2Mgr.GetRedirectedContentTuningId((uint)mapDifficulty.ContentTuningID, player.m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                uint contentTuningId = Global.DB2Mgr.GetRedirectedContentTuningId((uint)mapDifficulty.ContentTuningID, player.m_playerData.CtrOptions.GetValue().ConditionalFlags);
 
                 ItemContextPickerEntryRecord selectedPickerEntry = null;
                 foreach (var itemContextPickerEntry in CliDB.ItemContextPickerEntryStorage.Values)
@@ -81,11 +84,7 @@ namespace Game.Entities
 
                     bool meetsPlayerCondition = false;
                     if (player != null)
-                    {
-                        var playerCondition = CliDB.PlayerConditionStorage.LookupByKey(itemContextPickerEntry.PlayerConditionID);
-                        if (playerCondition != null)
-                            meetsPlayerCondition = ConditionManager.IsPlayerMeetingCondition(player, playerCondition);
-                    }
+                        meetsPlayerCondition = ConditionManager.IsPlayerMeetingCondition(player, itemContextPickerEntry.PlayerConditionID);
 
                     if ((itemContextPickerEntry.Flags & 0x1) != 0)
                         meetsPlayerCondition = !meetsPlayerCondition;
@@ -164,82 +163,35 @@ namespace Game.Entities
 
         public static uint GetBonusTreeIdOverride(uint itemBonusTreeId, ItemBonusGenerationParams generationParams)
         {
-            // TODO: configure seasons globally
-            var mythicPlusSeason = CliDB.MythicPlusSeasonStorage.LookupByKey(0);
-            if (mythicPlusSeason != null)
+            List<int> passedTimeEvents = new(); // sorted by date TODO: configure globally
+
+            if (!passedTimeEvents.Empty())
             {
                 int selectedLevel = -1;
                 int selectedMilestoneSeason = -1;
                 ChallengeModeItemBonusOverrideRecord selectedItemBonusOverride = null;
                 foreach (var itemBonusOverride in _challengeModeItemBonusOverrides.LookupByKey(itemBonusTreeId))
                 {
-                    if (itemBonusOverride.Type != 0)
+                    if (generationParams.MythicPlusKeystoneLevel != 0 && itemBonusOverride.Value > generationParams.MythicPlusKeystoneLevel)
                         continue;
 
-                    if (itemBonusOverride.Value > generationParams.MythicPlusKeystoneLevel.GetValueOrDefault(-1))
+                    if (generationParams.PvpTier != 0 && itemBonusOverride.Value > generationParams.PvpTier)
                         continue;
 
-                    if (itemBonusOverride.MythicPlusSeasonID != 0)
+                    if (itemBonusOverride.RequiredTimeEventPassed != 0)
                     {
-                        var overrideSeason = CliDB.MythicPlusSeasonStorage.LookupByKey(itemBonusOverride.MythicPlusSeasonID);
-                        if (overrideSeason == null)
-                            continue;
+                        var overrideMilestoneSeason = passedTimeEvents.IndexOf(itemBonusOverride.RequiredTimeEventPassed);
+                        if (overrideMilestoneSeason == -1)
+                            continue;       // season not started yet
 
-                        if (mythicPlusSeason.MilestoneSeason < overrideSeason.MilestoneSeason)
-                            continue;
+                        if (selectedMilestoneSeason > overrideMilestoneSeason)
+                            continue;       // older season that what was selected
 
-                        if (selectedMilestoneSeason > overrideSeason.MilestoneSeason)
-                            continue;
-
-                        if (selectedMilestoneSeason == overrideSeason.MilestoneSeason)
+                        if (selectedMilestoneSeason == overrideMilestoneSeason)
                             if (selectedLevel > itemBonusOverride.Value)
-                                continue;
+                                continue; // lower level in current season than what was already found
 
-                        selectedMilestoneSeason = overrideSeason.MilestoneSeason;
-                    }
-                    else if (selectedLevel > itemBonusOverride.Value)
-                        continue;
-
-                    selectedLevel = itemBonusOverride.Value;
-                    selectedItemBonusOverride = itemBonusOverride;
-                }
-
-                if (selectedItemBonusOverride != null && selectedItemBonusOverride.DstItemBonusTreeID != 0)
-                    itemBonusTreeId = (uint)selectedItemBonusOverride.DstItemBonusTreeID;
-            }
-
-            // TODO: configure seasons globally
-            var pvpSeason = CliDB.PvpSeasonStorage.LookupByKey(0);
-            if (pvpSeason != null)
-            {
-                int selectedLevel = -1;
-                int selectedMilestoneSeason = -1;
-                ChallengeModeItemBonusOverrideRecord selectedItemBonusOverride = null;
-                foreach (var itemBonusOverride in _challengeModeItemBonusOverrides.LookupByKey(itemBonusTreeId))
-                {
-                    if (itemBonusOverride.Type != 1)
-                        continue;
-
-                    if (itemBonusOverride.Value > generationParams.PvpTier.GetValueOrDefault(-1))
-                        continue;
-
-                    if (itemBonusOverride.PvPSeasonID != 0)
-                    {
-                        var overrideSeason = CliDB.PvpSeasonStorage.LookupByKey(itemBonusOverride.PvPSeasonID);
-                        if (overrideSeason == null)
-                            continue;
-
-                        if (pvpSeason.MilestoneSeason < overrideSeason.MilestoneSeason)
-                            continue;
-
-                        if (selectedMilestoneSeason > overrideSeason.MilestoneSeason)
-                            continue;
-
-                        if (selectedMilestoneSeason == overrideSeason.MilestoneSeason)
-                            if (selectedLevel > itemBonusOverride.Value)
-                                continue;
-
-                        selectedMilestoneSeason = overrideSeason.MilestoneSeason;
+                        selectedMilestoneSeason = overrideMilestoneSeason;
                     }
                     else if (selectedLevel > itemBonusOverride.Value)
                         continue;

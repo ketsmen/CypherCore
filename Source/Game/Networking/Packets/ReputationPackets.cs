@@ -8,48 +8,22 @@ namespace Game.Networking.Packets
 {
     public class InitializeFactions : ServerPacket
     {
-        const ushort FactionCount = 1000;
-
         public InitializeFactions() : base(ServerOpcodes.InitializeFactions, ConnectionType.Instance) { }
 
         public override void Write()
         {
-            for (ushort i = 0; i < FactionCount; ++i)
-            {
-                _worldPacket.WriteUInt16((ushort)((ushort)FactionFlags[i] & 0xFF));
-                _worldPacket.WriteInt32(FactionStandings[i]);
-            }
+            _worldPacket.WriteInt32(Factions.Count);
+            _worldPacket.WriteInt32(Bonuses.Count);
 
-            for (ushort i = 0; i < FactionCount; ++i)
-                _worldPacket.WriteBit(FactionHasBonus[i]);
+            foreach (FactionData faction in Factions)
+                faction.Write(_worldPacket);
 
-            _worldPacket.FlushBits();
+            foreach (FactionBonusData bonus in Bonuses)
+                bonus.Write(_worldPacket);
         }
 
-        public int[] FactionStandings = new int[FactionCount];
-        public bool[] FactionHasBonus = new bool[FactionCount]; //@todo: implement faction bonus
-        public ReputationFlags[] FactionFlags = new ReputationFlags[FactionCount];
-    }
-
-    class RequestForcedReactions : ClientPacket
-    {
-        public RequestForcedReactions(WorldPacket packet) : base(packet) { }
-
-        public override void Read() { }
-    }
-
-    class SetForcedReactions : ServerPacket
-    {
-        public SetForcedReactions() : base(ServerOpcodes.SetForcedReactions, ConnectionType.Instance) { }
-
-        public override void Write()
-        {
-            _worldPacket.WriteInt32(Reactions.Count);
-            foreach (ForcedReaction reaction in Reactions)
-                reaction.Write(_worldPacket);
-        }
-
-        public List<ForcedReaction> Reactions = new();
+        public List<FactionData> Factions = new();
+        public List<FactionBonusData> Bonuses = new();
     }
 
     class SetFactionStanding : ServerPacket
@@ -73,16 +47,31 @@ namespace Game.Networking.Packets
         public bool ShowVisual;
     }
 
-    struct ForcedReaction
+    public struct FactionData
     {
+        public uint FactionID;
+        public ushort Flags;
+        public int Standing;
+
         public void Write(WorldPacket data)
         {
-            data.WriteInt32(Faction);
-            data.WriteInt32(Reaction);
+            data.WriteUInt32(FactionID);
+            data.WriteUInt16(Flags);
+            data.WriteInt32(Standing);
         }
+    }
 
-        public int Faction;
-        public int Reaction;
+    public struct FactionBonusData
+    {
+        public uint FactionID;
+        public bool FactionHasBonus;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteUInt32(FactionID);
+            data.WriteBit(FactionHasBonus);
+            data.FlushBits();
+        }
     }
 
     struct FactionStandingData
@@ -93,13 +82,22 @@ namespace Game.Networking.Packets
             Standing = standing;
         }
 
+        public FactionStandingData(int index, int standing, int factionId)
+        {
+            Index = index;
+            Standing = standing;
+            FactionID = factionId;
+        }
+
         public void Write(WorldPacket data)
         {
             data.WriteInt32(Index);
             data.WriteInt32(Standing);
+            data.WriteInt32(FactionID);
         }
 
         int Index;
         int Standing;
+        int FactionID;
     }
 }

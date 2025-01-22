@@ -1294,7 +1294,10 @@ namespace Game.Entities
                     // 30% damage blocked, double blocked amount if block is critical
                     damageInfo.Blocked = MathFunctions.CalculatePct(damageInfo.Damage, damageInfo.Target.GetBlockPercent(GetLevel()));
                     if (damageInfo.Target.IsBlockCritical())
+                    {
                         damageInfo.Blocked *= 2;
+                        damageInfo.Blocked *= (uint)GetTotalAuraMultiplier(AuraType.ModCriticalBlockAmount);
+                    }
 
                     damageInfo.OriginalDamage = damageInfo.Damage;
                     damageInfo.Damage -= damageInfo.Blocked;
@@ -1382,7 +1385,7 @@ namespace Game.Entities
             int roll = RandomHelper.IRand(0, 9999);
 
             uint attackerLevel = GetLevelForTarget(victim);
-            uint victimLevel = GetLevelForTarget(this);
+            uint victimLevel = victim.GetLevelForTarget(this);
 
             // check if attack comes from behind, nobody can parry or block if attacker is behind
             bool canParryOrBlock = victim.HasInArc((float)Math.PI, this) || victim.HasAuraType(AuraType.IgnoreHitDirection);
@@ -1714,12 +1717,12 @@ namespace Game.Entities
 
         public virtual void UpdateNearbyPlayersInteractions()
         {
-            for (int i = 0; i < m_unitData.NpcFlags.GetSize(); ++i)
-                if (m_unitData.NpcFlags[i] != 0)
-                {
-                    m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, i);
-                    ForceUpdateFieldChange();
-                }
+            if (m_unitData.NpcFlags != 0)
+                m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags);
+            if (m_unitData.NpcFlags2 != 0)
+                m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags2);
+
+            ForceUpdateFieldChange();
         }
     }
 }

@@ -171,7 +171,7 @@ namespace Game
                 return;
             }
 
-            if (packet.Entered && !player.IsInAreaTriggerRadius(atEntry))
+            if (packet.Entered != player.IsInAreaTrigger(atEntry))
             {
                 Log.outDebug(LogFilter.Network, "HandleAreaTrigger: Player '{0}' ({1}) too far, ignore Area Trigger ID: {2}",
                     player.GetName(), player.GetGUID().ToString(), packet.AreaTriggerID);
@@ -186,6 +186,14 @@ namespace Game
 
             if (Global.ScriptMgr.OnAreaTrigger(player, atEntry, packet.Entered))
                 return;
+
+            if (atEntry.AreaTriggerActionSetID != 0)
+            {
+                if (packet.Entered)
+                    player.UpdateCriteria(CriteriaType.EnterAreaTriggerWithActionSet, atEntry.AreaTriggerActionSetID);
+                else
+                    player.UpdateCriteria(CriteriaType.LeaveAreaTriggerWithActionSet, atEntry.AreaTriggerActionSetID);
+            }
 
             if (player.IsAlive() && packet.Entered)
             {
@@ -237,7 +245,7 @@ namespace Game
             {
                 // set resting flag we are in the inn
                 if (packet.Entered)
-                    player.GetRestMgr().SetRestFlag(RestFlag.Tavern, atEntry.Id);
+                    player.GetRestMgr().SetInnTriggerID(atEntry.Id);
                 else
                     player.GetRestMgr().RemoveRestFlag(RestFlag.Tavern);
 
@@ -251,9 +259,6 @@ namespace Game
 
                 return;
             }
-            Battleground bg = player.GetBattleground();
-            if (bg != null)
-                bg.HandleAreaTrigger(player, packet.AreaTriggerID, packet.Entered);
 
             OutdoorPvP pvp = player.GetOutdoorPvP();
             if (pvp != null)
@@ -452,10 +457,8 @@ namespace Game
             UISplashScreenRecord splashScreen = null;
             foreach (var itr in CliDB.UISplashScreenStorage.Values)
             {
-                PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(itr.CharLevelConditionID);
-                if (playerCondition != null)
-                    if (!ConditionManager.IsPlayerMeetingCondition(_player, playerCondition))
-                        continue;
+                if (!ConditionManager.IsPlayerMeetingCondition(_player, (uint)itr.CharLevelConditionID))
+                    continue;
 
                 splashScreen = itr;
             }

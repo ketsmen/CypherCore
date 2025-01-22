@@ -364,6 +364,8 @@ namespace Game.Spells
             // m_casterLevel = cast item level/caster level, caster level should be saved to db, confirmed with sniffs
         }
 
+        public virtual void Heartbeat() { }
+
         public T GetScript<T>() where T : AuraScript
         {
             return (T)GetScriptByType(typeof(T));
@@ -408,7 +410,7 @@ namespace Game.Spells
             return Global.ObjAccessor.GetUnit(m_owner, m_casterGuid);
         }
 
-        WorldObject GetWorldObjectCaster()
+        public WorldObject GetWorldObjectCaster()
         {
             if (GetCasterGUID().IsUnit())
                 return GetCaster();
@@ -762,9 +764,15 @@ namespace Game.Spells
                 maxDuration = -1;
 
             // IsPermanent() checks max duration (which we are supposed to calculate here)
-            if (maxDuration != -1 && modOwner != null)
-                modOwner.ApplySpellMod(spellInfo, SpellModOp.Duration, ref maxDuration);
+            if (maxDuration != -1)
+            {
 
+                if (modOwner != null)
+                    modOwner.ApplySpellMod(spellInfo, SpellModOp.Duration, ref maxDuration);
+
+                if (spellInfo.IsEmpowerSpell())
+                    maxDuration += (int)SpellConst.EmpowerHoldTimeAtMax;
+            }
             return maxDuration;
         }
 
@@ -1984,6 +1992,18 @@ namespace Game.Spells
             }
         }
 
+        public void CallScriptOnHeartbeat()
+        {
+            foreach (var script in m_loadedScripts)
+            {
+                script._PrepareScriptCall(AuraScriptHookType.OnHeartbeat);
+                foreach (var onHeartbeat in script.OnHeartbeat)
+                    onHeartbeat.Call(script);
+
+                script._FinishScriptCall();
+            }
+        }
+
         public bool CallScriptEffectApplyHandlers(AuraEffect aurEff, AuraApplication aurApp, AuraEffectHandleModes mode)
         {
             bool preventDefault = false;
@@ -2655,6 +2675,8 @@ namespace Game.Spells
             return aura;
         }
 
+        public List<AuraScript> GetLoadedScripts() { return m_loadedScripts; }
+
         #region Fields
         List<AuraScript> m_loadedScripts = new();
         SpellInfo m_spellInfo;
@@ -2750,6 +2772,13 @@ namespace Game.Spells
                     targets.Add(target, targetPair.Value);
             }
 
+            // skip area update if owner is not in world!
+            if (!GetUnitOwner().IsInWorld)
+                return;
+
+            if (GetUnitOwner().HasAuraState(AuraStateType.Banished, GetSpellInfo(), caster))
+                return;
+
             foreach (var spellEffectInfo in GetSpellInfo().GetEffects())
             {
                 if (!HasEffect(spellEffectInfo.EffectIndex))
@@ -2757,13 +2786,6 @@ namespace Game.Spells
 
                 // area auras only
                 if (spellEffectInfo.Effect == SpellEffectName.ApplyAura)
-                    continue;
-
-                // skip area update if owner is not in world!
-                if (!GetUnitOwner().IsInWorld)
-                    continue;
-
-                if (GetUnitOwner().HasUnitState(UnitState.Isolated))
                     continue;
 
                 List<WorldObject> units = new();
@@ -2861,6 +2883,31 @@ namespace Game.Spells
                 _staticApplications[target.GetGUID()] = 0;
 
             _staticApplications[target.GetGUID()] |= effMask;
+        }
+
+        public override void Heartbeat()
+        {
+            base.Heartbeat();
+
+            // Periodic food and drink emote animation
+            HandlePeriodicFoodSpellVisualKit();
+
+            // Invoke the OnHeartbeat AuraScript hook
+            CallScriptOnHeartbeat();
+        }
+
+        void HandlePeriodicFoodSpellVisualKit()
+        {
+            SpellSpecificType specificType = GetSpellInfo().GetSpellSpecific();
+
+            bool food = specificType == SpellSpecificType.Food || specificType == SpellSpecificType.FoodAndDrink;
+            bool drink = specificType == SpellSpecificType.Drink || specificType == SpellSpecificType.FoodAndDrink;
+
+            if (food)
+                GetUnitOwner().SendPlaySpellVisualKit(SpellConst.VisualKitFood, 0, 0);
+
+            if (drink)
+                GetUnitOwner().SendPlaySpellVisualKit(SpellConst.VisualKitDrink, 0, 0);
         }
 
         // Allow Apply Aura Handler to modify and access m_AuraDRGroup

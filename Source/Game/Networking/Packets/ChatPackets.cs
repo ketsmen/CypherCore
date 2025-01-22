@@ -45,15 +45,30 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             Language = (Language)_worldPacket.ReadInt32();
+            TargetGUID = _worldPacket.ReadPackedGuid();
+            TargetVirtualRealmAddress = _worldPacket.ReadUInt32();
+
             uint targetLen = _worldPacket.ReadBits<uint>(9);
             uint textLen = _worldPacket.ReadBits<uint>(11);
-            Target = _worldPacket.ReadString(targetLen);
-            Text = _worldPacket.ReadString(textLen);
+
+            if (targetLen > 1)
+            {
+                Target = _worldPacket.ReadString(targetLen - 1);
+                _worldPacket.Skip(1); // null terminator
+            }
+
+            if (textLen > 1)
+            {
+                Text = _worldPacket.ReadString(textLen - 1);
+                _worldPacket.Skip(1); // null terminator
+            }
         }
 
         public Language Language = Language.Universal;
-        public string Text;
+        public ObjectGuid TargetGUID;
+        public uint TargetVirtualRealmAddress = 0;
         public string Target;
+        public string Text;
     }
 
     public class ChatMessageChannel : ClientPacket
@@ -98,15 +113,33 @@ namespace Game.Networking.Packets
 
         public override void Read()
         {
-            uint targetLen = _worldPacket.ReadBits<uint>(9);
             Params.Read(_worldPacket);
             ChannelGUID = _worldPacket.ReadPackedGuid();
-            Target = _worldPacket.ReadString(targetLen);
+            PlayerGUID = _worldPacket.ReadPackedGuid();
+            PlayerVirtualRealmAddress = _worldPacket.ReadUInt32();
+
+            uint playerNameLength = _worldPacket.ReadBits<uint>(9);
+            uint channelNameLength = _worldPacket.ReadBits<uint>(8);
+
+            if (playerNameLength > 1)
+            {
+                PlayerName = _worldPacket.ReadString(playerNameLength - 1);
+                _worldPacket.Skip(1); // null terminator
+            }
+
+            if (channelNameLength > 1)
+            {
+                ChannelName = _worldPacket.ReadString(channelNameLength - 1);
+                _worldPacket.Skip(1); // null terminator
+            }
         }
 
-        public string Target;
         public ChatAddonMessageParams Params = new();
-        public ObjectGuid? ChannelGUID; // not optional in the packet. Optional for api reasons
+        public string PlayerName;
+        public ObjectGuid PlayerGUID;
+        public uint PlayerVirtualRealmAddress = 0;
+        public string ChannelName;
+        public ObjectGuid ChannelGUID;
     }
 
     public class ChatMessageDND : ClientPacket
@@ -158,7 +191,7 @@ namespace Game.Networking.Packets
             Clear();
 
             SenderGUID.Clear();
-            SenderAccountGUID.Clear();
+            SenderWowAccount.Clear();
             SenderGuildGUID.Clear();
             TargetGUID.Clear();
             SenderName = "";
@@ -193,7 +226,7 @@ namespace Game.Networking.Packets
             Player playerSender = sender.ToPlayer();
             if (playerSender != null)
             {
-                SenderAccountGUID = playerSender.GetSession().GetAccountGUID();
+                SenderWowAccount = playerSender.GetSession().GetAccountGUID();
                 _ChatFlags = playerSender.GetChatFlags();
 
                 SenderGuildGUID = ObjectGuid.Create(HighGuid.Guild, playerSender.GetGuildId());
@@ -215,11 +248,12 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt32((uint)_Language);
             _worldPacket.WritePackedGuid(SenderGUID);
             _worldPacket.WritePackedGuid(SenderGuildGUID);
-            _worldPacket.WritePackedGuid(SenderAccountGUID);
+            _worldPacket.WritePackedGuid(SenderWowAccount);
             _worldPacket.WritePackedGuid(TargetGUID);
             _worldPacket.WriteUInt32(TargetVirtualAddress);
             _worldPacket.WriteUInt32(SenderVirtualAddress);
             _worldPacket.WriteUInt32(AchievementID);
+            _worldPacket.WriteUInt16((ushort)_ChatFlags);
             _worldPacket.WriteFloat(DisplayTime);
             _worldPacket.WriteUInt32(SpellID);
             _worldPacket.WriteBits(SenderName.GetByteCount(), 11);
@@ -227,10 +261,9 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBits(Prefix.GetByteCount(), 5);
             _worldPacket.WriteBits(Channel.GetByteCount(), 7);
             _worldPacket.WriteBits(ChatText.GetByteCount(), 12);
-            _worldPacket.WriteBits((ushort)_ChatFlags, 15);
             _worldPacket.WriteBit(HideChatLog);
             _worldPacket.WriteBit(FakeSenderName);
-            _worldPacket.WriteBit(Unused_801.HasValue);
+            _worldPacket.WriteBit(BroadcastTextID.HasValue);
             _worldPacket.WriteBit(ChannelGUID.HasValue);
             _worldPacket.FlushBits();
 
@@ -240,8 +273,8 @@ namespace Game.Networking.Packets
             _worldPacket.WriteString(Channel);
             _worldPacket.WriteString(ChatText);
 
-            if (Unused_801.HasValue)
-                _worldPacket.WriteUInt32(Unused_801.Value);
+            if (BroadcastTextID.HasValue)
+                _worldPacket.WriteUInt32(BroadcastTextID.Value);
 
             if (ChannelGUID.HasValue)
                 _worldPacket.WritePackedGuid(ChannelGUID.Value);
@@ -251,7 +284,7 @@ namespace Game.Networking.Packets
         public Language _Language = Language.Universal;
         public ObjectGuid SenderGUID;
         public ObjectGuid SenderGuildGUID;
-        public ObjectGuid SenderAccountGUID;
+        public ObjectGuid SenderWowAccount;
         public ObjectGuid TargetGUID;
         public uint SenderVirtualAddress;
         public uint TargetVirtualAddress;
@@ -264,7 +297,7 @@ namespace Game.Networking.Packets
         public ChatFlags _ChatFlags;
         public float DisplayTime;
         public uint SpellID;
-        public uint? Unused_801;
+        public uint? BroadcastTextID;
         public bool HideChatLog;
         public bool FakeSenderName;
         public ObjectGuid? ChannelGUID;

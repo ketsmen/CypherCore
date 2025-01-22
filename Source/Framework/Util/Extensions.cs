@@ -300,6 +300,11 @@ namespace System
             return kZMat * (kYMat * kXMat);
         }
 
+        public static bool IsEmpty(this Vector3 vector3)
+        {
+            return float.IsNaN(vector3.X) || float.IsNaN(vector3.Y) || float.IsNaN(vector3.Z);
+        }
+
         #region Strings
         public static bool IsEmpty(this string str)
         {
@@ -432,6 +437,18 @@ namespace System
                 hash *= 0x1000193u;
             }
             return hash;
+        }
+
+        public static int ToFourCC(this string text)
+        {
+            int intValue = 0;
+            foreach (char c in text)
+            {
+                intValue <<= 8;
+                intValue |= c;
+            }
+
+            return intValue;
         }
         #endregion
 

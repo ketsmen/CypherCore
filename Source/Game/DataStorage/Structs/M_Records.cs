@@ -38,6 +38,7 @@ namespace Game.DataStorage
         public int ZmpFileDataID;
         public int WdtFileDataID;
         public int NavigationMaxDistance;
+        public int PreloadFileDataID;
         public uint[] Flags = new uint[3];
 
         // Helpers
@@ -127,10 +128,11 @@ namespace Game.DataStorage
         public int LockID;
         public MapDifficultyResetInterval ResetInterval;
         public uint MaxPlayers;
-        public int ItemContext;
+        public byte ItemContext;
         public uint ItemContextPickerID;
         public int Flags;
         public int ContentTuningID;
+        public int WorldStateExpressionID;
         public uint MapID;
 
         public bool HasResetSchedule() { return ResetInterval != MapDifficultyResetInterval.Anytime; }
@@ -162,7 +164,7 @@ namespace Game.DataStorage
     public sealed class MawPowerRecord
     {
         public uint Id;
-        public int SpellID;
+        public uint SpellID;
         public int MawPowerRarityID;
     }
 
@@ -227,6 +229,7 @@ namespace Game.DataStorage
         public uint Id;
         public uint CreatureDisplayInfoID;
         public uint PlayerConditionID;
+        public ushort Unknown1100;
         public uint MountID;
     }
 
@@ -244,6 +247,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public int MilestoneSeason;
+        public int StartTimeEvent;
         public int ExpansionLevel;
         public int HeroicLFGDungeonMinGear;
     }

@@ -2773,9 +2773,6 @@ namespace Scripts.Spells.Azerite
         void HandleDummy(uint effIndex)
         {
             Player caster = GetCaster().ToPlayer();
-            Battleground bg = caster.GetBattleground();
-            bg?.EventPlayerDroppedFlag(caster);
-
             caster.GetSpellHistory().ResetCooldown(SpellRocketBootsProc);
             caster.CastSpell(caster, SpellRocketBootsProc, true);
         }
@@ -3880,32 +3877,25 @@ namespace Scripts.Spells.Azerite
         const uint SpellFragileEchoesPaladin = 225297;
         const uint SpellFragileEchoesDruid = 225298;
         const uint SpellFragileEchoesPriestHoly = 225366;
+        const uint SpellFragileEchoesEvoker = 429020;
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellFragileEchoesMonk, SpellFragileEchoesShaman, SpellFragileEchoesPriestDiscipline, SpellFragileEchoesPaladin, SpellFragileEchoesDruid, SpellFragileEchoesPriestHoly);
+            return ValidateSpellInfo(SpellFragileEchoesMonk, SpellFragileEchoesShaman, SpellFragileEchoesPriestDiscipline, SpellFragileEchoesPaladin, SpellFragileEchoesDruid, SpellFragileEchoesPriestHoly, SpellFragileEchoesEvoker);
         }
 
-        void ForcePeriodic(AuraEffect aurEff, ref bool isPeriodic, ref int amplitude)
+        void UpdateSpecAura(bool apply)
         {
-            // simulate heartbeat timer
-            isPeriodic = true;
-            amplitude = 5000;
-        }
-
-        void UpdateSpecAura(AuraEffect aurEff)
-        {
-            PreventDefaultAction();
-            Player target = GetTarget().ToPlayer();
+            Player target = GetUnitOwner().ToPlayer();
             if (target == null)
                 return;
 
             void updateAuraIfInCorrectSpec(ChrSpecialization spec, uint aura)
             {
-                if (target.GetPrimarySpecialization() != spec)
+                if (!apply || target.GetPrimarySpecialization() != spec)
                     target.RemoveAurasDueToSpell(aura);
                 else if (!target.HasAura(aura))
-                    target.CastSpell(target, aura, aurEff);
+                    target.CastSpell(target, aura, GetEffect(0));
             }
 
             switch (target.GetClass())
@@ -3926,15 +3916,28 @@ namespace Scripts.Spells.Azerite
                 case Class.Druid:
                     updateAuraIfInCorrectSpec(ChrSpecialization.DruidRestoration, SpellFragileEchoesDruid);
                     break;
+                case Class.Evoker:
+                    updateAuraIfInCorrectSpec(ChrSpecialization.EvokerPreservation, SpellFragileEchoesEvoker);
+                    break;
                 default:
                     break;
             }
         }
 
+        void HandleHeartbeat()
+        {
+            UpdateSpecAura(true);
+        }
+
+        void HandleRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            UpdateSpecAura(false);
+        }
+
         public override void Register()
         {
-            DoEffectCalcPeriodic.Add(new(ForcePeriodic, 0, AuraType.Dummy));
-            OnEffectPeriodic.Add(new(UpdateSpecAura, 0, AuraType.Dummy));
+            OnHeartbeat.Add(new(HandleHeartbeat));
+            AfterEffectRemove.Add(new(HandleRemove, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
         }
     }
 

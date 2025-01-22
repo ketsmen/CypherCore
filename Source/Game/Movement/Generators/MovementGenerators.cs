@@ -2,8 +2,8 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
-using Game.AI;
 using Game.Entities;
+using Game.Scripting.v2;
 using System;
 
 namespace Game.Movement
@@ -14,6 +14,13 @@ namespace Game.Movement
         public MovementGeneratorPriority Priority;
         public MovementGeneratorFlags Flags;
         public UnitState BaseUnitState;
+        public ActionResultSetter<MovementStopReason> ScriptResult;
+
+        ~MovementGenerator()
+        {
+            // Ensure script doesn't get stuck waiting for this movement
+            SetScriptResult(MovementStopReason.Interrupted);
+        }
 
         // on top first update
         public virtual void Initialize(Unit owner) { }
@@ -68,8 +75,17 @@ namespace Game.Movement
         {
             return $"Mode: {Mode} Priority: {Priority} Flags: {Flags} BaseUniteState: {BaseUnitState}";
         }
+
+        public void SetScriptResult(MovementStopReason reason)
+        {
+            if (ScriptResult != null)
+            {
+                ScriptResult.SetResult(reason);
+                ScriptResult = null;
+            }
+        }
     }
-    
+
     public abstract class MovementGeneratorMedium<T> : MovementGenerator where T : Unit
     {
         public override void Initialize(Unit owner)

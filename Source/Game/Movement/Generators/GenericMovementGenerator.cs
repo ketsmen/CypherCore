@@ -3,6 +3,7 @@
 
 using Framework.Constants;
 using Game.Entities;
+using Game.Scripting.v2;
 using System;
 
 namespace Game.Movement
@@ -38,6 +39,8 @@ namespace Game.Movement
                 _duration = new(args.Duration.Value);
                 _durationTracksSpline = false;
             }
+
+            ScriptResult = args.ScriptResult;
         }
 
         public override void Initialize(Unit owner)
@@ -99,6 +102,8 @@ namespace Game.Movement
             if (_arrivalSpellId != 0)
                 owner.CastSpell(Global.ObjAccessor.GetUnit(owner, _arrivalSpellTargetGuid), _arrivalSpellId, true);
 
+            SetScriptResult(MovementStopReason.Finished);
+
             Creature creature = owner.ToCreature();
             if (creature != null && creature.GetAI() != null)
                 creature.GetAI().MovementInform(_type, _pointId);
@@ -112,5 +117,6 @@ namespace Game.Movement
         public uint? ArrivalSpellId;
         public ObjectGuid? ArrivalSpellTarget;
         public TimeSpan? Duration;
+        public ActionResultSetter<MovementStopReason> ScriptResult;
     }
 }

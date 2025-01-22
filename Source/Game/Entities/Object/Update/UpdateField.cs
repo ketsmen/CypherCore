@@ -9,42 +9,6 @@ using System.Linq;
 
 namespace Game.Entities
 {
-    public class UpdateFieldHolder
-    {
-        UpdateMask _changesMask = new((int)TypeId.Max);
-
-        public HasChangesMask ModifyValue(HasChangesMask updateData)
-        {
-            _changesMask.Set(updateData.Bit);
-            return updateData;
-        }
-
-        public void ClearChangesMask(HasChangesMask updateData)
-        {
-            _changesMask.Reset(updateData.Bit);
-            updateData.ClearChangesMask();
-        }
-
-        public void ClearChangesMask<U>(HasChangesMask updateData, ref UpdateField<U> updateField) where U : new()
-        {
-            _changesMask.Reset(updateData.Bit);
-
-            IHasChangesMask hasChangesMask = (IHasChangesMask)updateField._value;
-            if (hasChangesMask != null)
-                hasChangesMask.ClearChangesMask();
-        }
-
-        public uint GetChangedObjectTypeMask()
-        {
-            return _changesMask.GetBlock(0);
-        }
-
-        public bool HasChanged(TypeId index)
-        {
-            return _changesMask[(int)index];
-        }
-    }
-
     public interface IUpdateField<T>
     {
         void SetValue(T value);
@@ -68,6 +32,8 @@ namespace Game.Entities
         {
             return updateField._value;
         }
+
+        public int Size() { return _value.GetByteCount(); }
 
         public void SetValue(string value) { _value = value; }
 
@@ -193,6 +159,16 @@ namespace Game.Entities
 
         public int GetSize() { return _values.Length; }
 
+        public T First(Func<T, bool> predicate)
+        {
+            return _values.First(predicate);
+        }
+
+        public int IndexOf(T value)
+        {
+            return Array.IndexOf(_values, value);
+        }
+
         public IEnumerator<T> GetEnumerator()
         {
             foreach (var obj in _values)
@@ -237,7 +213,7 @@ namespace Game.Entities
 
         public bool HasChanged(int index)
         {
-            return (_updateMask[index / 32] & (1 << (index % 32))) != 0;
+            return (_updateMask[UpdateMask.GetBlockIndex(index)] & UpdateMask.GetBlockFlag(index)) != 0;
         }
 
         public void WriteUpdateMask(WorldPacket data, int bitsForSize = 32)
@@ -411,7 +387,8 @@ namespace Game.Entities
 
         public void ClearChanged<U>(UpdateFieldArray<U> updateField, int index) where U : new()
         {
-            _changesMask.Reset(updateField.FirstElementBit + index);
+            if (updateField.FirstElementBit >= 0)
+                _changesMask.Reset(updateField.FirstElementBit + index);
         }
 
         public void ClearChanged<U>(DynamicUpdateField<U> updateField, int index) where U : new()
@@ -518,9 +495,10 @@ namespace Game.Entities
                 updateField[index]._updateMask.Resize((uint)(updateField[index]._values.Count + 31) / 32);
             }
 
-            //MarkChanged(updateField, index);
             _changesMask.Set(updateField.Bit);
-            _changesMask.Set(updateField.FirstElementBit);
+            if (updateField.FirstElementBit >= 0)
+                _changesMask.Set(updateField.FirstElementBit);
+
             updateField[index].MarkChanged(dynamicIndex);
 
             return new DynamicUpdateFieldSetter<U>(updateField[index], dynamicIndex);
@@ -547,13 +525,15 @@ namespace Game.Entities
         public void MarkChanged<U>(UpdateFieldArray<U> updateField, int index) where U : new()
         {
             _changesMask.Set(updateField.Bit);
-            _changesMask.Set(updateField.FirstElementBit + index);
+            if (updateField.FirstElementBit >= 0)
+                _changesMask.Set(updateField.FirstElementBit + index);
         }
 
         public void MarkChanged(UpdateFieldArrayString updateField, int index)
         {
             _changesMask.Set(updateField.Bit);
-            _changesMask.Set(updateField.FirstElementBit + index);
+            if (updateField.FirstElementBit >= 0)
+                _changesMask.Set(updateField.FirstElementBit + index);
         }
 
         public void WriteCompleteDynamicFieldUpdateMask(int size, WorldPacket data, int bitsForSize = 32)

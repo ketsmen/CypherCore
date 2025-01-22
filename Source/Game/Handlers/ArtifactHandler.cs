@@ -141,6 +141,7 @@ namespace Game
                 artifact.InitArtifactPowers(artifact.GetTemplate().GetArtifactID(), (byte)i);
 
             artifact.SetModifier(ItemModifier.ArtifactTier, artifactTier);
+            _player.UpdateCriteria(CriteriaType.AnyArtifactPowerRankPurchased, totalPurchasedArtifactPower);
         }
 
         [WorldPacketHandler(ClientOpcodes.ArtifactSetAppearance, Processing = PacketProcessing.Inplace)]
@@ -161,10 +162,8 @@ namespace Game
             if (artifactAppearanceSet == null || artifactAppearanceSet.ArtifactID != artifact.GetTemplate().GetArtifactID())
                 return;
 
-            PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(artifactAppearance.UnlockPlayerConditionID);
-            if (playerCondition != null)
-                if (!ConditionManager.IsPlayerMeetingCondition(_player, playerCondition))
-                    return;
+            if (!ConditionManager.IsPlayerMeetingCondition(_player, artifactAppearance.UnlockPlayerConditionID))
+                return;
 
             artifact.SetAppearanceModId(artifactAppearance.ItemAppearanceModifierID);
             artifact.SetModifier(ItemModifier.ArtifactAppearanceId, artifactAppearance.Id);

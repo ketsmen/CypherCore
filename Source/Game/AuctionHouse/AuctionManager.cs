@@ -164,13 +164,13 @@ namespace Game
                 }
 
                 Item item = Item.NewItemOrBag(proto);
-                if (!item.LoadFromDB(itemGuid, ObjectGuid.Create(HighGuid.Player, result.Read<ulong>(51)), result.GetFields(), itemEntry))
+                if (!item.LoadFromDB(itemGuid, ObjectGuid.Create(HighGuid.Player, result.Read<ulong>(52)), result.GetFields(), itemEntry))
                 {
                     item.Dispose();
                     continue;
                 }
 
-                uint auctionId = result.Read<uint>(52);
+                uint auctionId = result.Read<uint>(53);
                 itemsByAuction.Add(auctionId, item);
 
                 ++count;
@@ -1771,6 +1771,8 @@ namespace Game
                         return (long)(left.BidAmount - right.BidAmount);
                     case AuctionHouseSortOrder.Buyout:
                         return (long)(left.BuyoutOrUnitPrice - right.BuyoutOrUnitPrice);
+                    case AuctionHouseSortOrder.TimeRemaining:
+                        return (long)(left.EndTime - right.EndTime).TotalMilliseconds;
                     default:
                         break;
                 }
@@ -1829,6 +1831,10 @@ namespace Game
                         bucketInfo.MaxBattlePetQuality = bucketInfo.MaxBattlePetQuality.HasValue ? Math.Max(bucketInfo.MaxBattlePetQuality.Value, quality) : quality;
                         bucketInfo.MaxBattlePetLevel = bucketInfo.MaxBattlePetLevel.HasValue ? Math.Max(bucketInfo.MaxBattlePetLevel.Value, level) : level;
                         bucketInfo.BattlePetBreedID = (byte)breedId;
+                        if (bucketInfo.BattlePetLevelMask.HasValue)
+                            bucketInfo.BattlePetLevelMask = 0;
+
+                        bucketInfo.BattlePetLevelMask = bucketInfo.BattlePetLevelMask | 1u << (level - 1);
                     }
                 }
 
@@ -1931,8 +1937,8 @@ namespace Game
         {
             ItemId = key.ItemID;
             ItemLevel = key.ItemLevel;
-            BattlePetSpeciesId = (ushort)(key.BattlePetSpeciesID.HasValue ? key.BattlePetSpeciesID.Value : 0);
-            SuffixItemNameDescriptionId = (ushort)(key.SuffixItemNameDescriptionID.HasValue ? key.SuffixItemNameDescriptionID.Value : 0);
+            BattlePetSpeciesId = key.BattlePetSpeciesID.GetValueOrDefault(0);
+            SuffixItemNameDescriptionId = key.ItemSuffix.GetValueOrDefault(0);
         }
 
         public int CompareTo(AuctionsBucketKey other)

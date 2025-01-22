@@ -287,7 +287,7 @@ namespace Game
 
                 // if inventory item was moved, check if we can remove dependent auras, because they were not removed in Player::RemoveItem (update was set to false)
                 // do this after swaps are done, we pass nullptr because both weapons could be swapped and none of them should be ignored
-                if ((autoEquipItem.PackSlot == InventorySlots.Bag0 && autoEquipItem.Slot < InventorySlots.BagEnd) || (dstbag == InventorySlots.Bag0 && dstslot < InventorySlots.BagEnd))
+                if ((autoEquipItem.PackSlot == InventorySlots.Bag0 && autoEquipItem.Slot < InventorySlots.ReagentBagEnd) || (dstbag == InventorySlots.Bag0 && dstslot < InventorySlots.ReagentBagEnd))
                     pl.ApplyItemDependentAuras(null, false);
             }
         }
@@ -429,56 +429,59 @@ namespace Game
                     }
                 }
 
-                ItemTemplate pProto = pItem.GetTemplate();
-                if (pProto != null)
+                uint sellPrice = pItem.GetSellPrice(_player);
+                if (sellPrice > 0)
                 {
-                    if (pProto.GetSellPrice() > 0)
-                    {
-                        ulong money = pProto.GetSellPrice() * packet.Amount;
+                    ulong money = sellPrice * packet.Amount;
 
-                        if (!_player.ModifyMoney((long)money)) // ensure player doesn't exceed gold limit
+                    if (money > uint.MaxValue) // ensure sell price * amount doesn't overflow buyback price
+                    {
+                        _player.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
+                        return;
+                    }
+
+                    if (!_player.ModifyMoney((long)money)) // ensure player doesn't exceed gold limit
+                    {
+                        _player.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
+                        return;
+                    }
+
+                    _player.UpdateCriteria(CriteriaType.MoneyEarnedFromSales, money);
+                    _player.UpdateCriteria(CriteriaType.SellItemsToVendors, 1);
+
+                    if (packet.Amount < pItem.GetCount())               // need split items
+                    {
+                        Item pNewItem = pItem.CloneItem(packet.Amount, pl);
+                        if (pNewItem == null)
                         {
-                            _player.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
+                            Log.outError(LogFilter.Network, "WORLD: HandleSellItemOpcode - could not create clone of item {0}; count = {1}", pItem.GetEntry(), packet.Amount);
+                            pl.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
                             return;
                         }
 
-                        _player.UpdateCriteria(CriteriaType.MoneyEarnedFromSales, money);
-                        _player.UpdateCriteria(CriteriaType.SellItemsToVendors, 1);
+                        pItem.SetCount(pItem.GetCount() - packet.Amount);
+                        pl.ItemRemovedQuestCheck(pItem.GetEntry(), packet.Amount);
+                        if (pl.IsInWorld)
+                            pItem.SendUpdateToPlayer(pl);
+                        pItem.SetState(ItemUpdateState.Changed, pl);
 
-                        if (packet.Amount < pItem.GetCount())               // need split items
-                        {
-                            Item pNewItem = pItem.CloneItem(packet.Amount, pl);
-                            if (pNewItem == null)
-                            {
-                                Log.outError(LogFilter.Network, "WORLD: HandleSellItemOpcode - could not create clone of item {0}; count = {1}", pItem.GetEntry(), packet.Amount);
-                                pl.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
-                                return;
-                            }
-
-                            pItem.SetCount(pItem.GetCount() - packet.Amount);
-                            pl.ItemRemovedQuestCheck(pItem.GetEntry(), packet.Amount);
-                            if (pl.IsInWorld)
-                                pItem.SendUpdateToPlayer(pl);
-                            pItem.SetState(ItemUpdateState.Changed, pl);
-
-                            pl.AddItemToBuyBackSlot(pNewItem);
-                            if (pl.IsInWorld)
-                                pNewItem.SendUpdateToPlayer(pl);
-                        }
-                        else
-                        {
-                            pl.RemoveItem(pItem.GetBagSlot(), pItem.GetSlot(), true);
-                            pl.ItemRemovedQuestCheck(pItem.GetEntry(), pItem.GetCount());
-                            Item.RemoveItemFromUpdateQueueOf(pItem, pl);
-                            pl.AddItemToBuyBackSlot(pItem);
-                        }
+                        pl.AddItemToBuyBackSlot(pNewItem);
+                        if (pl.IsInWorld)
+                            pNewItem.SendUpdateToPlayer(pl);
                     }
                     else
-                        pl.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
-                    return;
+                    {
+                        pl.RemoveItem(pItem.GetBagSlot(), pItem.GetSlot(), true);
+                        pl.ItemRemovedQuestCheck(pItem.GetEntry(), pItem.GetCount());
+                        Item.RemoveItemFromUpdateQueueOf(pItem, pl);
+                        pl.AddItemToBuyBackSlot(pItem);
+                    }
                 }
+                else
+                    pl.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
+                return;
             }
-            pl.SendSellError(SellResult.CantSellItem, creature, packet.ItemGUID);
+            pl.SendSellError(SellResult.CantFindItem, creature, packet.ItemGUID);
             return;
         }
 
@@ -609,7 +612,7 @@ namespace Game
 
         public void SendEnchantmentLog(ObjectGuid owner, ObjectGuid caster, ObjectGuid itemGuid, uint itemId, uint enchantId, uint enchantSlot)
         {
-            EnchantmentLog packet = new(); 
+            EnchantmentLog packet = new();
             packet.Owner = owner;
             packet.Caster = caster;
             packet.ItemGUID = itemGuid;
@@ -822,7 +825,7 @@ namespace Game
 
                     if (i != firstPrismatic)
                         return;
-                }     
+                }
 
                 // Gem must match socket color
                 if (ItemConst.SocketColorToGemTypeMask[(int)itemTarget.GetSocketColor(i)] != gemProperties[i].Type)
@@ -1059,6 +1062,13 @@ namespace Game
             GetPlayer().DestroyItem(item.GetBagSlot(), item.GetSlot(), true);
         }
 
+        void HandleSortAccountBankBags(SortAccountBankBags sortAccountBankBags)
+        {
+            // TODO: Implement sorting
+            // Placeholder to prevent completely locking out bags clientside
+            SendPacket(new BagCleanupFinished());
+        }
+
         [WorldPacketHandler(ClientOpcodes.SortBags, Processing = PacketProcessing.Inplace)]
         void HandleSortBags(SortBags sortBags)
         {
@@ -1098,6 +1108,48 @@ namespace Game
                 item.RemoveItemFlag(ItemFieldFlags.NewItem);
                 item.SetState(ItemUpdateState.Changed, _player);
             }
+        }
+
+        [WorldPacketHandler(ClientOpcodes.ChangeBagSlotFlag, Processing = PacketProcessing.Inplace)]
+        void HandleChangeBagSlotFlag(ChangeBagSlotFlag changeBagSlotFlag)
+        {
+            if (changeBagSlotFlag.BagIndex >= _player.m_activePlayerData.BagSlotFlags.GetSize())
+                return;
+
+            if (changeBagSlotFlag.On)
+                _player.SetBagSlotFlag(changeBagSlotFlag.BagIndex, changeBagSlotFlag.FlagToChange);
+            else
+                _player.RemoveBagSlotFlag(changeBagSlotFlag.BagIndex, changeBagSlotFlag.FlagToChange);
+        }
+
+        [WorldPacketHandler(ClientOpcodes.ChangeBankBagSlotFlag, Processing = PacketProcessing.Inplace)]
+        void HandleChangeBankBagSlotFlag(ChangeBankBagSlotFlag changeBankBagSlotFlag)
+        {
+            if (changeBankBagSlotFlag.BagIndex >= _player.m_activePlayerData.BankBagSlotFlags.GetSize())
+                return;
+
+            if (changeBankBagSlotFlag.On)
+                _player.SetBankBagSlotFlag(changeBankBagSlotFlag.BagIndex, changeBankBagSlotFlag.FlagToChange);
+            else
+                _player.RemoveBankBagSlotFlag(changeBankBagSlotFlag.BagIndex, changeBankBagSlotFlag.FlagToChange);
+        }
+
+        [WorldPacketHandler(ClientOpcodes.SetBackpackAutosortDisabled, Processing = PacketProcessing.Inplace)]
+        void HandleSetBackpackAutosortDisabled(SetBackpackAutosortDisabled setBackpackAutosortDisabled)
+        {
+            _player.SetBackpackAutoSortDisabled(setBackpackAutosortDisabled.Disable);
+        }
+
+        [WorldPacketHandler(ClientOpcodes.SetBackpackSellJunkDisabled, Processing = PacketProcessing.Inplace)]
+        void HandleSetBackpackSellJunkDisabled(SetBackpackSellJunkDisabled setBackpackSellJunkDisabled)
+        {
+            _player.SetBackpackSellJunkDisabled(setBackpackSellJunkDisabled.Disable);
+        }
+
+        [WorldPacketHandler(ClientOpcodes.SetBankAutosortDisabled, Processing = PacketProcessing.Inplace)]
+        void HandleSetBankAutosortDisabled(SetBankAutosortDisabled setBankAutosortDisabled)
+        {
+            _player.SetBankAutoSortDisabled(setBankAutosortDisabled.Disable);
         }
     }
 }

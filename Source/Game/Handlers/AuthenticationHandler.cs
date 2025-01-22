@@ -22,13 +22,15 @@ namespace Game
                 response.SuccessInfo = new AuthResponse.AuthSuccessInfo();
                 response.SuccessInfo.ActiveExpansionLevel = (byte)GetExpansion();
                 response.SuccessInfo.AccountExpansionLevel = (byte)GetAccountExpansion();
-                response.SuccessInfo.VirtualRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
                 response.SuccessInfo.Time = (uint)GameTime.GetGameTime();
 
-                var realm = Global.WorldMgr.GetRealm();
-
                 // Send current home realm. Also there is no need to send it later in realm queries.
-                response.SuccessInfo.VirtualRealms.Add(new VirtualRealmInfo(realm.Id.GetAddress(), true, false, realm.Name, realm.NormalizedName));
+                var currentRealm = Global.RealmMgr.GetCurrentRealm();
+                if(currentRealm != null)
+                {
+                    response.SuccessInfo.VirtualRealmAddress = currentRealm.Id.GetAddress();
+                    response.SuccessInfo.VirtualRealms.Add(new VirtualRealmInfo(currentRealm.Id.GetAddress(), true, false, currentRealm.Name, currentRealm.NormalizedName));
+                }
 
                 if (HasPermission(RBACPermissions.UseCharacterTemplates))
                     foreach (var templ in Global.CharacterTemplateDataStorage.GetCharacterTemplates().Values)
@@ -77,7 +79,7 @@ namespace Game
             SetTimeZoneInformation packet = new();
             packet.ServerTimeTZ = clientSupportedTZ;
             packet.GameTimeTZ = clientSupportedTZ;
-            packet.ServerRegionalTZ = clientSupportedTZ;
+            packet.ServerRegionalTimeTZ = clientSupportedTZ;
 
             SendPacket(packet);//enabled it
         }
@@ -89,7 +91,7 @@ namespace Game
             features.BpayStoreDisabledByParentalControls = false;
             features.CharUndeleteEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemCharacterUndeleteEnabled);
             features.BpayStoreEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemBpayStoreEnabled);
-            features.MaxCharactersPerRealm = WorldConfig.GetIntValue(WorldCfg.CharactersPerRealm);
+            features.MaxCharactersOnThisRealm = WorldConfig.GetIntValue(WorldCfg.CharactersPerRealm);
             features.MinimumExpansionLevel = (int)Expansion.Classic;
             features.MaximumExpansionLevel = WorldConfig.GetIntValue(WorldCfg.Expansion);
 

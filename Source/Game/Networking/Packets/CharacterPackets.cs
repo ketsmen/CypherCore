@@ -27,20 +27,24 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WriteBit(Success);
+            _worldPacket.WriteBit(Realmless);
             _worldPacket.WriteBit(IsDeletedCharacters);
-            _worldPacket.WriteBit(IsNewPlayerRestrictionSkipped);
-            _worldPacket.WriteBit(IsNewPlayerRestricted);
-            _worldPacket.WriteBit(IsNewPlayer);
-            _worldPacket.WriteBit(IsTrialAccountRestricted);
-            _worldPacket.WriteBit(DisabledClassesMask.HasValue);
+            _worldPacket.WriteBit(IgnoreNewPlayerRestrictions);
+            _worldPacket.WriteBit(IsRestrictedNewPlayer);
+            _worldPacket.WriteBit(IsNewcomerChatCompleted);
+            _worldPacket.WriteBit(IsRestrictedTrial);
+            _worldPacket.WriteBit(ClassDisableMask.HasValue);
+            _worldPacket.WriteBit(DontCreateCharacterDisplays);
             _worldPacket.WriteInt32(Characters.Count);
+            _worldPacket.WriteInt32(RegionwideCharacters.Count);
             _worldPacket.WriteInt32(MaxCharacterLevel);
             _worldPacket.WriteInt32(RaceUnlockData.Count);
             _worldPacket.WriteInt32(UnlockedConditionalAppearances.Count);
             _worldPacket.WriteInt32(RaceLimitDisables.Count);
+            _worldPacket.WriteInt32(WarbandGroups.Count);
 
-            if (DisabledClassesMask.HasValue)
-                _worldPacket.WriteUInt32(DisabledClassesMask.Value);
+            if (ClassDisableMask.HasValue)
+                _worldPacket.WriteUInt32(ClassDisableMask.Value);
 
             foreach (UnlockedConditionalAppearance unlockedConditionalAppearance in UnlockedConditionalAppearances)
                 unlockedConditionalAppearance.Write(_worldPacket);
@@ -48,7 +52,13 @@ namespace Game.Networking.Packets
             foreach (RaceLimitDisableInfo raceLimitDisableInfo in RaceLimitDisables)
                 raceLimitDisableInfo.Write(_worldPacket);
 
+            foreach (WarbandGroup warbandGroup in WarbandGroups)
+                warbandGroup.Write(_worldPacket);
+
             foreach (CharacterInfo charInfo in Characters)
+                charInfo.Write(_worldPacket);
+
+            foreach (RegionwideCharacterListEntry charInfo in RegionwideCharacters)
                 charInfo.Write(_worldPacket);
 
             foreach (RaceUnlock raceUnlock in RaceUnlockData)
@@ -56,25 +66,30 @@ namespace Game.Networking.Packets
         }
 
         public bool Success;
+        public bool Realmless;
         public bool IsDeletedCharacters; // used for character undelete list
-        public bool IsNewPlayerRestrictionSkipped; // allows client to skip new player restrictions
-        public bool IsNewPlayerRestricted; // forbids using level boost and class trials
-        public bool IsNewPlayer; // forbids hero classes and allied races
-        public bool IsTrialAccountRestricted;
+        public bool IgnoreNewPlayerRestrictions; // allows client to skip new player restrictions
+        public bool IsRestrictedNewPlayer; // forbids using level boost and class trials
+        public bool IsNewcomerChatCompleted; // forbids hero classes and allied races
+        public bool IsRestrictedTrial;
+        public bool DontCreateCharacterDisplays;
 
         public int MaxCharacterLevel = 1;
-        public uint? DisabledClassesMask = new();
+        public uint? ClassDisableMask = new();
 
         public List<CharacterInfo> Characters = new(); // all characters on the list
-        public List<RaceUnlock> RaceUnlockData = new(); //
+        public List<RegionwideCharacterListEntry> RegionwideCharacters = new();
+        public List<RaceUnlock> RaceUnlockData = new();
         public List<UnlockedConditionalAppearance> UnlockedConditionalAppearances = new();
         public List<RaceLimitDisableInfo> RaceLimitDisables = new();
+        public List<WarbandGroup> WarbandGroups = new();
 
-        public class CharacterInfo
+        public class CharacterInfoBasic
         {
-            public CharacterInfo(SQLFields fields)
+            public CharacterInfoBasic(SQLFields fields)
             {
                 Guid = ObjectGuid.Create(HighGuid.Player, fields.Read<ulong>(0));
+                VirtualRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
                 Name = fields.Read<string>(1);
                 RaceId = fields.Read<byte>(2);
                 ClassId = (Class)fields.Read<byte>(3);
@@ -116,8 +131,6 @@ namespace Game.Networking.Packets
                 else if (atLoginFlags.HasAnyFlag(AtLoginFlags.ChangeRace))
                     Flags2 = CharacterCustomizeFlags.Race;
 
-                Flags3 = 0;
-                Flags4 = 0;
                 FirstLogin = atLoginFlags.HasAnyFlag(AtLoginFlags.FirstLogin);
 
                 // show pet at selection character in character list only for non-ghost character
@@ -132,13 +145,12 @@ namespace Game.Networking.Packets
                     }
                 }
 
-                BoostInProgress = false;
                 ProfessionIds[0] = 0;
                 ProfessionIds[1] = 0;
 
                 StringArray equipment = new(fields.Read<string>(17), ' ');
                 ListPosition = fields.Read<byte>(19);
-                LastPlayedTime = fields.Read<long>(20);
+                LastActiveTime = fields.Read<long>(20);
 
                 var spec = Global.DB2Mgr.GetChrSpecializationByIndex(ClassId, fields.Read<byte>(21));
                 if (spec != null)
@@ -168,40 +180,42 @@ namespace Game.Networking.Packets
             public void Write(WorldPacket data)
             {
                 data.WritePackedGuid(Guid);
-                data.WriteUInt64(GuildClubMemberID);
+                data.WriteUInt32(VirtualRealmAddress);
                 data.WriteUInt8(ListPosition);
                 data.WriteUInt8(RaceId);
-                data.WriteUInt8((byte)ClassId);
                 data.WriteUInt8(SexId);
+                data.WriteUInt8((byte)ClassId);
+                data.WriteInt16(SpecID);
                 data.WriteInt32(Customizations.Count);
 
                 data.WriteUInt8(ExperienceLevel);
-                data.WriteUInt32(ZoneId);
                 data.WriteUInt32(MapId);
+                data.WriteUInt32(ZoneId);
                 data.WriteVector3(PreloadPos);
+                data.WriteUInt64(GuildClubMemberID);
                 data.WritePackedGuid(GuildGuid);
                 data.WriteUInt32((uint)Flags);
                 data.WriteUInt32((uint)Flags2);
                 data.WriteUInt32(Flags3);
+                data.WriteUInt8(CantLoginReason);
+
                 data.WriteUInt32(PetCreatureDisplayId);
                 data.WriteUInt32(PetExperienceLevel);
                 data.WriteUInt32(PetCreatureFamilyId);
 
-                data.WriteUInt32(ProfessionIds[0]);
-                data.WriteUInt32(ProfessionIds[1]);
-
                 foreach (var visualItem in VisualItems)
                     visualItem.Write(data);
 
-                data.WriteInt64(LastPlayedTime);
-                data.WriteInt16(SpecID);
-                data.WriteInt32(Unknown703);
+                data.WriteInt32(SaveVersion);
+                data.WriteInt64(LastActiveTime);
                 data.WriteInt32(LastLoginVersion);
-                data.WriteUInt32(Flags4);
-                data.WriteInt32(MailSenders.Count);
-                data.WriteInt32(MailSenderTypes.Count);
-                data.WriteUInt32(OverrideSelectScreenFileDataID);
                 PersonalTabard.Write(data);
+
+                data.WriteUInt32(ProfessionIds[0]);
+                data.WriteUInt32(ProfessionIds[1]);
+
+                data.WriteInt32(TimerunningSeasonID);
+                data.WriteUInt32(OverrideSelectScreenFileDataID);
 
                 foreach (ChrCustomizationChoice customization in Customizations)
                 {
@@ -209,29 +223,15 @@ namespace Game.Networking.Packets
                     data.WriteUInt32(customization.ChrCustomizationChoiceID);
                 }
 
-                foreach (var mailSenderType in MailSenderTypes)
-                    data.WriteUInt32(mailSenderType);
-
                 data.WriteBits(Name.GetByteCount(), 6);
                 data.WriteBit(FirstLogin);
-                data.WriteBit(BoostInProgress);
-                data.WriteBits(unkWod61x, 5);
-                data.WriteBit(RpeResetAvailable);
-                data.WriteBit(RpeResetQuestClearAvailable);
-
-                foreach (string str in MailSenders)
-                    data.WriteBits(str.GetByteCount() + 1, 6);
-
                 data.FlushBits();
-
-                foreach (string str in MailSenders)
-                    if (!str.IsEmpty())
-                        data.WriteCString(str);
 
                 data.WriteString(Name);
             }
 
             public ObjectGuid Guid;
+            public uint VirtualRealmAddress;
             public ulong GuildClubMemberID; // same as bgs.protocol.club.v1.MemberId.unique_id, guessed basing on SMSG_QUERY_PLAYER_NAME_RESPONSE (that one is known)
             public string Name;
             public byte ListPosition; // Order of the characters in list
@@ -247,24 +247,19 @@ namespace Game.Networking.Packets
             public CharacterFlags Flags; // Character flag @see enum CharacterFlags
             public CharacterCustomizeFlags Flags2; // Character customization flags @see enum CharacterCustomizeFlags
             public uint Flags3; // Character flags 3 @todo research
-            public uint Flags4;
             public bool FirstLogin;
-            public byte unkWod61x;
-            public long LastPlayedTime;
+            public byte CantLoginReason;
+            public long LastActiveTime;
             public short SpecID;
-            public int Unknown703;
+            public int SaveVersion;
             public int LastLoginVersion;
             public uint OverrideSelectScreenFileDataID;
+            public int TimerunningSeasonID;
             public uint PetCreatureDisplayId;
             public uint PetExperienceLevel;
             public uint PetCreatureFamilyId;
-            public bool BoostInProgress; // @todo
             public uint[] ProfessionIds = new uint[2];      // @todo
-            public VisualItemInfo[] VisualItems = new VisualItemInfo[InventorySlots.ReagentBagEnd];
-            public List<string> MailSenders = new();
-            public List<uint> MailSenderTypes = new();
-            public bool RpeResetAvailable = false;
-            public bool RpeResetQuestClearAvailable = false;
+            public VisualItemInfo[] VisualItems = new VisualItemInfo[19];
             public CustomTabardInfo PersonalTabard = new();
 
             public struct VisualItemInfo
@@ -272,10 +267,12 @@ namespace Game.Networking.Packets
                 public void Write(WorldPacket data)
                 {
                     data.WriteUInt32(DisplayId);
-                    data.WriteUInt32(DisplayEnchantId);
-                    data.WriteUInt32(SecondaryItemModifiedAppearanceID);
                     data.WriteUInt8(InvType);
+                    data.WriteUInt32(DisplayEnchantId);
                     data.WriteUInt8(Subclass);
+                    data.WriteUInt32(SecondaryItemModifiedAppearanceID);
+                    data.WriteUInt32(ItemID);
+                    data.WriteUInt32(TransmogrifiedItemID);
                 }
 
                 public uint DisplayId;
@@ -283,6 +280,8 @@ namespace Game.Networking.Packets
                 public uint SecondaryItemModifiedAppearanceID; // also -1 is some special value
                 public byte InvType;
                 public byte Subclass;
+                public uint ItemID;
+                public uint TransmogrifiedItemID;
             }
 
             public struct PetInfo
@@ -293,52 +292,127 @@ namespace Game.Networking.Packets
             }
         }
 
+        public class CharacterRestrictionAndMailData
+        {
+            public bool BoostInProgress; ///< @todo
+            public uint RestrictionFlags;
+            public List<string> MailSenders = new();
+            public List<uint> MailSenderTypes = new();
+            public bool RpeResetAvailable;
+            public bool RpeResetQuestClearAvailable;
+
+            public void Write(WorldPacket data)
+            {
+                Cypher.Assert(MailSenders.Count == MailSenderTypes.Count);
+
+                data.WriteBit(BoostInProgress);
+                data.WriteBit(RpeResetAvailable);
+                data.WriteBit(RpeResetQuestClearAvailable);
+                data.FlushBits();
+
+                data.WriteUInt32(RestrictionFlags);
+                data.WriteInt32(MailSenders.Count);
+                data.WriteInt32(MailSenderTypes.Count);
+
+                if (!MailSenderTypes.Empty())
+                    foreach (var type in MailSenderTypes)
+                        data.WriteUInt32(type);
+
+                foreach (string str in MailSenders)
+                    data.WriteBits(str.GetByteCount() + 1, 6);
+
+                data.FlushBits();
+
+                foreach (string str in MailSenders)
+                    if (!str.IsEmpty())
+                        data.WriteCString(str);
+            }
+        }
+
+        public struct CharacterInfo
+        {
+            public CharacterInfoBasic Basic;
+            public CharacterRestrictionAndMailData RestrictionsAndMails = new();
+
+            public CharacterInfo(SQLFields fields)
+            {
+                Basic = new(fields);
+            }
+
+            public void Write(WorldPacket data)
+            {
+                Basic.Write(data);
+                RestrictionsAndMails.Write(data);
+            }
+        }
+
+        public struct RegionwideCharacterListEntry
+        {
+            public CharacterInfoBasic Basic;
+            public ulong Money;
+            public float CurrentSeasonMythicPlusOverallScore;
+            public uint CurrentSeasonBestPvpRating;
+            public sbyte PvpRatingBracket;
+            public short PvpRatingAssociatedSpecID;
+
+            public RegionwideCharacterListEntry(SQLFields fields)
+            {
+                Basic = new(fields);
+            }
+
+            public void Write(WorldPacket data)
+            {
+                Basic.Write(data);
+                data.WriteUInt64(Money);
+                data.WriteFloat(CurrentSeasonMythicPlusOverallScore);
+                data.WriteUInt32(CurrentSeasonBestPvpRating);
+                data.WriteInt8(PvpRatingBracket);
+                data.WriteInt16(PvpRatingAssociatedSpecID);
+            }
+        }
+
         public struct RaceUnlock
         {
+            public int RaceID;
+            public bool HasUnlockedLicense;
+            public bool HasUnlockedAchievement;
+            public bool HasHeritageArmorUnlockAchievement;
+            public bool HideRaceOnClient;
+            public bool Unused1027;
+
             public void Write(WorldPacket data)
             {
                 data.WriteInt32(RaceID);
-                data.WriteBit(HasExpansion);
-                data.WriteBit(HasAchievement);
-                data.WriteBit(HasHeritageArmor);
-                data.WriteBit(IsLocked);
+                data.WriteBit(HasUnlockedLicense);
+                data.WriteBit(HasUnlockedAchievement);
+                data.WriteBit(HasHeritageArmorUnlockAchievement);
+                data.WriteBit(HideRaceOnClient);
+                data.WriteBit(Unused1027);
                 data.FlushBits();
             }
-
-            public int RaceID;
-            public bool HasExpansion;
-            public bool HasAchievement;
-            public bool HasHeritageArmor;
-            public bool IsLocked;
         }
 
         public struct UnlockedConditionalAppearance
         {
+            public int AchievementID;
+            public int ConditionalType;
+
             public void Write(WorldPacket data)
             {
                 data.WriteInt32(AchievementID);
-                data.WriteInt32(Unused);
+                data.WriteInt32(ConditionalType);
             }
-
-            public int AchievementID;
-            public int Unused;
         }
 
         public struct RaceLimitDisableInfo
         {
-            enum blah
-            {
-                Server,
-                Level
-            }
-
             public int RaceID;
-            public int BlockReason;
+            public int Reason;
 
             public void Write(WorldPacket data)
             {
                 data.WriteInt32(RaceID);
-                data.WriteInt32(BlockReason);
+                data.WriteInt32(Reason);
             }
         }
     }
@@ -386,12 +460,13 @@ namespace Game.Networking.Packets
             bool hasTemplateSet = _worldPacket.HasBit();
             CreateInfo.IsTrialBoost = _worldPacket.HasBit();
             CreateInfo.UseNPE = _worldPacket.HasBit();
+            CreateInfo.HardcoreSelfFound = _worldPacket.HasBit();
 
             CreateInfo.RaceId = (Race)_worldPacket.ReadUInt8();
             CreateInfo.ClassId = (Class)_worldPacket.ReadUInt8();
             CreateInfo.Sex = (Gender)_worldPacket.ReadUInt8();
             var customizationCount = _worldPacket.ReadUInt32();
-
+            CreateInfo.TimerunningSeasonID = _worldPacket.ReadInt32();
             CreateInfo.Name = _worldPacket.ReadString(nameLength);
             if (CreateInfo.TemplateSet.HasValue)
                 CreateInfo.TemplateSet = _worldPacket.ReadUInt32();
@@ -884,6 +959,7 @@ namespace Game.Networking.Packets
             NewSex = _worldPacket.ReadUInt8();
             CustomizedRace = _worldPacket.ReadInt32();
             CustomizedChrModelID = _worldPacket.ReadInt32();
+            UnalteredVisualRaceID = _worldPacket.ReadInt32();
 
             for (var i = 0; i < customizationCount; ++i)
             {
@@ -901,6 +977,7 @@ namespace Game.Networking.Packets
         public Array<ChrCustomizationChoice> Customizations = new(250);
         public int CustomizedRace;
         public int CustomizedChrModelID;
+        public int UnalteredVisualRaceID;
     }
 
     public class BarberShopResult : ServerPacket
@@ -1142,8 +1219,10 @@ namespace Game.Networking.Packets
         public Gender Sex = Gender.None;
         public Array<ChrCustomizationChoice> Customizations = new(250);
         public uint? TemplateSet;
+        public int TimerunningSeasonID;
         public bool IsTrialBoost;
         public bool UseNPE;
+        public bool HardcoreSelfFound;
         public string Name;
 
         // Server side data
@@ -1208,6 +1287,40 @@ namespace Game.Networking.Packets
             BorderStyle = data.ReadInt32();
             BorderColor = data.ReadInt32();
             BackgroundColor = data.ReadInt32();
+        }
+    }
+
+    public struct WarbandGroupMember
+    {
+        public int WarbandScenePlacementID;
+        public int Type;
+        public ObjectGuid Guid;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteInt32(WarbandScenePlacementID);
+            data.WriteInt32(Type);
+            if (Type == 0)
+                data.WritePackedGuid(Guid);
+        }
+    }
+
+    public class WarbandGroup
+    {
+        public ulong GroupID;
+        public byte Unknown_1100;
+        public int Flags;    ///< enum WarbandGroupFlags { Collapsed = 1 }
+        public List<WarbandGroupMember> Members = new();
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteUInt64(GroupID);
+            data.WriteUInt8(Unknown_1100);
+            data.WriteInt32(Flags);
+            data.WriteInt32(Members.Count);
+
+            foreach (WarbandGroupMember member in Members)
+                member.Write(data);
         }
     }
 }

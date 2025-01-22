@@ -52,7 +52,7 @@ namespace Game.DataStorage
     public sealed class ItemAppearanceRecord
     {
         public uint Id;
-        public int DisplayType;
+        public sbyte DisplayType;
         public uint ItemDisplayInfoID;
         public int DefaultIconFileDataID;
         public int UiOrder;
@@ -100,7 +100,7 @@ namespace Game.DataStorage
     public sealed class ItemBonusListGroupEntryRecord
     {
         public uint Id;
-        public int ItemBonusListGroupID;
+        public uint ItemBonusListGroupID;
         public int ItemBonusListID;
         public int ItemLevelSelectorID;
         public int SequenceValue;
@@ -286,6 +286,7 @@ namespace Game.DataStorage
         public int ItemAppearanceID;
         public int OrderIndex;
         public byte TransmogSourceTypeEnum;
+        public int Flags;
     }
 
     public sealed class ItemModifiedAppearanceExtraRecord
@@ -328,7 +329,7 @@ namespace Game.DataStorage
         public ushort RequiredSkillRank;
         public uint RequiredAbility;
         public ushort ItemLevel;
-        public int[] Flags = new int[4];
+        public int[] Flags = new int[5];
     }
 
     public sealed class ItemSetRecord
@@ -372,6 +373,7 @@ namespace Game.DataStorage
         public float ItemRange;
         public float[] StatPercentageOfSocket = new float[ItemConst.MaxStats];
         public int[] StatPercentEditor = new int[ItemConst.MaxStats];
+        public int[] StatModifierBonusStat = new int[ItemConst.MaxStats];
         public uint Stackable;
         public uint MaxCount;
         public uint MinReputation;
@@ -381,7 +383,7 @@ namespace Game.DataStorage
         public uint VendorStackCount;
         public float PriceVariance;
         public float PriceRandomValue;
-        public int[] Flags = new int[4];
+        public int[] Flags = new int[5];
         public uint FactionRelated;
         public int ModifiedCraftingReagentItemID;
         public uint ContentTuningID;
@@ -412,7 +414,6 @@ namespace Game.DataStorage
         public byte PageMaterialID;
         public byte Bonding;
         public byte DamageType;
-        public sbyte[] StatModifierBonusStat = new sbyte[ItemConst.MaxStats];
         public byte ContainerSlots;
         public byte RequiredPVPMedal;
         public byte RequiredPVPRank;

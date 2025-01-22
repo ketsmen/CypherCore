@@ -47,7 +47,7 @@ namespace Framework.Constants
         RacialForThePurposeOfTemporaryRaceChange = 0x8000,
     }
 
-    public enum AbilityLearnType : byte
+    public enum AbilityLearnType : int
     {
         OnSkillValue = 1, // Spell state will update depending on skill value
         OnSkillLearn = 2, // Spell will be learned/removed together with entire skill
@@ -952,6 +952,38 @@ namespace Framework.Constants
         ClientEnforcesMount = 0x10
     }
 
+    [Flags]
+    public enum AreaTriggerActionSetFlag
+    {
+        None = 0x00,
+        OnlyTriggeredByCaster = 0x01,
+        ResurrectIfConditionFails = 0x02, // NYI
+        Obsolete = 0x04,
+        AllowWhileGhost = 0x08,
+        AllowWhileDead = 0x10,
+        UnifyAllInstances = 0x20, // NYI
+        SuppressConditionError = 0x40, // NYI
+        NotTriggeredbyCaster = 0x80,
+        CreatorsPartyOnly = 0x100,
+        DontRunOnLeaveWhenExpiring = 0x200, // NYI
+        CanAffectUninteractible = 0x400,
+        DontDespawnWithCreator = 0x800, // NYI
+        CanAffectBeastmaster = 0x1000, // Can affect GMs
+        RequiresLineOfSight = 0x2000 // NYI
+    }
+
+    public enum AreaTriggerShapeType
+    {
+        Sphere = 0,
+        Box = 1,
+        Unk = 2,
+        Polygon = 3,
+        Cylinder = 4,
+        Disk = 5,
+        BoundedPlane = 6,
+        Max
+    }
+
     public enum ArtifactCategory
     {
         Primary = 1,
@@ -1064,7 +1096,11 @@ namespace Framework.Constants
         UseTotalEarnedForEarned = 0x01,
         ShowQuestXPGainInTooltip = 0x02, // NYI
         NoNotificationMailOnOfflineProgress = 0x04, // NYI
-        BattlenetVirtualCurrency = 0x08  // NYI
+        BattlenetVirtualCurrency = 0x08,  // NYI
+        FutureCurrencyFlag = 0x10, // NYI
+        DontDisplayIfZero = 0x20, // NYI
+        ScaleMaxQuantityBySeasonWeeks = 0x40, // NYI
+        ScaleMaxQuantityByWeeksSinceStart = 0x80, // NYI
     }
 
     [Flags]
@@ -1221,9 +1257,10 @@ namespace Framework.Constants
 
     public enum ContentTuningCalcType
     {
-        Base = 0,
-        PlusOne = 1,
-        PlusMaxLevelForExpansion = 2
+        None = 0,
+        MinLevel = 1,
+        MaxLevel = 2,
+        PrevExpansionMaxLevel = 3
     }
 
     [Flags]
@@ -1859,6 +1896,25 @@ namespace Framework.Constants
         HideIfUnknown = 0x40
     }
 
+    public enum PathPropertyIndex
+    {
+        UseNewLiquidGenerateCode = 0,
+        AnimaCableId = 1,
+        AnimaPlayerCondition = 2,
+        AnimaStartTaper = 3,
+        AnimaEndTaper = 4,
+        VolumeHeight = 5,
+        AiPathGraphMaxStartDist = 6,
+        AiPathGraphMinTotalDist = 7,
+        AiPathGraphAreaControl = 8,
+        AiPathGraphAreaId = 9,
+        AiPathGraphWidth = 10,
+        AiPathDefaultFollowStyle = 11,
+        AiPathConstrainSteering = 12,
+        Phase = 13,
+        SteepSlopeDegrees = 14
+    }
+
     public enum PhaseEntryFlags : int
     {
         ReadOnly = 0x1,
@@ -1963,7 +2019,10 @@ namespace Framework.Constants
         BarbersChoice = 62,
         JailersTowerBuffs = 63,
         MajorFactionRenown = 64,
-        PersonalTabardVendor = 65
+        PersonalTabardVendor = 65,
+        ForgeMaster = 66,
+        CharacterBanker = 67,
+        AccountBanker = 68,
     }
 
     [Flags]
@@ -1979,7 +2038,7 @@ namespace Framework.Constants
         ContinueRegenWhileFatigued = 0x200,
         RegenAffectedByHaste = 0x400,
         SetToMaxOnLevelUp = 0x1000,
-        SetToMaxLevelOnInitialLogIn = 0x2000,
+        SetToMaxOnInitialLogIn = 0x2000,
         AllowCostModsForPlayers = 0x4000
     }
 
@@ -2088,7 +2147,7 @@ namespace Framework.Constants
         DespawnOnSummonerDeath = 0x08, // NYI
         OnlyVisibleToSummoner = 0x10,
         CannotDismissPet = 0x20, // NYI
-        UseDemonTimeout = 0x40, // NYI
+        UseDemonTimeout = 0x40,
         UnlimitedSummons = 0x80, // NYI
         UseCreatureLevel = 0x100,
         JoinSummonerSpawnGroup = 0x200, // NYI
@@ -2443,7 +2502,8 @@ namespace Framework.Constants
         Available = 0,
         Visible = 1,
         Granted = 2,
-        Increased = 3
+        Increased = 3,
+        DisplayError = 4
     }
 
     public enum TraitConfigType
@@ -2496,7 +2556,8 @@ namespace Framework.Constants
     {
         Single = 0,
         Tiered = 1,
-        Selection = 2
+        Selection = 2,
+        SubTreeSelection = 3
     }
 
     public enum TraitPointsOperationType

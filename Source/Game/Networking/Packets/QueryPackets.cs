@@ -319,9 +319,9 @@ namespace Game.Networking.Packets
 
             _worldPacket.WritePackedGuid(Player);
             _worldPacket.WriteInt32(ActualMapID);
-            _worldPacket.WriteVector3(Position);
             _worldPacket.WriteInt32(MapID);
             _worldPacket.WritePackedGuid(Transport);
+            _worldPacket.WriteVector3(Position);
         }
 
         public ObjectGuid Player;
@@ -564,26 +564,37 @@ namespace Game.Networking.Packets
         public VirtualRealmNameInfo NameInfo;
     }
 
-    //Structs
-    public class PlayerGuidLookupHint
+    class QueryTreasurePicker : ClientPacket
     {
-        public void Write(WorldPacket data)
+        public uint QuestID;
+        public uint TreasurePickerID;
+
+        public QueryTreasurePicker(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
         {
-            data.WriteBit(VirtualRealmAddress.HasValue);
-            data.WriteBit(NativeRealmAddress.HasValue);
-            data.FlushBits();
-
-            if (VirtualRealmAddress.HasValue)
-                data.WriteUInt32(VirtualRealmAddress.Value);
-
-            if (NativeRealmAddress.HasValue)
-                data.WriteUInt32(NativeRealmAddress.Value);
+            QuestID = _worldPacket.ReadUInt32();
+            TreasurePickerID = _worldPacket.ReadUInt32();
         }
-
-        public uint? VirtualRealmAddress = new(); // current realm (?) (identifier made from the Index, BattleGroup and Region)
-        public uint? NativeRealmAddress = new(); // original realm (?) (identifier made from the Index, BattleGroup and Region)
     }
 
+    class TreasurePickerResponse : ServerPacket
+    {
+        public uint QuestID;
+        public uint TreasurePickerID;
+        public TreasurePickerPick Pick;
+
+        public TreasurePickerResponse() : base(ServerOpcodes.TreasurePickerResponse, ConnectionType.Instance) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteUInt32(QuestID);
+            _worldPacket.WriteUInt32(TreasurePickerID);
+            Pick.Write(_worldPacket);
+        }
+    }
+
+    //Structs
     public class PlayerGuidLookupData
     {
         public bool Initialize(ObjectGuid guid, Player player = null)
@@ -603,6 +614,8 @@ namespace Game.Networking.Packets
                 Sex = player.GetNativeGender();
                 ClassID = player.GetClass();
                 Level = (byte)player.GetLevel();
+                PvpFaction = (byte)(player.GetTeamId() == BattleGroundTeamId.Alliance ? 1 : 0);
+                TimerunningSeasonID = player.m_activePlayerData.TimerunningSeasonID;
 
                 DeclinedNames names = player.GetDeclinedNames();
                 if (names != null)
@@ -620,6 +633,7 @@ namespace Game.Networking.Packets
                 Sex = characterInfo.Sex;
                 ClassID = characterInfo.ClassId;
                 Level = characterInfo.Level;
+                PvpFaction = (byte)(Player.TeamIdForRace(characterInfo.RaceId) == BattleGroundTeamId.Alliance ? 1 : 0);
             }
 
             IsDeleted = characterInfo.IsDeleted;
@@ -650,7 +664,8 @@ namespace Game.Networking.Packets
             data.WriteUInt8((byte)Sex);
             data.WriteUInt8((byte)ClassID);
             data.WriteUInt8(Level);
-            data.WriteUInt8(Unused915);
+            data.WriteUInt8(PvpFaction);
+            data.WriteInt32(TimerunningSeasonID);
             data.WriteString(Name);
         }
 
@@ -665,24 +680,25 @@ namespace Game.Networking.Packets
         public Gender Sex = Gender.None;
         public Class ClassID = Class.None;
         public byte Level;
-        public byte Unused915;
+        public byte PvpFaction;
+        public int TimerunningSeasonID;
         public DeclinedName DeclinedNames = new();
     }
 
-    public class NameCacheUnused920
+    public class GuildGuidLookupData
     {
-        public uint Unused1;
-        public ObjectGuid Unused2;
-        public string Unused3 = "";
+        public uint VirtualRealmAddress;
+        public ObjectGuid Guid;
+        public string Name = "";
 
         public void Write(WorldPacket data)
         {
-            data.WriteUInt32(Unused1);
-            data.WritePackedGuid(Unused2);
-            data.WriteBits(Unused3.GetByteCount(), 7);
+            data.WriteUInt32(VirtualRealmAddress);
+            data.WritePackedGuid(Guid);
+            data.WriteBits(Name.GetByteCount(), 7);
             data.FlushBits();
 
-            data.WriteString(Unused3);
+            data.WriteString(Name);
         }
     }
 
@@ -691,21 +707,21 @@ namespace Game.Networking.Packets
         public ObjectGuid Player;
         public byte Result; // 0 - full packet, != 0 - only guid
         public PlayerGuidLookupData Data;
-        public NameCacheUnused920 Unused920;
+        public GuildGuidLookupData GuildData;
 
         public void Write(WorldPacket data)
         {
             data.WriteUInt8(Result);
             data.WritePackedGuid(Player);
             data.WriteBit(Data != null);
-            data.WriteBit(Unused920 != null);
+            data.WriteBit(GuildData != null);
             data.FlushBits();
 
             if (Data != null)
                 Data.Write(data);
 
-            if (Unused920 != null)
-                Unused920.Write(data);
+            if (GuildData != null)
+                GuildData.Write(data);
         }
     }
 
@@ -780,5 +796,94 @@ namespace Game.Networking.Packets
     {
         public uint QuestID;
         public List<uint> NPCs = new();
+    }
+
+    struct TreasurePickItem
+    {
+        public ItemInstance Item;
+        public uint Quantity;
+        public QuestRewardContextFlags? ContextFlags;
+
+        public void Write(WorldPacket data)
+        {
+            Item.Write(data);
+            data.WriteUInt32(Quantity);
+            data.WriteBit(ContextFlags.HasValue);
+            data.FlushBits();
+
+            if (ContextFlags.HasValue)
+                data.WriteInt32((int)ContextFlags.Value);
+        }
+    }
+
+    struct TreasurePickCurrency
+    {
+        public uint CurrencyID;
+        public uint Quantity;
+        public QuestRewardContextFlags? ContextFlags;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteUInt32(CurrencyID);
+            data.WriteUInt32(Quantity);
+            data.WriteBit(ContextFlags.HasValue);
+            data.FlushBits();
+
+            if (ContextFlags.HasValue)
+                data.WriteInt32((int)ContextFlags.Value);
+        }
+    }
+
+    class TreasurePickerBonus
+    {
+        public List<TreasurePickItem> Items = new();
+        public List<TreasurePickCurrency> Currencies = new();
+        public ulong Money;
+        public bool Context;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteInt32(Items.Count);
+            data.WriteInt32(Currencies.Count);
+            data.WriteUInt64(Money);
+            data.WriteBit(Context);
+            data.FlushBits();
+
+            foreach (TreasurePickItem treasurePickerItem in Items)
+                treasurePickerItem.Write(data);
+
+            foreach (TreasurePickCurrency treasurePickCurrency in Currencies)
+                treasurePickCurrency.Write(data);
+        }
+    }
+
+    class TreasurePickerPick
+    {
+        public List<TreasurePickItem> Items = new();
+        public List<TreasurePickCurrency> Currencies = new();
+        public List<TreasurePickerBonus> Bonuses = new();
+        public ulong Money;
+        public int Flags;
+        public bool IsChoice;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteInt32(Items.Count);
+            data.WriteInt32(Currencies.Count);
+            data.WriteUInt64(Money);
+            data.WriteInt32(Bonuses.Count);
+            data.WriteInt32(Flags);
+            data.WriteBit(IsChoice);
+            data.FlushBits();
+
+            foreach (TreasurePickItem treasurePickItem in Items)
+                treasurePickItem.Write(data);
+
+            foreach (TreasurePickCurrency treasurePickCurrency in Currencies)
+                treasurePickCurrency.Write(data);
+
+            foreach (TreasurePickerBonus treasurePickerBonus in Bonuses)
+                treasurePickerBonus.Write(data);
+        }
     }
 }

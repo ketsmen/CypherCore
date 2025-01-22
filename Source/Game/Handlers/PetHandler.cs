@@ -142,7 +142,10 @@ namespace Game
                             break;
                         case CommandStates.Follow: // spellid = 1792  //FOLLOW
                             pet.AttackStop();
-                            pet.InterruptNonMeleeSpells(false);
+                            pet.InterruptSpell(CurrentSpellTypes.Generic, false, false);
+                            Spell channeledSpell = pet.GetCurrentSpell(CurrentSpellTypes.Channeled);
+                            if (channeledSpell != null && !channeledSpell.GetSpellInfo().HasAttribute(SpellAttr9.ChannelPersistsOnPetFollow))
+                                pet.InterruptSpell(CurrentSpellTypes.Channeled, true, true);
                             pet.GetMotionMaster().MoveFollow(GetPlayer(), SharedConst.PetFollowDist, pet.GetFollowAngle());
                             charmInfo.SetCommandState(CommandStates.Follow);
 
@@ -590,6 +593,20 @@ namespace Game
             if (pet != null && pet.ToPet() != null && pet.ToPet().GetPetType() == PetType.Hunter)
             {
                 _player.RemovePet((Pet)pet, PetSaveMode.AsDeleted);
+            }
+        }
+
+        void HandlePetAbandonByNumber(PetAbandonByNumber petAbandonByNumber)
+        {
+            Pet pet = _player.GetPet();
+            if (pet != null)
+            {
+                if (pet.IsHunterPet() && pet.m_unitData.PetNumber == petAbandonByNumber.PetNumber)
+                    _player.RemovePet(pet, PetSaveMode.AsDeleted);
+            }
+            else
+            {
+                _player.DeletePetFromDB(petAbandonByNumber.PetNumber);
             }
         }
 

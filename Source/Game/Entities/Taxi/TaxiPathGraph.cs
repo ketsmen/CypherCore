@@ -17,7 +17,7 @@ namespace Game.Entities
         static List<TaxiNodesRecord> m_nodesByVertex = new();
         static Dictionary<uint, uint> m_verticesByNode = new();
 
-        static void GetTaxiMapPosition(Vector3 position, int mapId, out Vector2 uiMapPosition, out int uiMapId)
+        static void GetTaxiMapPosition(Vector3 position, int mapId, out Vector2 uiMapPosition, out uint uiMapId)
         {
             if (!Global.DB2Mgr.GetUiMapPosition(position.X, position.Y, position.Z, mapId, 0, 0, 0, UiMapSystem.Adventure, false, out uiMapId, out uiMapPosition))
                 Global.DB2Mgr.GetUiMapPosition(position.X, position.Y, position.Z, mapId, 0, 0, 0, UiMapSystem.Taxi, false, out uiMapId, out uiMapPosition);
@@ -62,7 +62,7 @@ namespace Game.Entities
                     if (nodes[i - 1].HasFlag(TaxiPathNodeFlags.Teleport))
                         continue;
 
-                    int uiMap1, uiMap2;
+                    uint uiMap1, uiMap2;
                     Vector2 pos1, pos2;
 
                     GetTaxiMapPosition(nodes[i - 1].Loc, nodes[i - 1].ContinentID, out pos1, out uiMap1);
@@ -154,14 +154,18 @@ namespace Game.Entities
                     foreach (var edge in path)
                     {
                         var To = m_nodesByVertex[(int)edge.To];
-                        TaxiNodeFlags requireFlag = (player.GetTeam() == Team.Alliance) ? TaxiNodeFlags.ShowOnAllianceMap : TaxiNodeFlags.ShowOnHordeMap;
-                        if (!To.HasFlag(requireFlag))
+                        bool isVisibleForFaction = player.GetTeam() switch
+                        {
+                            Team.Horde => To.HasFlag(TaxiNodeFlags.ShowOnHordeMap),
+                            Team.Alliance => To.HasFlag(TaxiNodeFlags.ShowOnAllianceMap),
+                            _ => false
+                        };
+
+                        if (!isVisibleForFaction)
                             continue;
 
-                        PlayerConditionRecord condition = CliDB.PlayerConditionStorage.LookupByKey(To.ConditionID);
-                        if (condition != null)
-                            if (!ConditionManager.IsPlayerMeetingCondition(player, condition))
-                                continue;
+                        if (!ConditionManager.IsPlayerMeetingCondition(player, To.ConditionID))
+                            continue;
 
                         shortestPath.Add(GetNodeIDFromVertexID(edge.To));
                     }

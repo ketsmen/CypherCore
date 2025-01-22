@@ -112,6 +112,28 @@ namespace Framework.Constants
         End
     }
 
+    public enum AdvFlyingRateTypeSingle
+    {
+        AirFriction = 0,
+        MaxVel = 1,
+        LiftCoefficient = 2,
+        DoubleJumpVelMod = 3,
+        GlideStartMinHeight = 4,
+        AddImpulseMaxSpeed = 5,
+        SurfaceFriction = 14,
+        OverMaxDeceleration = 15,
+        LaunchSpeedCoefficient = 16,
+        Max = 17
+    }
+
+    public enum AdvFlyingRateTypeRange
+    {
+        BankingRate = 6,
+        PitchingRateDown = 8,
+        PitchingRateUp = 10,
+        TurnVelocityThreshold = 12
+    }
+
     public enum DamageEffectType
     {
         Direct = 0,                            // used for normal weapon damage (not for class abilities or spells)
@@ -401,15 +423,21 @@ namespace Framework.Constants
         BasePoint29,
         BasePoint30,
         BasePoint31,
-        End,
-        RadiusMod,
-        MaxTargets,
+        BasePointEnd,
+
+        MaxTargets = BasePointEnd,
         AuraStack,
-        CritChance,
-        DurationPct,
         Duration,
         ParentSpellTargetCount,
-        ParentSpellTargetIndex
+        ParentSpellTargetIndex,
+        IntEnd,
+    }
+
+    public enum SpellValueModFloat
+    {
+        RadiusMod = SpellValueMod.IntEnd,
+        CritChance,
+        DurationPct,
     }
 
     public enum CombatRating
@@ -474,7 +502,7 @@ namespace Framework.Constants
         Root = 0x400,
         Confused = 0x800,
         Distracted = 0x1000,
-        Isolated = 0x2000, // Area Auras Do Not Affect Other Players
+        Isolated_Deprecated = 0x2000, // REUSE
         AttackPlayer = 0x4000,
         Casting = 0x8000,
         Possessed = 0x10000, // being possessed by another unit
@@ -494,7 +522,7 @@ namespace Framework.Constants
 
         AllStateSupported = Died | MeleeAttacking | Charmed | Stunned | Roaming | Chase
                             | Focusing | Fleeing | InFlight | Follow | Root | Confused
-                            | Distracted | Isolated | AttackPlayer | Casting
+                            | Distracted | AttackPlayer | Casting
                             | Possessed | Charging | Jumping | Move | Rotating
                             | Evade | RoamingMove | ConfusedMove | FleeingMove
                             | ChaseMove | FollowMove | IgnorePathfinding | FollowFormationMove,

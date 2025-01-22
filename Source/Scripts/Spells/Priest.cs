@@ -1,6 +1,7 @@
 // Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Bgs.Protocol.Notification.V1;
 using Framework.Constants;
 using Framework.Dynamic;
 using Game.AI;
@@ -102,6 +103,8 @@ namespace Scripts.Spells.Priest
         public const uint MasochismTalent = 193063;
         public const uint MasochismPeriodicHeal = 193065;
         public const uint MasteryGrace = 271534;
+        public const uint MindDevourer = 373202;
+        public const uint MindDevourerAura = 373204;
         public const uint MindbenderDisc = 123040;
         public const uint MindbenderShadow = 200174;
         public const uint Mindgames = 375901;
@@ -140,12 +143,17 @@ namespace Scripts.Spells.Priest
         public const uint RenewedHope = 197469;
         public const uint RenewedHopeEffect = 197470;
         public const uint RevelInPurity = 373003;
+        public const uint Sanctuary = 231682;
+        public const uint SanctuaryAbsorb = 208771;
+        public const uint SanctuaryAura = 208772;
+        public const uint RhapsodyProc = 390636;
         public const uint SayYourPrayers = 391186;
         public const uint Schism = 424509;
         public const uint SchismAura = 214621;
         public const uint SearingLight = 196811;
         public const uint ShadowMendDamage = 186439;
         public const uint ShadowWordDeath = 32379;
+        public const uint ShadowWordDeathDamage = 32409;
         public const uint ShadowMendPeriodicDummy = 187464;
         public const uint ShadowWordPain = 589;
         public const uint ShieldDiscipline = 197045;
@@ -166,11 +174,16 @@ namespace Scripts.Spells.Priest
         public const uint UltimatePenitence = 421453;
         public const uint UltimatePenitenceDamage = 421543;
         public const uint UltimatePenitenceHeal = 421544;
+        public const uint UnfurlingDarkness = 341273;
+        public const uint UnfurlingDarknessAura = 341282;
+        public const uint UnfurlingDarknessDebuff = 341291;
         public const uint VampiricEmbraceHeal = 15290;
+        public const uint VampiricTouch = 34914;
         public const uint VoidShield = 199144;
         public const uint VoidShieldEffect = 199145;
         public const uint WeakenedSoul = 6788;
-
+        public const uint WhisperingShadows = 406777;
+        public const uint WhisperingShadowsDummy = 391286;
         public const uint PvpRulesEnabledHardcoded = 134735;
         public const uint VisualPriestPowerWordRadiance = 52872;
         public const uint VisualPriestPrayerOfMending = 38945;
@@ -492,7 +505,7 @@ namespace Scripts.Spells.Priest
                     break;
                 case SpellIds.PowerWordRadiance:
                     // Power Word: Radiance applies Atonement at 60 % (without modifiers) of its total duration.
-                    args.AddSpellMod(SpellValueMod.DurationPct, GetEffectInfo(3).CalcValue(caster));
+                    args.AddSpellMod(SpellValueModFloat.DurationPct, GetEffectInfo(3).CalcValue(caster));
                     break;
                 default:
                     break;
@@ -1603,6 +1616,97 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    // 373202 - Mind Devourer
+    [Script] // Triggered by 8092 - Mind Blast
+    class spell_pri_mind_devourer : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.MindDevourerAura)
+             && ValidateSpellEffect((SpellIds.MindDevourer, 0));
+        }
+
+        public override bool Load()
+        {
+            return GetCaster().HasAura(SpellIds.MindDevourer);
+        }
+
+        void HandleEffectHitTarget(uint effIndex)
+        {
+            AuraEffect aurEff = GetCaster().GetAuraEffect(SpellIds.MindDevourer, 0);
+            if (aurEff != null && RandomHelper.randChance(aurEff.GetAmount()))
+                GetCaster().CastSpell(GetCaster(), SpellIds.MindDevourerAura, GetSpell());
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleEffectHitTarget, 0, SpellEffectName.SchoolDamage));
+        }
+    }
+
+    // 373204 - Mind Devourer (Aura)
+    [Script] // Attached to 335467 - Devouring Plague
+    class spell_pri_mind_devourer_buff_aura : AuraScript
+    {
+        public float DamageIncrease;
+
+        void CalculateDamage(AuraEffect aurEff, Unit victim, ref int damage, ref int flatMod, ref float pctMod)
+        {
+            MathFunctions.AddPct(ref pctMod, DamageIncrease);
+        }
+
+        public override void Register()
+        {
+            DoEffectCalcDamageAndHealing.Add(new EffectCalcDamageAndHealingHandler(CalculateDamage, 1, AuraType.PeriodicLeech));
+        }
+    }
+
+    [Script]
+    class spell_pri_mind_devourer_buff : SpellScript
+    {
+        float _damageIncrease;
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellEffect((SpellIds.MindDevourerAura, 1));
+        }
+
+        public override void OnPrecast()
+        {
+            AuraEffect mindDevourer = GetCaster().GetAuraEffect(SpellIds.MindDevourerAura, 1);
+            if (mindDevourer == null || !GetSpell().m_appliedMods.Contains(mindDevourer.GetBase()))
+                return;
+
+            _damageIncrease = mindDevourer.GetAmount();
+        }
+
+        void CalculateDamage(Unit victim, ref int damage, ref int flatMod, ref float pctMod)
+        {
+            MathFunctions.AddPct(ref pctMod, _damageIncrease);
+        }
+
+        void ModifyAuraValueAndRemoveBuff(uint effIndex)
+        {
+            if (_damageIncrease == 0)
+                return;
+
+            Aura devouringPlague = GetHitAura();
+            if (devouringPlague != null)
+            {
+                spell_pri_mind_devourer_buff_aura script = devouringPlague.GetScript<spell_pri_mind_devourer_buff_aura>();
+                script.DamageIncrease = _damageIncrease;
+            }
+
+            GetCaster().RemoveAurasDueToSpell(SpellIds.MindDevourerAura);
+        }
+
+        public override void Register()
+        {
+            CalcDamage.Add(new DamageAndHealingCalcHandler(CalculateDamage));
+            OnEffectHitTarget.Add(new EffectHandler(ModifyAuraValueAndRemoveBuff, 1, SpellEffectName.ApplyAura));
+        }
+    }
+
     [Script] // 390686 - Painful Punishment
     class spell_pri_painful_punishment : AuraScript
     {
@@ -2558,6 +2662,52 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    [Script] // 390622 - Rhapsody
+    class spell_pri_rhapsody : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.RhapsodyProc);
+        }
+
+        void HandlePeriodic(AuraEffect aurEff)
+        {
+            Unit target = GetTarget();
+            Aura rhapsodyStack = target.GetAura(SpellIds.RhapsodyProc, GetCasterGUID());
+            if (rhapsodyStack != null)
+                rhapsodyStack.ModStackAmount(1);
+            else
+                target.CastSpell(target, SpellIds.RhapsodyProc,
+                    new CastSpellExtraArgs(aurEff).SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError));
+        }
+
+        public override void Register()
+        {
+            OnEffectPeriodic.Add(new(HandlePeriodic, 0, AuraType.Dummy));
+        }
+    }
+
+    [Script] // 390636 - Rhapsody
+    class spell_pri_rhapsody_proc : AuraScript
+    {
+        void PreventChargeDrop(ProcEventInfo eventInfo)
+        {
+            PreventDefaultAction();
+        }
+
+        void RemoveAura(ProcEventInfo eventInfo)
+        {
+            // delay charge drop to allow spellmod to be applied to both damaging and healing spells
+            GetAura().DropChargeDelayed(1);
+        }
+
+        public override void Register()
+        {
+            DoPrepareProc.Add(new(PreventChargeDrop));
+            AfterProc.Add(new(RemoveAura));
+        }
+    }
+
     [Script] // 47536 - Rapture
     class spell_pri_rapture : SpellScript
     {
@@ -2608,6 +2758,85 @@ namespace Scripts.Spells.Priest
         public override void Register()
         {
             OnEffectHitTarget.Add(new(HandleEffectHitTarget, 0, SpellEffectName.SchoolDamage));
+        }
+    }
+
+    [Script] // 208771 - Sanctuary (Absorb)
+    class spell_pri_sanctuary_absorb : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.SanctuaryAura);
+        }
+
+        void CalcAbsorbAmount(AuraEffect aurEff, DamageInfo dmgInfo, ref uint absorbAmount)
+        {
+            PreventDefaultAction();
+
+            Unit attacker = dmgInfo.GetAttacker();
+            if (attacker == null)
+                return;
+
+            AuraEffect amountHolderEffect = attacker.GetAuraEffect(SpellIds.SanctuaryAura, 0, GetCasterGUID());
+            if (amountHolderEffect == null)
+                return;
+
+            if (dmgInfo.GetDamage() >= amountHolderEffect.GetAmount())
+            {
+                amountHolderEffect.GetBase().Remove(AuraRemoveMode.EnemySpell);
+                dmgInfo.AbsorbDamage((uint)amountHolderEffect.GetAmount());
+            }
+            else
+            {
+                amountHolderEffect.ChangeAmount((int)(amountHolderEffect.GetAmount() - dmgInfo.GetDamage()));
+                dmgInfo.AbsorbDamage(dmgInfo.GetDamage());
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectAbsorb.Add(new(CalcAbsorbAmount, 0));
+        }
+    }
+
+    [Script] // Smite - 585
+    class spell_pri_sanctuary_trigger : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.Sanctuary, SpellIds.SanctuaryAura, SpellIds.SanctuaryAbsorb);
+        }
+
+        void HandleEffectHit(uint effIndex)
+        {
+            Player caster = GetCaster()?.ToPlayer();
+            if (caster == null)
+                return;
+
+            AuraEffect sanctuaryEffect = caster.GetAuraEffect(SpellIds.Sanctuary, 0);
+            if (sanctuaryEffect != null)
+            {
+                Unit target = GetHitUnit();
+                if (target != null)
+                {
+                    float absorbAmount = MathFunctions.CalculatePct(caster.SpellBaseDamageBonusDone(SpellSchoolMask.Shadow), sanctuaryEffect.GetAmount());
+                    MathFunctions.AddPct(ref absorbAmount, caster.GetRatingBonusValue(CombatRating.VersatilityDamageDone));
+
+                    caster.CastSpell(caster, SpellIds.SanctuaryAbsorb, new CastSpellExtraArgs()
+                        .SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError)
+                        .SetTriggeringSpell(GetSpell()));
+
+                    caster.CastSpell(target, SpellIds.SanctuaryAura, new CastSpellExtraArgs()
+                        .AddSpellMod(SpellValueMod.BasePoint0, (int)absorbAmount)
+                        .SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError)
+                        .SetTriggeringSpell(GetSpell()));
+                }
+            }
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new(HandleEffectHit, 0, SpellEffectName.SchoolDamage));
         }
     }
 
@@ -2760,6 +2989,51 @@ namespace Scripts.Spells.Priest
             OnEffectPeriodic.Add(new(HandleDummyTick, 0, AuraType.PeriodicDummy));
             DoCheckProc.Add(new(CheckProc));
             OnEffectProc.Add(new(HandleProc, 1, AuraType.Dummy));
+        }
+    }
+
+    // 32379 - Shadow Word: Death
+    class spell_pri_shadow_word_death : SpellScript
+    {
+        static TimeSpan BACKLASH_DELAY = TimeSpan.FromSeconds(1);
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.ShadowWordDeathDamage)
+            && ValidateSpellEffect((spellInfo.Id, 4));
+        }
+
+        void HandleDamageCalculation(Unit victim, ref int damage, ref int flatMod, ref float pctMod)
+        {
+            if (victim.HealthBelowPct(GetEffectInfo(1).CalcValue(GetCaster())))
+                MathFunctions.AddPct(ref pctMod, GetEffectInfo(2).CalcValue(GetCaster()));
+        }
+
+        void DetermineKillStatus(DamageInfo damageInfo, ref uint resistAmount, ref int absorbAmount)
+        {
+            bool killed = damageInfo.GetDamage() >= damageInfo.GetVictim().GetHealth();
+            if (!killed)
+            {
+                Unit caster = GetCaster();
+                int backlashDamage = (int)caster.CountPctFromMaxHealth(GetEffectInfo(4).CalcValue(caster));
+                var originalCastId = GetSpell().m_castId;
+                caster.m_Events.AddEventAtOffset(() =>
+                {
+                    caster.CastSpell(caster, SpellIds.ShadowWordDeathDamage, new CastSpellExtraArgs()
+                        .SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError)
+                        .SetOriginalCastId(originalCastId)
+                        .AddSpellMod(SpellValueMod.BasePoint0, backlashDamage));
+
+                }, BACKLASH_DELAY);
+            }
+        }
+
+        public override void Register()
+        {
+            CalcDamage.Add(new(HandleDamageCalculation));
+
+            // abuse OnCalculateResistAbsorb to determine if this spell will kill target or not (its still not perfect - happens before absorbs are applied)
+            OnCalculateResistAbsorb.Add(new(DetermineKillStatus));
         }
     }
 
@@ -2996,6 +3270,59 @@ namespace Scripts.Spells.Priest
         }
     }
 
+    // 341273 - Unfurling Darkness
+    [Script] // Triggered by 34914 - Vampiric Touch
+    class spell_pri_unfurling_darkness : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.UnfurlingDarkness, SpellIds.UnfurlingDarknessDebuff)
+            && ValidateSpellEffect((SpellIds.UnfurlingDarknessAura, 0));
+        }
+
+        void PreventDirectDamage(ref WorldObject target)
+        {
+            bool canTriggerDirectDamage = new Func<bool>(() =>
+            {
+                if (!GetSpell().m_originalCastId.IsEmpty())
+                    return false;  // not when triggered by Shadow Crash (Whispering Shadows talent)
+                AuraEffect unfurlingDarkness = GetCaster().GetAuraEffect(SpellIds.UnfurlingDarknessAura, 0);
+                if (unfurlingDarkness != null && GetSpell().m_appliedMods.Contains(unfurlingDarkness.GetBase()))
+                    return true;
+                return false;
+            })();
+
+            if (!canTriggerDirectDamage)
+                target = null;
+        }
+
+        void TriggerUnfurlingDarkness()
+        {
+            if (!GetSpell().m_originalCastId.IsEmpty())
+                return; // not when triggered by Shadow Crash (Whispering Shadows talent)
+
+            Unit caster = GetCaster();
+            AuraEffect unfurlingDarkness = GetCaster().GetAuraEffect(SpellIds.UnfurlingDarknessAura, 0);
+            if (unfurlingDarkness != null)
+            {
+                if (GetSpell().m_appliedMods.Contains(unfurlingDarkness.GetBase()))
+                {
+                    unfurlingDarkness.GetBase().Remove();
+                    return;
+                }
+            }
+
+            if (!caster.HasAura(SpellIds.UnfurlingDarknessDebuff))
+                caster.CastSpell(caster, SpellIds.UnfurlingDarknessAura, true);
+        }
+
+        public override void Register()
+        {
+            OnObjectTargetSelect.Add(new ObjectTargetSelectHandler(PreventDirectDamage, 3, Targets.UnitTargetEnemy));
+            AfterCast.Add(new CastHandler(TriggerUnfurlingDarkness));
+        }
+    }
+
     [Script] // 15286 - Vampiric Embrace
     class spell_pri_vampiric_embrace : AuraScript
     {
@@ -3066,13 +3393,86 @@ namespace Scripts.Spells.Priest
         {
             Unit caster = GetCaster();
             if (caster != null && caster.HasAura(SpellIds.Misery))
-                    caster.CastSpell(GetTarget(), SpellIds.ShadowWordPain, true);
+                caster.CastSpell(GetTarget(), SpellIds.ShadowWordPain, true);
         }
 
         public override void Register()
         {
             AfterDispel.Add(new(HandleDispel));
             OnEffectApply.Add(new(HandleApplyEffect, 0, AuraType.Dummy, AuraEffectHandleModes.RealOrReapplyMask));
+        }
+    }
+
+    [Script] // 205385 - Shadow Crash
+    class spell_pri_whispering_shadows : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.WhisperingShadows);
+        }
+
+        void HandleEffectHitTarget(uint effIndex)
+        {
+            if (!GetCaster().HasAura(SpellIds.WhisperingShadows))
+                PreventHitDefaultEffect(effIndex);
+        }
+
+        public override void Register()
+        {
+            OnEffectHit.Add(new(HandleEffectHitTarget, 2, SpellEffectName.TriggerMissile));
+        }
+    }
+
+    [Script] // 391286 - Whispering Shadows (Dot Application)
+    class spell_pri_whispering_shadows_effect : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.VampiricTouch);
+        }
+
+        void FilterTargets(List<WorldObject> targets)
+        {
+            if (targets.Count <= GetSpellValue().MaxAffectedTargets)
+                return;
+
+            Aura getVampiricTouch(WorldObject target)
+            {
+                return target.ToUnit().GetAura(SpellIds.VampiricTouch, GetCaster().GetGUID());
+            }
+
+            // prioritize targets without Vampiric Touch
+            targets.Sort((WorldObject target1, WorldObject target2) =>
+            {
+                int duration1 = 0;
+                Aura aura1 = getVampiricTouch(target1);
+                if (aura1 != null)
+                    duration1 = aura1.GetDuration();
+                int duration2 = 0;
+                Aura aura2 = getVampiricTouch(target2);
+                if (aura2 != null)
+                    duration2 = aura2.GetDuration();
+                return duration1.CompareTo(duration2);
+            });
+
+            // remove targets that definitely will not get Vampiric Touch applied (excess targets with longest remaining duration)
+            while (targets.Count > GetSpellValue().MaxAffectedTargets && getVampiricTouch(targets.Last()) != null)
+                targets.RemoveAt(targets.Count - 1);
+
+            targets.RandomResize(GetSpellValue().MaxAffectedTargets);
+        }
+
+        void HandleEffectHitTarget(uint effIndex)
+        {
+            GetCaster().CastSpell(GetHitUnit(), SpellIds.VampiricTouch, new CastSpellExtraArgs()
+                .SetTriggeringSpell(GetSpell())
+                .SetTriggerFlags(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreSpellAndCategoryCD | TriggerCastFlags.IgnorePowerAndReagentCost | TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.IgnoreCastTime | TriggerCastFlags.DontReportCastError));
+        }
+
+        public override void Register()
+        {
+            OnObjectAreaTargetSelect.Add(new(FilterTargets, 0, Targets.UnitDestAreaEnemy));
+            OnEffectHitTarget.Add(new(HandleEffectHitTarget, 0, SpellEffectName.Dummy));
         }
     }
 }

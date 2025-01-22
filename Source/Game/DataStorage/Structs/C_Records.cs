@@ -36,11 +36,17 @@ namespace Game.DataStorage
         public uint Id;
         public int ItemBonusTreeGroupID;
         public int DstItemBonusTreeID;
-        public sbyte Type;
         public int Value;
-        public int MythicPlusSeasonID;
-        public int PvPSeasonID;
+        public int RequiredTimeEventPassed;
         public uint SrcItemBonusTreeID;
+    }
+
+    public sealed class CharBaseInfoRecord
+    {
+        public uint Id;
+        public sbyte RaceID;
+        public sbyte ClassID;
+        public int OtherFactionRaceID;
     }
 
     public sealed class CharTitlesRecord
@@ -58,7 +64,7 @@ namespace Game.DataStorage
         public long RaceMask;
         public sbyte ChrClassID;
         public int Purpose;
-        public sbyte ItemContext;
+        public byte ItemContext;
 
         public bool IsForNewCharacter() { return Purpose == 9; }
     }
@@ -247,7 +253,7 @@ namespace Game.DataStorage
     public sealed class ChrRaceXChrModelRecord
     {
         public uint Id;
-        public int ChrRacesID;
+        public uint ChrRacesID;
         public int ChrModelID;
         public int Sex;
         public int AllowedTransmogSlots;
@@ -378,6 +384,8 @@ namespace Game.DataStorage
         public uint Id;
         public int Flags;
         public int ExpansionID;
+        public int HealthItemLevelCurveID;
+        public int DamageItemLevelCurveID;
         public int MinLevel;
         public int MaxLevel;
         public int MinLevelType;
@@ -458,7 +466,7 @@ namespace Game.DataStorage
         public int PortraitTextureFileDataID;
         public ushort ObjectEffectPackageID;
         public ushort AnimReplacementSetID;
-        public byte Flags;
+        public int Flags;
         public int StateSpellVisualKitID;
         public float PlayerOverrideScale;
         public float PetInstanceScale;                                         // scale of not own player pets inside dungeons/raids/scenarios
@@ -468,6 +476,9 @@ namespace Game.DataStorage
         public sbyte Gender;
         public int DissolveOutEffectID;
         public sbyte CreatureModelMinLod;
+        public ushort ConditionalCreatureModelID;
+        public float Unknown_1100_1;
+        public ushort Unknown_1100_2;
         public int[] TextureVariationFileDataID = new int[4];
     }
 
@@ -500,7 +511,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public float[] GeoBox = new float[6];
-        public uint Flags;
+        public int Flags;
         public uint FileDataID;
         public float WalkSpeed;
         public float RunSpeed;
@@ -529,9 +540,10 @@ namespace Game.DataStorage
         public float OverrideNameScale;
         public float OverrideSelectionRadius;
         public float TamedPetBaseScale;
-        public sbyte Unknown820_1;                                              // scale related
-        public float Unknown820_2;                                             // scale related
-        public float[] Unknown820_3 = new float[2];                            // scale related
+        public sbyte MountScaleOtherIndex;
+        public float MountScaleSelf;
+        public ushort Unknown1100;
+        public float[] MountScaleOther = new float[2];
 
         public bool HasFlag(CreatureModelDataFlags creatureModelDataFlags) { return (Flags & (uint)creatureModelDataFlags) != 0; }
     }
@@ -607,6 +619,7 @@ namespace Game.DataStorage
         public int MaxQtyWorldStateID;
         public uint RechargingAmountPerCycle;
         public uint RechargingCycleDurationMS;
+        public float AccountTransferPercentage;
         public int[] Flags = new int[2];
 
         public bool HasFlag(CurrencyTypesFlags currencyTypesFlags) { return (Flags[0] & (int)currencyTypesFlags) != 0; }

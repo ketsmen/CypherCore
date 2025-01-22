@@ -20,11 +20,11 @@ namespace Game.Movement
             // Elevators also use MOVEMENTFLAG_ONTRANSPORT but we do not keep track of their position changes
             args.TransformForTransport = !unit.GetTransGUID().IsEmpty();
             // mix existing state into new
-            args.flags.SetUnsetFlag(SplineFlag.CanSwim, unit.CanSwim());
+            args.flags.SetUnsetFlag(MoveSplineFlagEnum.CanSwim, unit.CanSwim());
             args.walk = unit.HasUnitMovementFlag(MovementFlag.Walking);
-            args.flags.SetUnsetFlag(SplineFlag.Flying, unit.HasUnitMovementFlag(MovementFlag.CanFly | MovementFlag.DisableGravity));
-            args.flags.SetUnsetFlag(SplineFlag.SmoothGroundPath, true); // enabled by default, CatmullRom mode or client config "pathSmoothing" will disable this
-            args.flags.SetUnsetFlag(SplineFlag.Steering, unit.HasNpcFlag2(NPCFlags2.Steering));
+            args.flags.SetUnsetFlag(MoveSplineFlagEnum.Flying, unit.HasUnitMovementFlag(MovementFlag.CanFly | MovementFlag.DisableGravity));
+            args.flags.SetUnsetFlag(MoveSplineFlagEnum.FastSteering, true);
+            args.flags.SetUnsetFlag(MoveSplineFlagEnum.Steering, unit.HasNpcFlag2(NPCFlags2.Steering) || !unit.IsInCombat());
         }
 
         UnitMoveType SelectSpeedType(MovementFlag moveFlags)
@@ -60,7 +60,7 @@ namespace Game.Movement
             MoveSpline move_spline = unit.MoveSpline;
 
             bool transport = !unit.GetTransGUID().IsEmpty();
-            Vector4 real_position = new();            
+            Vector4 real_position = new();
             // there is a big chance that current position is unknown if current state is not finalized, need compute it
             // this also allows calculate spline position and update map position in much greater intervals
             // Don't compute for transport movement if the unit is in a motion between two transports
@@ -87,11 +87,11 @@ namespace Game.Movement
             // correct first vertex
             args.path[0] = new Vector3(real_position.X, real_position.Y, real_position.Z);
             args.initialOrientation = real_position.W;
-            args.flags.SetUnsetFlag(SplineFlag.EnterCycle, args.flags.HasFlag(SplineFlag.Cyclic));
+            args.flags.SetUnsetFlag(MoveSplineFlagEnum.EnterCycle, args.flags.HasFlag(MoveSplineFlagEnum.Cyclic));
             move_spline.onTransport = transport;
 
             MovementFlag moveFlags = unit.m_movementInfo.GetMovementFlags();
-            if (!args.flags.HasFlag(SplineFlag.Backward))
+            if (!args.flags.HasFlag(MoveSplineFlagEnum.Backward))
                 moveFlags = (moveFlags & ~MovementFlag.Backward) | MovementFlag.Forward;
             else
                 moveFlags = (moveFlags & ~MovementFlag.Forward) | MovementFlag.Backward;
@@ -119,10 +119,10 @@ namespace Game.Movement
             // limit the speed in the same way the client does
             float speedLimit()
             {
-                if (args.flags.HasFlag(SplineFlag.UnlimitedSpeed))
+                if (args.flags.HasFlag(MoveSplineFlagEnum.UnlimitedSpeed))
                     return float.MaxValue;
 
-                if (args.flags.HasFlag(SplineFlag.Falling) || args.flags.HasFlag(SplineFlag.Catmullrom) || args.flags.HasFlag(SplineFlag.Flying) || args.flags.HasFlag(SplineFlag.Parabolic))
+                if (args.flags.HasFlag(MoveSplineFlagEnum.Falling) || args.flags.HasFlag(MoveSplineFlagEnum.Catmullrom) || args.flags.HasFlag(MoveSplineFlagEnum.Flying) || args.flags.HasFlag(MoveSplineFlagEnum.Parabolic))
                     return 50.0f;
 
                 return Math.Max(28.0f, unit.GetSpeed(UnitMoveType.Run) * 4.0f);
@@ -176,7 +176,7 @@ namespace Game.Movement
                 loc.W = unit.GetOrientation();
             }
 
-            args.flags.Flags = SplineFlag.Done;
+            args.flags.Flags = MoveSplineFlagEnum.Done;
             unit.m_movementInfo.RemoveMovementFlag(MovementFlag.Forward);
             move_spline.onTransport = transport;
             move_spline.Initialize(args);
@@ -184,7 +184,7 @@ namespace Game.Movement
             MonsterMove packet = new();
             packet.MoverGUID = unit.GetGUID();
             packet.Pos = new Vector3(loc.X, loc.Y, loc.Z);
-            packet.SplineData.StopDistanceTolerance = 2;
+            packet.SplineData.StopSplineStyle = 2;
             packet.SplineData.Id = move_spline.GetId();
 
             if (transport)
@@ -203,7 +203,7 @@ namespace Game.Movement
             args.facing.f = new Vector3(finalSpot.X, finalSpot.Y, finalSpot.Z);
             args.facing.type = MonsterMoveType.FacingSpot;
         }
-        
+
         public void SetFacing(float x, float y, float z)
         {
             SetFacing(new Vector3(x, y, z));
@@ -257,7 +257,7 @@ namespace Game.Movement
         public void SetFall()
         {
             args.flags.EnableFalling();
-            args.flags.SetUnsetFlag(SplineFlag.FallingSlow, unit.HasUnitMovementFlag(MovementFlag.FallingSlow));
+            args.flags.SetUnsetFlag(MoveSplineFlagEnum.FallingSlow, unit.HasUnitMovementFlag(MovementFlag.FallingSlow));
         }
 
         public void SetFirstPointId(int pointId) { args.path_Idx_offset = pointId; }
@@ -268,21 +268,25 @@ namespace Game.Movement
 
         public void SetSmooth() { args.flags.EnableCatmullRom(); }
 
-        public void SetUncompressed() { args.flags.SetUnsetFlag(SplineFlag.UncompressedPath); }
+        public void SetUncompressed() { args.flags.SetUnsetFlag(MoveSplineFlagEnum.UncompressedPath); }
 
-        public void SetCyclic() { args.flags.SetUnsetFlag(SplineFlag.Cyclic); }
+        public void SetCyclic() { args.flags.SetUnsetFlag(MoveSplineFlagEnum.Cyclic); }
 
         public void SetVelocity(float vel) { args.velocity = vel; args.HasVelocity = true; }
 
-        void SetBackward() { args.flags.SetUnsetFlag(SplineFlag.Backward); }
+        public void SetBackward() { args.flags.SetUnsetFlag(MoveSplineFlagEnum.Backward); }
 
         public void SetTransportEnter() { args.flags.EnableTransportEnter(); }
 
         public void SetTransportExit() { args.flags.EnableTransportExit(); }
 
-        public void SetOrientationFixed(bool enable) { args.flags.SetUnsetFlag(SplineFlag.OrientationFixed, enable); }
+        public void SetOrientationFixed(bool enable) { args.flags.SetUnsetFlag(MoveSplineFlagEnum.OrientationFixed, enable); }
 
-        public void SetUnlimitedSpeed() { args.flags.SetUnsetFlag(SplineFlag.UnlimitedSpeed, true); }
+        public void SetJumpOrientationFixed(bool enable) { args.flags.SetUnsetFlag(MoveSplineFlagEnum.JumpOrientationFixed, enable); }
+
+        public void SetSteering() { args.flags.EnableSteering(); }
+
+        public void SetUnlimitedSpeed() { args.flags.SetUnsetFlag(MoveSplineFlagEnum.UnlimitedSpeed, true); }
 
         public void MovebyPath(Vector3[] controls, int path_offset = 0)
         {
@@ -321,7 +325,8 @@ namespace Game.Movement
             args.animTier = new();
             args.animTier.TierTransitionId = tierTransitionId;
             args.animTier.AnimTier = (byte)anim;
-            args.flags.EnableAnimation();
+            if (tierTransitionId == 0)
+                args.flags.EnableAnimation();
         }
 
         public void DisableTransportPathTransformations() { args.TransformForTransport = false; }

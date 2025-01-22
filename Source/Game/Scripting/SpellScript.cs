@@ -174,6 +174,7 @@ namespace Game.Scripting
         public delegate void SpellObjectAreaTargetSelectFnType(List<WorldObject> targets);
         public delegate void SpellObjectTargetSelectFnType(ref WorldObject targets);
         public delegate void SpellDestinationTargetSelectFnType(ref SpellDestination dest);
+        public delegate void SpellEmpowerStageFnType(int completedStagesCount);
 
         public class CastHandler
         {
@@ -229,6 +230,21 @@ namespace Game.Scripting
             public void Call(DamageInfo damageInfo, ref uint resistAmount, ref int absorbAmount)
             {
                 _callImpl(damageInfo, ref resistAmount, ref absorbAmount);
+            }
+        }
+
+        public class EmpowerStageCompletedHandler
+        {
+            SpellEmpowerStageFnType _callImpl;
+
+            public EmpowerStageCompletedHandler(SpellEmpowerStageFnType handler)
+            {
+                _callImpl = handler;
+            }
+
+            public void Call(int completedStagesCount)
+            {
+                _callImpl(completedStagesCount);
             }
         }
 
@@ -376,7 +392,12 @@ namespace Game.Scripting
             public Targets GetTarget() { return _targetType; }
         }
 
-        public class ObjectAreaTargetSelectHandler : TargetHook
+        public interface ITargetFunction
+        {
+            public virtual bool HasSameTargetFunctionAs<T>(T other) { return false; }
+        }
+
+        public class ObjectAreaTargetSelectHandler : TargetHook, ITargetFunction
         {
             SpellObjectAreaTargetSelectFnType _callImpl;
 
@@ -389,9 +410,14 @@ namespace Game.Scripting
             {
                 _callImpl(targets);
             }
+
+            public bool HasSameTargetFunctionAs(ObjectAreaTargetSelectHandler other)
+            {
+                return _callImpl.Method == other._callImpl.Method || _callImpl.Target == other._callImpl.Target;
+            }
         }
 
-        public class ObjectTargetSelectHandler : TargetHook
+        public class ObjectTargetSelectHandler : TargetHook, ITargetFunction
         {
             SpellObjectTargetSelectFnType _callImpl;
 
@@ -403,6 +429,11 @@ namespace Game.Scripting
             public void Call(ref WorldObject target)
             {
                 _callImpl(ref target);
+            }
+
+            public bool HasSameTargetFunctionAs(ObjectTargetSelectHandler other)
+            {
+                return _callImpl.Method == other._callImpl.Method || _callImpl.Target == other._callImpl.Target;
             }
         }
 
@@ -572,6 +603,14 @@ namespace Game.Scripting
         // where function is void function(DamageInfo damageInfo, ref uint resistAmount, ref int absorbAmount)
         public List<OnCalculateResistAbsorbHandler> OnCalculateResistAbsorb = new();
 
+        // example: OnEmpowerStageCompleted += SpellOnEmpowerStageCompletedFn(class::function);
+        // where function is void function(int32 completedStages)
+        public List<EmpowerStageCompletedHandler> OnEmpowerStageCompleted = new();
+
+        // example: OnEmpowerCompleted += SpellOnEmpowerCompletedFn(class::function);
+        // where function is void function(int32 completedStages)
+        public List<EmpowerStageCompletedHandler> OnEmpowerCompleted = new();
+
         // where function is void function(uint effIndex)
         public List<EffectHandler> OnEffectLaunch = new();
         public List<EffectHandler> OnEffectLaunchTarget = new();
@@ -621,6 +660,8 @@ namespace Game.Scripting
         // 14. OnEffectHitTarget - executed just before specified effect handler call - called for each target from spell target map
         // 15. OnHit - executed just before spell deals damage and procs auras - when spell hits target - called for each target from spell target map
         // 16. AfterHit - executed just after spell finishes all it's jobs for target - called for each target from spell target map
+        // 17. OnEmpowerStageCompleted - executed when empowered spell completes each stage
+        // 18. OnEmpowerCompleted - executed when empowered spell is released
 
         //
         // methods allowing interaction with Spell object
@@ -1094,6 +1135,7 @@ namespace Game.Scripting
         // DO NOT OVERRIDE THESE IN SCRIPTS
         public delegate bool AuraCheckAreaTargetDelegate(Unit target);
         public delegate void AuraDispelDelegate(DispelInfo dispelInfo);
+        public delegate void AuraHeartbeatDelegate();
         public delegate void AuraEffectDamageAndHealingCalcFnType(AuraEffect aurEff, Unit victim, ref int damageOrHealing, ref int flatMod, ref float pctMod);
         public delegate void AuraEffectApplicationModeDelegate(AuraEffect aura, AuraEffectHandleModes auraMode);
         public delegate void AuraEffectPeriodicDelegate(AuraEffect aura);
@@ -1132,6 +1174,18 @@ namespace Game.Scripting
             public void Call(DispelInfo dispelInfo)
             {
                 _callImpl(dispelInfo);
+            }
+        }
+
+        public class AuraHeartbeatHandler
+        {
+            AuraHeartbeatDelegate _callImpl;
+
+            public AuraHeartbeatHandler(AuraHeartbeatDelegate callImpl) { _callImpl = callImpl; }
+
+            public void Call(AuraScript auraScript)
+            {
+                _callImpl();
             }
         }
 
@@ -1264,7 +1318,7 @@ namespace Game.Scripting
                 _callImpl(aurEff, victim, ref damageOrHealing, ref flatMod, ref pctMod);
             }
         }
-        
+
         public class EffectApplyHandler : EffectBase
         {
             AuraEffectApplicationModeDelegate _callImpl;
@@ -1600,6 +1654,11 @@ namespace Game.Scripting
         // example: AfterDispel += AuraDispelFn(class.function);
         // where function is: void function (DispelInfo dispelInfo);
         public List<AuraDispelHandler> AfterDispel = new();
+
+        // executed on every heartbeat of a unit
+        // example: OnHeartbeat += AuraHeartbeatFn(class::function);
+        // where function is: void function ();
+        public List<AuraHeartbeatHandler> OnHeartbeat = new();
 
         // executed when aura effect is applied with specified mode to target
         // should be used when effect handler preventing/replacing is needed, do not use this hook for triggering spellcasts/removing auras etc - may be unsafe

@@ -243,6 +243,8 @@ namespace Game.Entities
     {
         public AreaTriggerId Id;
         public AreaTriggerFlag Flags;
+        public uint ActionSetId;
+        public AreaTriggerActionSetFlag ActionSetFlags;
         public List<AreaTriggerAction> Actions = new();
     }
 
@@ -261,6 +263,8 @@ namespace Game.Entities
         public uint AnimKitId;
 
         public uint DecalPropertiesId;
+
+        public uint? SpellForVisuals;
 
         public uint TimeToTarget;
         public uint TimeToTargetScale;
@@ -285,8 +289,7 @@ namespace Game.Entities
 
     public class AreaTriggerSpawn : SpawnData
     {
-        public AreaTriggerId Id;
-        public uint? SpellForVisuals;
+        public new AreaTriggerId Id;
 
         public AreaTriggerSpawn() : base(SpawnObjectType.AreaTrigger) { }
     }

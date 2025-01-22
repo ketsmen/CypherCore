@@ -531,10 +531,16 @@ namespace Game.Spells
 
             float speedXY, speedZ;
             CalculateJumpSpeeds(effectInfo, unitCaster.GetExactDist2d(unitTarget), out speedXY, out speedZ);
+
+            object facing = null;
+            Unit target = m_targets.GetUnitTarget();
+            if (target != null && m_spellInfo.HasAttribute(SpellAttr9.FaceUnitTargetUponCompletionOfJumpCharge))
+                facing = target;
+
             JumpArrivalCastArgs arrivalCast = new();
             arrivalCast.SpellId = effectInfo.TriggerSpell;
             arrivalCast.Target = unitTarget.GetGUID();
-            unitCaster.GetMotionMaster().MoveJump(unitTarget, speedXY, speedZ, EventId.Jump, false, arrivalCast);
+            unitCaster.GetMotionMaster().MoveJump(unitTarget, speedXY, speedZ, EventId.Jump, facing, m_spellInfo.HasAttribute(SpellAttr9.JumpchargeNoFacingControl), arrivalCast);
         }
 
         [SpellEffectHandler(SpellEffectName.JumpDest)]
@@ -555,9 +561,17 @@ namespace Game.Spells
 
             float speedXY, speedZ;
             CalculateJumpSpeeds(effectInfo, unitCaster.GetExactDist2d(destTarget), out speedXY, out speedZ);
+
+            object facing;
+            Unit target = m_targets.GetUnitTarget();
+            if (target != null && m_spellInfo.HasAttribute(SpellAttr9.FaceUnitTargetUponCompletionOfJumpCharge))
+                facing = target;
+            else
+                facing = destTarget.GetOrientation();
+
             JumpArrivalCastArgs arrivalCast = new();
             arrivalCast.SpellId = effectInfo.TriggerSpell;
-            unitCaster.GetMotionMaster().MoveJump(destTarget, speedXY, speedZ, EventId.Jump, !m_targets.GetObjectTargetGUID().IsEmpty(), arrivalCast);
+            unitCaster.GetMotionMaster().MoveJump(destTarget, speedXY, speedZ, EventId.Jump, facing, m_spellInfo.HasAttribute(SpellAttr9.JumpchargeNoFacingControl), arrivalCast);
         }
 
         TeleportToOptions GetTeleportOptions(WorldObject caster, Unit unitTarget, SpellDestination targetDest)
@@ -607,11 +621,12 @@ namespace Game.Spells
                 // Custom loading screen
                 uint customLoadingScreenId = (uint)effectInfo.MiscValue;
                 if (customLoadingScreenId != 0)
-                    player.SendPacket(new CustomLoadScreen(m_spellInfo.Id, customLoadingScreenId));
+                    if (targetDest.GetMapId() != unitTarget.GetMapId() || !unitTarget.IsInDist2d(targetDest, PlayerConst.TeleportMinLoadScreenDistance))
+                        player.SendPacket(new CustomLoadScreen(m_spellInfo.Id, customLoadingScreenId));
 
                 TeleportToOptions options = GetTeleportOptions(m_caster, unitTarget, m_destTargets[effectInfo.EffectIndex]);
 
-                player.TeleportTo(targetDest, options);
+                player.TeleportTo(targetDest, options, null, m_spellInfo.Id);
             }
             else if (targetDest.GetMapId() == unitTarget.GetMapId())
                 unitTarget.NearTeleportTo(targetDest, unitTarget == m_caster);
@@ -1015,7 +1030,8 @@ namespace Game.Spells
                 }
 
                 // we succeeded in creating at least one item, so a levelup is possible
-                player.UpdateCraftSkill(m_spellInfo);
+                if (m_CastItem == null)
+                    player.UpdateCraftSkill(m_spellInfo);
             }
         }
 
@@ -1046,7 +1062,8 @@ namespace Game.Spells
             if (m_spellInfo.IsLootCrafting())
             {
                 player.AutoStoreLoot(m_spellInfo.Id, LootStorage.Spell, context, false, true);
-                player.UpdateCraftSkill(m_spellInfo);
+                if (m_CastItem == null)
+                    player.UpdateCraftSkill(m_spellInfo);
             }
             else // If there's no random loot entries for this spell, pick the item associated with this spell
             {
@@ -1217,19 +1234,7 @@ namespace Game.Spells
                 if (goInfo.GetNoDamageImmune() != 0 && player.HasUnitFlag(UnitFlags.Immune))
                     return;
 
-                if (goInfo.type == GameObjectTypes.FlagStand)
-                {
-                    //CanUseBattlegroundObject() already called in CheckCast()
-                    // in Battlegroundcheck
-                    Battleground bg = player.GetBattleground();
-                    if (bg != null)
-                    {
-                        if (bg.GetTypeID() == BattlegroundTypeId.EY)
-                            bg.EventPlayerClickedOnFlag(player, gameObjTarget);
-                        return;
-                    }
-                }
-                else if (m_spellInfo.Id == 1842 && gameObjTarget.GetGoInfo().type == GameObjectTypes.Trap && gameObjTarget.GetOwner() != null)
+                if (m_spellInfo.Id == 1842 && gameObjTarget.GetGoInfo().type == GameObjectTypes.Trap && gameObjTarget.GetOwner() != null)
                 {
                     gameObjTarget.SetLootState(LootState.JustDeactivated);
                     return;
@@ -1508,7 +1513,6 @@ namespace Game.Spells
             {
                 case SummonCategory.Wild:
                 case SummonCategory.Ally:
-                case SummonCategory.Unk:
                     if (properties.HasFlag(SummonPropertiesFlags.JoinSummonerSpawnGroup))
                     {
                         SummonGuardian(effectInfo, entry, properties, numSummons, privateObjectOwner);
@@ -1571,6 +1575,8 @@ namespace Game.Spells
                                 summonType = TempSummonType.DeadDespawn;
                             else if (duration == TimeSpan.FromMilliseconds(-1))
                                 summonType = TempSummonType.ManualDespawn;
+                            else if (properties.HasFlag(SummonPropertiesFlags.UseDemonTimeout))
+                                summonType = TempSummonType.TimedDespawnOutOfCombat;
 
                             for (uint count = 0; count < numSummons; ++count)
                             {
@@ -1608,6 +1614,7 @@ namespace Game.Spells
                     summon = unitCaster.GetMap().SummonCreature(entry, destTarget, properties, duration, unitCaster, m_spellInfo.Id, 0, privateObjectOwner);
                     break;
                 }
+                case SummonCategory.PossessedVehicle:
                 case SummonCategory.Vehicle:
                 {
                     if (unitCaster == null)
@@ -2002,7 +2009,7 @@ namespace Game.Spells
             else
             {
                 // do not increase skill if vellum used
-                if (!(m_CastItem != null && m_CastItem.GetTemplate().HasFlag(ItemFlags.NoReagentCost)))
+                if (m_CastItem == null)
                     player.UpdateCraftSkill(m_spellInfo);
 
                 uint enchant_id = (uint)effectInfo.MiscValue;
@@ -2611,17 +2618,6 @@ namespace Game.Spells
             // Wild object not have owner and check clickable by players
             map.AddToMap(go);
 
-            if (go.GetGoType() == GameObjectTypes.FlagDrop)
-            {
-                Player player = m_caster.ToPlayer();
-                if (player != null)
-                {
-                    Battleground bg = player.GetBattleground();
-                    if (bg != null)
-                        bg.SetDroppedFlagGUID(go.GetGUID(), bg.GetPlayerTeam(player.GetGUID()) == Team.Alliance ? BattleGroundTeamId.Horde : BattleGroundTeamId.Alliance);
-                }
-            }
-
             GameObject linkedTrap = go.GetLinkedTrap();
             if (linkedTrap != null)
             {
@@ -3108,9 +3104,10 @@ namespace Game.Spells
             Player caster = m_caster.ToPlayer();
             if (caster != null)
             {
-                caster.UpdateCraftSkill(m_spellInfo);
+                if (m_CastItem == null)
+                    caster.UpdateCraftSkill(m_spellInfo);
                 itemTarget.loot = new Loot(caster.GetMap(), itemTarget.GetGUID(), LootType.Disenchanting, null);
-                itemTarget.loot.FillLoot(itemTarget.GetDisenchantLoot(caster).Id, LootStorage.Disenchant, caster, true);
+                itemTarget.loot.FillLoot(itemTarget.GetDisenchantLootId().GetValueOrDefault(), LootStorage.Disenchant, caster, true);
                 caster.SendLoot(itemTarget.loot);
             }
 
@@ -3337,6 +3334,7 @@ namespace Game.Spells
         }
 
         [SpellEffectHandler(SpellEffectName.Reputation)]
+        [SpellEffectHandler(SpellEffectName.Reputation2)]
         void EffectReputation()
         {
             if (effectHandleMode != SpellEffectHandleMode.HitTarget)
@@ -3377,11 +3375,17 @@ namespace Game.Spells
                 if (quest == null)
                     return;
 
-                ushort logSlot = player.FindQuestSlot(questId);
-                if (logSlot < SharedConst.MaxQuestLogSize)
-                    player.AreaExploredOrEventHappens(questId);
-                else if (quest.HasFlag(QuestFlags.TrackingEvent))  // Check if the quest is used as a serverside flag.
-                    player.SetRewardedQuest(questId);          // If so, set status to rewarded without broadcasting it to client.
+                QuestStatus questStatus = player.GetQuestStatus(questId);
+                if (questStatus == QuestStatus.Rewarded)
+                    return;
+
+                if (quest.HasFlag(QuestFlags.CompletionEvent) || quest.HasFlag(QuestFlags.CompletionAreaTrigger))
+                {
+                    if (questStatus == QuestStatus.Incomplete)
+                        player.AreaExploredOrEventHappens(questId);
+                }
+                else if (quest.HasFlag(QuestFlags.TrackingEvent)) // Check if the quest is used as a serverside flag
+                    player.CompleteQuest(questId);
             }
         }
 
@@ -3567,7 +3571,7 @@ namespace Game.Spells
                     m_preGeneratedPath.CalculatePath(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(), false);
                 }
 
-                if (MathFunctions.fuzzyGt(m_spellInfo.Speed, 0.0f) && m_spellInfo.HasAttribute(SpellAttr9.SpecialDelayCalculation))
+                if (MathFunctions.fuzzyGt(m_spellInfo.Speed, 0.0f) && m_spellInfo.HasAttribute(SpellAttr9.MissileSpeedIsDelayInSec))
                     speed = m_preGeneratedPath.GetPathLength() / speed;
 
                 unitCaster.GetMotionMaster().MoveCharge(m_preGeneratedPath, speed, unitTarget, spellEffectExtraData);
@@ -3614,7 +3618,7 @@ namespace Game.Spells
 
                 float speed = MathFunctions.fuzzyGt(m_spellInfo.Speed, 0.0f) ? m_spellInfo.Speed : MotionMaster.SPEED_CHARGE;
 
-                if (MathFunctions.fuzzyGt(m_spellInfo.Speed, 0.0f) && m_spellInfo.HasAttribute(SpellAttr9.SpecialDelayCalculation))
+                if (MathFunctions.fuzzyGt(m_spellInfo.Speed, 0.0f) && m_spellInfo.HasAttribute(SpellAttr9.MissileSpeedIsDelayInSec))
                     speed = path.GetPathLength() / speed;
 
                 unitCaster.GetMotionMaster().MoveCharge(path, speed);
@@ -3652,10 +3656,6 @@ namespace Game.Spells
             // Spells with SPELL_EFFECT_KNOCK_BACK (like Thunderstorm) can't knockback target if target has ROOT/STUN
             if (unitTarget.HasUnitState(UnitState.Root | UnitState.Stunned))
                 return;
-
-            // Instantly interrupt non melee spells being casted
-            if (unitTarget.IsNonMeleeSpellCast(true))
-                unitTarget.InterruptNonMeleeSpells(true);
 
             float ratio = 0.1f;
             float speedxy = effectInfo.MiscValue * ratio;
@@ -4850,7 +4850,7 @@ namespace Game.Spells
                 if (!spellInfo.HasAttribute(SpellAttr7.CanBeMultiCast))
                     continue;
 
-                CastSpellExtraArgs args = new(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.CastDirectly | TriggerCastFlags.DontReportCastError);
+                CastSpellExtraArgs args = new(TriggerCastFlags.IgnoreGCD | TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.IgnoreCastTime | TriggerCastFlags.CastDirectly | TriggerCastFlags.DontReportCastError);
                 args.OriginalCastId = m_castId;
                 args.CastDifficulty = GetCastDifficulty();
                 m_caster.CastSpell(m_caster, spellInfo.Id, args);
@@ -5587,6 +5587,11 @@ namespace Game.Spells
             if (jumpParams.TreatSpeedAsMoveTimeSeconds)
                 speed = unitCaster.GetExactDist(destTarget) / jumpParams.Speed;
 
+            object facing = null;
+            Unit target = m_targets.GetUnitTarget();
+            if (target != null && m_spellInfo.HasAttribute(SpellAttr9.FaceUnitTargetUponCompletionOfJumpCharge))
+                facing = target;
+
             JumpArrivalCastArgs arrivalCast = null;
             if (effectInfo.TriggerSpell != 0)
             {
@@ -5608,7 +5613,7 @@ namespace Game.Spells
                     effectExtra.ParabolicCurveId = jumpParams.ParabolicCurveId.Value;
             }
 
-            unitCaster.GetMotionMaster().MoveJumpWithGravity(destTarget, speed, jumpParams.JumpGravity, EventId.Jump, false, arrivalCast, effectExtra);
+            unitCaster.GetMotionMaster().MoveJumpWithGravity(destTarget, speed, jumpParams.JumpGravity, EventId.Jump, facing, m_spellInfo.HasAttribute(SpellAttr9.JumpchargeNoFacingControl), arrivalCast, effectExtra);
         }
 
         [SpellEffectHandler(SpellEffectName.LearnTransmogSet)]
@@ -5809,6 +5814,9 @@ namespace Game.Spells
             Player target = unitTarget?.ToPlayer();
             if (target == null)
                 return;
+
+            if (target.IsLoading() && target.m_activePlayerData.TraitConfigs.Empty())
+                return; // traits not loaded yet
 
             TraitConfigPacket newConfig = new();
             newConfig.Type = TraitMgr.GetConfigTypeForTree(effectInfo.MiscValue);

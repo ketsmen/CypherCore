@@ -96,12 +96,12 @@ namespace Game.Entities
             if (spellInfo == null)
                 return;
 
-            RemoveSpell(talent.SpellID, true);
+            RemoveSpell(talent.SpellID);
 
             // search for spells that the talent teaches and unlearn them
             foreach (var spellEffectInfo in spellInfo.GetEffects())
                 if (spellEffectInfo.IsEffect(SpellEffectName.LearnSpell) && spellEffectInfo.TriggerSpell > 0)
-                    RemoveSpell(spellEffectInfo.TriggerSpell, true);
+                    RemoveSpell(spellEffectInfo.TriggerSpell);
 
             if (talent.OverridesSpellID != 0)
                 RemoveOverrideSpell(talent.OverridesSpellID, talent.SpellID);
@@ -256,7 +256,7 @@ namespace Game.Entities
         {
             return CliDB.ChrSpecializationStorage.LookupByKey((uint)GetPrimarySpecialization());
         }
-        
+
         public byte GetActiveTalentGroup() { return _specializationInfo.ActiveGroup; }
 
         void SetActiveTalentGroup(byte group) { _specializationInfo.ActiveGroup = group; }
@@ -320,12 +320,12 @@ namespace Game.Entities
                 if (spellInfo == null)
                     continue;
 
-                RemoveSpell(talentInfo.SpellID, true);
+                RemoveSpell(talentInfo.SpellID);
 
                 // search for spells that the talent teaches and unlearn them
                 foreach (var spellEffectInfo in spellInfo.GetEffects())
                     if (spellEffectInfo.IsEffect(SpellEffectName.LearnSpell) && spellEffectInfo.TriggerSpell > 0)
-                        RemoveSpell(spellEffectInfo.TriggerSpell, true);
+                        RemoveSpell(spellEffectInfo.TriggerSpell);
 
                 if (talentInfo.OverridesSpellID != 0)
                     RemoveOverrideSpell(talentInfo.OverridesSpellID, talentInfo.SpellID);
@@ -337,12 +337,12 @@ namespace Game.Entities
                 if (spellInfo == null)
                     continue;
 
-                RemoveSpell(talentInfo.SpellID, true);
+                RemoveSpell(talentInfo.SpellID);
 
                 // search for spells that the talent teaches and unlearn them
                 foreach (var spellEffectInfo in spellInfo.GetEffects())
                     if (spellEffectInfo.IsEffect(SpellEffectName.LearnSpell) && spellEffectInfo.TriggerSpell > 0)
-                        RemoveSpell(spellEffectInfo.TriggerSpell, true);
+                        RemoveSpell(spellEffectInfo.TriggerSpell);
 
                 if (talentInfo.OverridesSpellID != 0)
                     RemoveOverrideSpell(talentInfo.OverridesSpellID, talentInfo.SpellID);
@@ -742,10 +742,8 @@ namespace Game.Entities
             if (HasPvpTalent(talentID, GetActiveTalentGroup()))
                 return TalentLearnResult.FailedUnknown;
 
-            PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(talentInfo.PlayerConditionID);
-            if (playerCondition != null)
-                if (!ConditionManager.IsPlayerMeetingCondition(this, playerCondition))
-                    return TalentLearnResult.FailedCantDoThatRightNow;
+            if (!ConditionManager.IsPlayerMeetingCondition(this, (uint)talentInfo.PlayerConditionID))
+                return TalentLearnResult.FailedCantDoThatRightNow;
 
             PvpTalentRecord talent = CliDB.PvpTalentStorage.LookupByKey(GetPvpTalentMap(GetActiveTalentGroup())[slot]);
             if (talent != null)
@@ -804,7 +802,7 @@ namespace Game.Entities
             if (spellInfo == null)
                 return;
 
-            RemoveSpell(talent.SpellID, true);
+            RemoveSpell(talent.SpellID);
 
             // Move this to toggle ?
             if (talent.OverridesSpellID != 0)
@@ -829,7 +827,7 @@ namespace Game.Entities
                 {
                     if (enable)
                     {
-                        LearnSpell(pvpTalentInfo.SpellID, false);
+                        LearnSpell(pvpTalentInfo.SpellID, true);
                         if (pvpTalentInfo.OverridesSpellID != 0)
                             AddOverrideSpell(pvpTalentInfo.OverridesSpellID, pvpTalentInfo.SpellID);
                     }
@@ -837,7 +835,7 @@ namespace Game.Entities
                     {
                         if (pvpTalentInfo.OverridesSpellID != 0)
                             RemoveOverrideSpell(pvpTalentInfo.OverridesSpellID, pvpTalentInfo.SpellID);
-                        RemoveSpell(pvpTalentInfo.SpellID, true);
+                        RemoveSpell(pvpTalentInfo.SpellID);
                     }
                 }
             }
@@ -900,6 +898,25 @@ namespace Game.Entities
                 newEntry.Rank = traitEntry.Rank;
                 newEntry.GrantedRanks = traitEntry.GrantedRanks;
                 AddDynamicUpdateFieldValue(setter.ModifyValue(setter.Entries), newEntry);
+            }
+
+            foreach (var traitSubTree in traitConfig.SubTrees)
+            {
+                TraitSubTreeCache newSubTree = new();
+                newSubTree.TraitSubTreeID = traitSubTree.TraitSubTreeID;
+                newSubTree.Active = traitSubTree.Active ? 1 : 0u;
+
+                foreach (var traitEntry in traitSubTree.Entries)
+                {
+                    TraitEntry newEntry = new();
+                    newEntry.TraitNodeID = traitEntry.TraitNodeID;
+                    newEntry.TraitNodeEntryID = traitEntry.TraitNodeEntryID;
+                    newEntry.Rank = traitEntry.Rank;
+                    newEntry.GrantedRanks = traitEntry.GrantedRanks;
+                    newSubTree.Entries.Add(newEntry);
+                }
+
+                AddDynamicUpdateFieldValue(setter.ModifyValue(setter.SubTrees), newSubTree);
             }
         }
 
@@ -1041,8 +1058,7 @@ namespace Game.Entities
             if (consumeCurrencies)
             {
                 Dictionary<int, int> currencies = new();
-                foreach (TraitEntryPacket costEntry in costEntries)
-                    TraitMgr.FillSpentCurrenciesMap(costEntry, currencies);
+                TraitMgr.FillSpentCurrenciesMap(costEntries, currencies);
 
                 foreach (var (traitCurrencyId, amount) in currencies)
                 {
@@ -1064,7 +1080,49 @@ namespace Game.Entities
                 }
             }
 
-            m_traitConfigStates[(int)editedConfigId] = PlayerSpellState.Changed;
+            for (int i = 0; i < newConfig.SubTrees.Count; ++i)
+            {
+                var newSubTree = newConfig.SubTrees[i];
+                int oldSubTreeIndex = editedConfig.SubTrees.FindIndexIf(ufSubTree => ufSubTree.TraitSubTreeID == newSubTree.TraitSubTreeID);
+
+                List<TraitEntry> subTreeEntries = new();
+                for (int j = 0; j < newSubTree.Entries.Count; ++j)
+                {
+                    TraitEntry newUfEntry = subTreeEntries[j];
+                    newUfEntry.TraitNodeID = newSubTree.Entries[j].TraitNodeID;
+                    newUfEntry.TraitNodeEntryID = newSubTree.Entries[j].TraitNodeEntryID;
+                    newUfEntry.Rank = newSubTree.Entries[j].Rank;
+                    newUfEntry.GrantedRanks = newSubTree.Entries[j].GrantedRanks;
+                }
+                if (oldSubTreeIndex < 0)
+                {
+                    TraitSubTreeCache newUfSubTree = new();
+                    newUfSubTree.TraitSubTreeID = newSubTree.TraitSubTreeID;
+                    newUfSubTree.Active = newSubTree.Active ? 1 : 0u;
+                    newUfSubTree.Entries = subTreeEntries;
+
+                    TraitConfig traitConfig = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.TraitConfigs, editedIndex);
+                    AddDynamicUpdateFieldValue(traitConfig.ModifyValue(traitConfig.SubTrees), newUfSubTree);
+                }
+                else
+                {
+                    bool wasActive = m_activePlayerData.TraitConfigs[editedIndex].SubTrees[oldSubTreeIndex].Active != 0;
+
+                    TraitConfig traitConfig = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.TraitConfigs, editedIndex);
+                    TraitSubTreeCache traitSubTreeCache = traitConfig.ModifyValue(traitConfig.SubTrees, oldSubTreeIndex);
+
+                    traitSubTreeCache.Active = newSubTree.Active ? 1 : 0u;
+                    traitSubTreeCache.Entries = subTreeEntries;
+                    SetUpdateFieldValue(traitConfig.ModifyValue(traitConfig.SubTrees, oldSubTreeIndex), traitSubTreeCache);
+
+
+                    if (applyTraits && wasActive != newSubTree.Active)
+                        foreach (var subTreeEntry in newSubTree.Entries)
+                            ApplyTraitEntry(subTreeEntry.TraitNodeEntryID, subTreeEntry.Rank, subTreeEntry.GrantedRanks, newSubTree.Active);
+                }
+            }
+
+            m_traitConfigStates[editedConfigId] = PlayerSpellState.Changed;
         }
 
         public void RenameTraitConfig(int editedConfigId, string newName)
@@ -1108,7 +1166,8 @@ namespace Game.Entities
                 return;
 
             foreach (TraitEntry traitEntry in traitConfig.Entries)
-                ApplyTraitEntry(traitEntry.TraitNodeEntryID, traitEntry.Rank, traitEntry.GrantedRanks, apply);
+                if (!apply || TraitMgr.CanApplyTraitNode(traitConfig, traitEntry))
+                    ApplyTraitEntry(traitEntry.TraitNodeEntryID, traitEntry.Rank, traitEntry.GrantedRanks, apply);
         }
 
         void ApplyTraitEntry(int traitNodeEntryId, int rank, int grantedRanks, bool apply)

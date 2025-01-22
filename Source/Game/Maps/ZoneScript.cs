@@ -9,6 +9,9 @@ namespace Game.Maps
 {
     public class ZoneScript
     {
+        protected EventMap _events = new();
+        protected TaskScheduler _scheduler = new();
+
         public virtual void TriggerGameEvent(uint gameEventId, WorldObject source = null, WorldObject target = null)
         {
             if (source != null)
@@ -31,6 +34,9 @@ namespace Game.Maps
 
         public virtual void OnUnitDeath(Unit unit) { }
 
+        // Triggers when the CreatureGroup no longer has any alive members (either last alive member dies or is removed from the group)
+        public virtual void OnCreatureGroupDepleted(CreatureGroup creatureGroup) { }
+
         //All-purpose data storage 64 bit
         public virtual ObjectGuid GetGuidData(uint DataId) { return ObjectGuid.Empty; }
         public virtual void SetGuidData(uint DataId, ObjectGuid Value) { }
@@ -49,7 +55,10 @@ namespace Game.Maps
         public virtual bool CanCaptureFlag(AreaTrigger areaTrigger, Player player) { return false; }
         public virtual void OnCaptureFlag(AreaTrigger areaTrigger, Player player) { }
 
-        protected EventMap _events = new();
+        // This hook is used with GAMEOBJECT_TYPE_FLAGSTAND. Newer gameobjects use GAMEOBJECT_TYPE_NEW_FLAG and should use `OnFlagStateChange`
+        public virtual void OnFlagTaken(GameObject flag, Player player) { }
+        // This hook is used with GAMEOBJECT_TYPE_FLAGSTAND. Newer gameobjects use GAMEOBJECT_TYPE_NEW_FLAG and should use `OnFlagStateChange`. The GameObject doesn't exist anymore, but the ObjectGuid does
+        public virtual void OnFlagDropped(ObjectGuid flagGuid, Player player) { }
     }
 
     public class ControlZoneHandler

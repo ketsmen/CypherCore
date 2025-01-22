@@ -133,23 +133,6 @@ namespace Game.Networking.Packets
         public int GuildFlags;
     }
 
-    public class GuildRosterUpdate : ServerPacket
-    {
-        public GuildRosterUpdate() : base(ServerOpcodes.GuildRosterUpdate)
-        {
-            MemberData = new List<GuildRosterMemberData>();
-        }
-
-        public override void Write()
-        {
-            _worldPacket.WriteInt32(MemberData.Count);
-
-            MemberData.ForEach(p => p.Write(_worldPacket));
-        }
-
-        public List<GuildRosterMemberData> MemberData;
-    }
-
     public class GuildUpdateMotdText : ClientPacket
     {
         public GuildUpdateMotdText(WorldPacket packet) : base(packet) { }
@@ -183,16 +166,28 @@ namespace Game.Networking.Packets
 
     public class AcceptGuildInvite : ClientPacket
     {
+        public ObjectGuid GuildGuid;
+
         public AcceptGuildInvite(WorldPacket packet) : base(packet) { }
 
-        public override void Read() { }
+        public override void Read()
+        {
+            GuildGuid = _worldPacket.ReadPackedGuid();
+        }
     }
 
     public class GuildDeclineInvitation : ClientPacket
     {
+        public ObjectGuid GuildGuid;
+        public bool IsAuto;
+
         public GuildDeclineInvitation(WorldPacket packet) : base(packet) { }
 
-        public override void Read() { }
+        public override void Read()
+        {
+            GuildGuid = _worldPacket.ReadPackedGuid();
+            IsAuto = _worldPacket.HasBit();
+        }
     }
 
     public class DeclineGuildInvites : ClientPacket
@@ -214,16 +209,16 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             uint nameLen = _worldPacket.ReadBits<uint>(9);
-            bool hasUnused910 = _worldPacket.HasBit();
+            bool hasArenaTeam = _worldPacket.HasBit();
 
             Name = _worldPacket.ReadString(nameLen);
 
-            if (hasUnused910)
-                Unused910 = _worldPacket.ReadInt32();
+            if (hasArenaTeam)
+                ArenaTeam = _worldPacket.ReadInt32();
         }
 
         public string Name;
-        public int? Unused910;
+        public int? ArenaTeam;
     }
 
     public class GuildInvite : ServerPacket
@@ -297,7 +292,6 @@ namespace Game.Networking.Packets
 
             _worldPacket.WriteBits(Name.GetByteCount(), 6);
             _worldPacket.WriteBit(LoggedOn);
-            _worldPacket.WriteBit(Mobile);
 
             _worldPacket.WriteString(Name);
         }
@@ -305,7 +299,6 @@ namespace Game.Networking.Packets
         public ObjectGuid Guid;
         public uint VirtualRealmAddress;
         public string Name;
-        public bool Mobile;
         public bool LoggedOn;
     }
 
@@ -1707,7 +1700,7 @@ namespace Game.Networking.Packets
     public class GuildRewardItem
     {
         public uint ItemID;
-        public uint Unk4;
+        public uint AchievementLogic;
         public List<uint> AchievementsRequired = new();
         public RaceMask<ulong> RaceMask;
         public int MinGuildLevel;
@@ -1717,7 +1710,7 @@ namespace Game.Networking.Packets
         public void Write(WorldPacket data)
         {
             data.WriteUInt32(ItemID);
-            data.WriteUInt32(Unk4);
+            data.WriteUInt32(AchievementLogic);
             data.WriteInt32(AchievementsRequired.Count);
             data.WriteUInt64(RaceMask.RawValue);
             data.WriteInt32(MinGuildLevel);

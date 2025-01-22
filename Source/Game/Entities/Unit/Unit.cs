@@ -24,6 +24,7 @@ namespace Game.Entities
     {
         public Unit(bool isWorldObject) : base(isWorldObject)
         {
+            m_unitData = new UnitData();
             MoveSpline = new MoveSpline();
             i_motionMaster = new MotionMaster(this);
             m_combatManager = new CombatManager(this);
@@ -33,6 +34,8 @@ namespace Game.Entities
             ObjectTypeId = TypeId.Unit;
             ObjectTypeMask |= TypeMask.Unit;
             m_updateFlag.MovementUpdate = true;
+
+            m_entityFragments.Add(EntityFragment.Tag_Unit, false);
 
             m_modAttackSpeedPct = new float[] { 1.0f, 1.0f, 1.0f };
             m_deathState = DeathState.Alive;
@@ -68,11 +71,11 @@ namespace Game.Entities
             for (byte i = 0; i < (int)UnitMoveType.Max; ++i)
                 m_speed_rate[i] = 1.0f;
 
+            SetFlightCapabilityID(0, false);
+
             m_serverSideVisibility.SetValue(ServerSideVisibilityType.Ghost, GhostVisibilityType.Alive);
 
-            splineSyncTimer = new TimeTracker();
 
-            m_unitData = new UnitData();
         }
 
         public override void Dispose()
@@ -177,6 +180,7 @@ namespace Game.Entities
                 ModifyAuraState(AuraStateType.WoundHealth20_80, HealthBelowPct(20) || HealthAbovePct(80));
                 ModifyAuraState(AuraStateType.Healthy75Percent, HealthAbovePct(75));
                 ModifyAuraState(AuraStateType.WoundHealth35_80, HealthBelowPct(35) || HealthAbovePct(80));
+                ModifyAuraState(AuraStateType.Wounded50Percent, HealthBelowPct(50));
             }
 
             UpdateSplineMovement(diff);
@@ -263,7 +267,7 @@ namespace Game.Entities
 
             var emotesEntry = CliDB.EmotesStorage.LookupByKey(emoteId);
             if (emotesEntry != null && spellVisualKitIds != null)
-                if (emotesEntry.AnimId == (uint)Anim.MountSpecial || emotesEntry.AnimId == (uint)Anim.MountSelfSpecial)
+                if (emotesEntry.AnimID == (uint)Anim.MountSpecial || emotesEntry.AnimID == (uint)Anim.MountSelfSpecial)
                     packet.SpellVisualKitIDs.AddRange(spellVisualKitIds);
 
             packet.SequenceVariation = sequenceVariation;
@@ -615,15 +619,20 @@ namespace Game.Entities
 
         public void AtStartOfEncounter(EncounterType type)
         {
-            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfEncounter);
-
             switch (type)
             {
                 case EncounterType.DungeonEncounter:
-                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfDungeonEncounter);
+                    if (GetMap().IsRaid())
+                        RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfRaidEncounterAndStartOfMythicPlus);
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfEncounter);
                     break;
                 case EncounterType.MythicPlusRun:
-                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfMythicPlusRun);
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfRaidEncounterAndStartOfMythicPlus);
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfRaidEncounterAndStartOfMythicPlus);
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.ChallengeModeStart);
+                    break;
+                case EncounterType.Battleground:
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.StartOfRaidEncounterAndStartOfMythicPlus);
                     break;
                 default:
                     break;
@@ -635,12 +644,12 @@ namespace Game.Entities
 
         public void AtEndOfEncounter(EncounterType type)
         {
-            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfEncounter);
-
             switch (type)
             {
                 case EncounterType.DungeonEncounter:
-                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfDungeonEncounter);
+                    if (GetMap().IsRaid())
+                        RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfRaidEncounterAndStartOfMythicPlus);
+                    RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.EndOfEncounter);
                     break;
                 default:
                     break;
@@ -863,17 +872,17 @@ namespace Game.Entities
                 m_areaTrigger.Last()?.Remove();
         }
 
-        public NPCFlags GetNpcFlags() { return (NPCFlags)m_unitData.NpcFlags[0]; }
-        public bool HasNpcFlag(NPCFlags flags) { return (m_unitData.NpcFlags[0] & (uint)flags) != 0; }
-        public void SetNpcFlag(NPCFlags flags) { SetUpdateFieldFlagValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, 0), (uint)flags); }
-        public void RemoveNpcFlag(NPCFlags flags) { RemoveUpdateFieldFlagValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, 0), (uint)flags); }
-        public void ReplaceAllNpcFlags(NPCFlags flags) { SetUpdateFieldValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, 0), (uint)flags); }
+        public NPCFlags GetNpcFlags() { return (NPCFlags)m_unitData.NpcFlags.GetValue(); }
+        public bool HasNpcFlag(NPCFlags flags) { return (m_unitData.NpcFlags & (uint)flags) != 0; }
+        public void SetNpcFlag(NPCFlags flags) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags), (uint)flags); }
+        public void RemoveNpcFlag(NPCFlags flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags), (uint)flags); }
+        public void ReplaceAllNpcFlags(NPCFlags flags) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags), (uint)flags); }
 
-        public NPCFlags2 GetNpcFlags2() { return (NPCFlags2)m_unitData.NpcFlags[1]; }
-        public bool HasNpcFlag2(NPCFlags2 flags) { return (m_unitData.NpcFlags[1] & (uint)flags) != 0; }
-        public void SetNpcFlag2(NPCFlags2 flags) { SetUpdateFieldFlagValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, 1), (uint)flags); }
-        public void RemoveNpcFlag2(NPCFlags2 flags) { RemoveUpdateFieldFlagValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, 1), (uint)flags); }
-        public void ReplaceAllNpcFlags2(NPCFlags2 flags) { SetUpdateFieldValue(ref m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags, 1), (uint)flags); }
+        public NPCFlags2 GetNpcFlags2() { return (NPCFlags2)m_unitData.NpcFlags2.GetValue(); }
+        public bool HasNpcFlag2(NPCFlags2 flags) { return (m_unitData.NpcFlags2 & (uint)flags) != 0; }
+        public void SetNpcFlag2(NPCFlags2 flags) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags2), (uint)flags); }
+        public void RemoveNpcFlag2(NPCFlags2 flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags2), (uint)flags); }
+        public void ReplaceAllNpcFlags2(NPCFlags2 flags) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.NpcFlags2), (uint)flags); }
 
         public bool IsVendor() { return HasNpcFlag(NPCFlags.Vendor); }
         public bool IsTrainer() { return HasNpcFlag(NPCFlags.Trainer); }
@@ -1064,12 +1073,13 @@ namespace Game.Entities
                     return;
                 }
 
-                if (vehicle.GetBase().IsCreature())
+                Creature vehicleBaseCreature = vehicle.GetBase().ToCreature();
+                if (vehicleBaseCreature != null)
                 {
                     // If a player entered a vehicle that is part of a formation, remove it from said formation
-                    CreatureGroup creatureGroup = vehicle.GetBase().ToCreature().GetFormation();
+                    CreatureGroup creatureGroup = vehicleBaseCreature.GetFormation();
                     if (creatureGroup != null)
-                        creatureGroup.RemoveMember(vehicle.GetBase().ToCreature());
+                        FormationMgr.RemoveCreatureFromGroup(creatureGroup, vehicleBaseCreature);
                 }
             }
 
@@ -1760,17 +1770,8 @@ namespace Game.Entities
                             if (powerDisplay != null)
                                 displayPower = (PowerType)powerDisplay.ActualType;
                         }
-                        else
-                        {
-                            Pet pet = ToPet();
-                            if (pet != null)
-                            {
-                                if (pet.GetPetType() == PetType.Hunter) // Hunter pets have focus
-                                    displayPower = PowerType.Focus;
-                                else if (pet.IsPetGhoul() || pet.IsPetAbomination()) // DK pets have energy
-                                    displayPower = PowerType.Energy;
-                            }
-                        }
+                        else if (IsHunterPet())
+                            displayPower = PowerType.Focus;
                     }
                     break;
                 }
@@ -1927,7 +1928,11 @@ namespace Game.Entities
                 Global.CharacterCacheStorage.UpdateCharacterLevel(ToPlayer().GetGUID(), (byte)lvl);
             }
         }
+
         public uint GetLevel() { return m_unitData.Level; }
+
+        public byte GetEffectiveLevel() { return (byte)(m_unitData.EffectiveLevel != 0 ? m_unitData.EffectiveLevel : m_unitData.Level); }
+
         public override uint GetLevelForTarget(WorldObject target) { return GetLevel(); }
 
         public Race GetRace() { return (Race)(byte)m_unitData.Race; }
@@ -2439,6 +2444,10 @@ namespace Game.Entities
                 RemoveDynamicUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ChannelObjects), index);
         }
 
+        public sbyte GetSpellEmpowerStage() { return m_unitData.SpellEmpowerStage; }
+
+        public void SetSpellEmpowerStage(sbyte stage) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.SpellEmpowerStage), stage); }
+
         public static bool IsDamageReducedByArmor(SpellSchoolMask schoolMask, SpellInfo spellInfo = null)
         {
             // only physical spells damage gets reduced by armor
@@ -2446,6 +2455,12 @@ namespace Game.Entities
                 return false;
 
             return spellInfo == null || !spellInfo.HasAttribute(SpellCustomAttributes.IgnoreArmor);
+        }
+
+        public override void ClearUpdateMask(bool remove)
+        {
+            m_values.ClearChangesMask(m_unitData);
+            base.ClearUpdateMask(remove);
         }
 
         public override UpdateFieldFlag GetUpdateFieldFlagsFor(Player target)
@@ -2459,86 +2474,6 @@ namespace Game.Entities
                     flags |= UpdateFieldFlag.Empath;
 
             return flags;
-        }
-
-        public override void BuildValuesCreate(WorldPacket data, Player target)
-        {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_unitData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
-        }
-
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
-        {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt32(m_values.GetChangedObjectTypeMask());
-            if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
-
-            if (m_values.HasChanged(TypeId.Unit))
-                m_unitData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
-        }
-
-        public override void BuildValuesUpdateWithFlag(WorldPacket data, UpdateFieldFlag flags, Player target)
-        {
-            UpdateMask valuesMask = new((int)TypeId.Max);
-            valuesMask.Set((int)TypeId.Unit);
-
-            WorldPacket buffer = new();
-
-            UpdateMask mask = m_unitData.GetStaticUpdateMask();
-            m_unitData.AppendAllowedFieldsMaskForFlag(mask, flags);
-            m_unitData.WriteUpdate(buffer, mask, true, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteUInt32(valuesMask.GetBlock(0));
-            data.WriteBytes(buffer);
-        }
-
-        public void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedUnitMask, Player target)
-        {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            UpdateMask valuesMask = new((int)TypeId.Max);
-            if (requestedObjectMask.IsAnySet())
-                valuesMask.Set((int)TypeId.Object);
-
-            m_unitData.FilterDisallowedFieldsMaskForFlag(requestedUnitMask, flags);
-            if (requestedUnitMask.IsAnySet())
-                valuesMask.Set((int)TypeId.Unit);
-
-            WorldPacket buffer = new();
-            buffer.WriteUInt32(valuesMask.GetBlock(0));
-
-            if (valuesMask[(int)TypeId.Object])
-                m_objectData.WriteUpdate(buffer, requestedObjectMask, true, this, target);
-
-            if (valuesMask[(int)TypeId.Unit])
-                m_unitData.WriteUpdate(buffer, requestedUnitMask, true, this, target);
-
-            WorldPacket buffer1 = new();
-            buffer1.WriteUInt8((byte)UpdateType.Values);
-            buffer1.WritePackedGuid(GetGUID());
-            buffer1.WriteUInt32(buffer.GetSize());
-            buffer1.WriteBytes(buffer.GetData());
-
-            data.AddUpdateBlock(buffer1);
-        }
-
-        public override void ClearUpdateMask(bool remove)
-        {
-            m_values.ClearChangesMask(m_unitData);
-            base.ClearUpdateMask(remove);
         }
 
         public override void DestroyForPlayer(Player target)
@@ -2564,6 +2499,29 @@ namespace Game.Entities
         public DeathState GetDeathState()
         {
             return m_deathState;
+        }
+
+        public override void Heartbeat()
+        {
+            base.Heartbeat();
+
+            // SMSG_FLIGHT_SPLINE_SYNC for cyclic splines
+            SendFlightSplineSyncUpdate();
+
+            // Trigger heartbeat procs and generic aura behavior such as food emotes and invoking aura script hooks
+            TriggerAuraHeartbeat();
+
+            // Update Vignette position and visibility
+            if (m_vignette != null)
+                Vignettes.Update(m_vignette, this);
+        }
+
+        void TriggerAuraHeartbeat()
+        {
+            foreach (var (_, auraApplication) in m_appliedAuras)
+                auraApplication.GetBase().Heartbeat();
+
+            Unit.ProcSkillsAndAuras(this, null, new ProcFlagsInit(ProcFlags.Heartbeat), new ProcFlagsInit(ProcFlags.None), ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.None, ProcFlagsHit.None, null, null, null);
         }
 
         public bool HaveOffhandWeapon()
@@ -2757,6 +2715,9 @@ namespace Game.Entities
                 }
             }
 
+            if (spellProto != null && spellProto.HasAttribute(SpellAttr9.CannotKillTarget) && damageTaken >= health)
+                damageTaken = health - 1;
+
             if (attacker != null && attacker != victim)
             {
                 Player killer = attacker.ToPlayer();
@@ -2939,7 +2900,7 @@ namespace Game.Entities
                                 }
 
                                 if (isCastInterrupted())
-                                    victim.InterruptNonMeleeSpells(false);
+                                    victim.InterruptSpell(CurrentSpellTypes.Generic, false, false);
                                 else if (isCastDelayed())
                                     spell.Delayed();
                             }
@@ -3075,7 +3036,7 @@ namespace Game.Entities
                     }
 
                     // ...or immuned
-                    if (IsImmunedToDamage(spellInfo))
+                    if (IsImmunedToDamage(this, spellInfo))
                     {
                         victim.SendSpellDamageImmune(this, spellInfo.Id, false);
                         continue;
@@ -3872,10 +3833,13 @@ namespace Game.Entities
                         armor = (float)Math.Floor(MathFunctions.AddPct(ref armor, -eff.GetAmount()));
                 }
 
-                // Apply Player CR_ARMOR_PENETRATION rating
+                // Apply Player CR_ARMOR_PENETRATION rating and buffs from stances\specializations etc.
                 if (attacker.IsPlayer())
                 {
                     float arpPct = attacker.ToPlayer().GetRatingBonusValue(CombatRating.ArmorPenetration);
+
+                    Item weapon = attacker.ToPlayer().GetWeaponForAttack(attackType, true);
+                    arpPct += attacker.GetTotalAuraModifier(AuraType.ModArmorPenetrationPct, aurEff => aurEff.GetSpellInfo().IsItemFitToSpellRequirements(weapon));
 
                     // no more than 100%
                     MathFunctions.RoundToInterval(ref arpPct, 0.0f, 100.0f);

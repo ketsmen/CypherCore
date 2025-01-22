@@ -23,11 +23,11 @@ namespace Game.Entities
 
         //Movement
         protected float[] m_speed_rate = new float[(int)UnitMoveType.Max];
+        float[] m_advFlyingSpeed = new float[(int)AdvFlyingRateTypeSingle.Max];
         List<AbstractFollower> m_followingMe = new();
         public MoveSpline MoveSpline { get; set; }
         MotionMaster i_motionMaster;
         public uint m_movementCounter;       //< Incrementing counter used in movement packets
-        TimeTracker splineSyncTimer;
         MovementForces _movementForces;
         PositionUpdateInfo _positionUpdateInfo;
         protected Unit m_unitMovedByMe;    // only ever set for players, and only for direct client control
@@ -126,28 +126,6 @@ namespace Game.Entities
         ushort _aiAnimKitId;
         ushort _movementAnimKitId;
         ushort _meleeAnimKitId;
-
-        class ValuesUpdateForPlayerWithMaskSender : IDoWork<Player>
-        {
-            Unit Owner;
-            ObjectFieldData ObjectMask = new();
-            UnitData UnitMask = new();
-
-            public ValuesUpdateForPlayerWithMaskSender(Unit owner)
-            {
-                Owner = owner;
-            }
-
-            public void Invoke(Player player)
-            {
-                UpdateData udata = new(Owner.GetMapId());
-
-                Owner.BuildValuesUpdateForPlayerWithMask(udata, ObjectMask.GetUpdateMask(), UnitMask.GetUpdateMask(), player);
-
-                udata.BuildPacket(out UpdateObject packet);
-                player.SendPacket(packet);
-            }
-        }
     }
 
     public struct DiminishingReturn

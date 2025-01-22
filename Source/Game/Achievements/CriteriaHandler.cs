@@ -1,6 +1,7 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
+using Framework.ClientBuild;
 using Framework.Constants;
 using Framework.Database;
 using Game.Arenas;
@@ -123,15 +124,20 @@ namespace Game.Achievements
                     case CriteriaType.DeliveredKillingBlow:
                     case CriteriaType.PVPKillInArea:
                     case CriteriaType.WinArena: // This also behaves like CriteriaType.WinAnyRankedArena
+                    case CriteriaType.ParticipateInArena:
                     case CriteriaType.PlayerTriggerGameEvent:
                     case CriteriaType.Login:
                     case CriteriaType.AnyoneTriggerGameEventScenario:
                     case CriteriaType.DefeatDungeonEncounterWhileElegibleForLoot:
+                    case CriteriaType.CompleteAnyScenario:
+                    case CriteriaType.CompleteScenario:
                     case CriteriaType.BattlePetReachLevel:
                     case CriteriaType.ActivelyEarnPetLevel:
                     case CriteriaType.DefeatDungeonEncounter:
                     case CriteriaType.PlaceGarrisonBuilding:
                     case CriteriaType.ActivateAnyGarrisonBuilding:
+                    case CriteriaType.LearnAnyHeirloom:
+                    case CriteriaType.LearnAnyTransmog:
                     case CriteriaType.HonorLevelIncrease:
                     case CriteriaType.PrestigeLevelIncrease:
                     case CriteriaType.LearnAnyTransmogInSlot:
@@ -151,11 +157,13 @@ namespace Game.Achievements
                     case CriteriaType.MoneyEarnedFromAuctions:/* FIXME: for online player only currently */
                     case CriteriaType.TotalDamageTaken:
                     case CriteriaType.TotalHealReceived:
+                    case CriteriaType.CompletedLFGDungeon:
                     case CriteriaType.CompletedLFGDungeonWithStrangers:
                     case CriteriaType.DamageDealt:
                     case CriteriaType.HealingDone:
                     case CriteriaType.EarnArtifactXPForAzeriteItem:
                     case CriteriaType.GainLevels:
+                    case CriteriaType.EarnArtifactXP:
                         SetCriteriaProgress(criteria, miscValue1, referencePlayer, ProgressType.Accumulate);
                         break;
                     case CriteriaType.KillCreature:
@@ -173,7 +181,9 @@ namespace Game.Achievements
                     case CriteriaType.HighestDamageTaken:
                     case CriteriaType.HighestHealCast:
                     case CriteriaType.HighestHealReceived:
+                    case CriteriaType.AnyArtifactPowerRankPurchased:
                     case CriteriaType.AzeriteLevelReached:
+                    case CriteriaType.ReachRenownLevel:
                         SetCriteriaProgress(criteria, miscValue1, referencePlayer, ProgressType.Highest);
                         break;
                     case CriteriaType.ReachLevel:
@@ -254,10 +264,13 @@ namespace Game.Achievements
                     case CriteriaType.GotHaircut:
                     case CriteriaType.EquipItemInSlot:
                     case CriteriaType.EquipItem:
+                    case CriteriaType.EnterAreaTriggerWithActionSet:
+                    case CriteriaType.LeaveAreaTriggerWithActionSet:
                     case CriteriaType.LearnedNewPet:
                     case CriteriaType.EnterArea:
                     case CriteriaType.LeaveArea:
                     case CriteriaType.RecruitGarrisonFollower:
+                    case CriteriaType.LearnHeirloom:
                     case CriteriaType.ActivelyReachLevel:
                     case CriteriaType.CollectTransmogSetFromGroup:
                     case CriteriaType.EnterTopLevelArea:
@@ -359,7 +372,6 @@ namespace Game.Achievements
                         break;
                     // FIXME: not triggered in code as result, need to implement
                     case CriteriaType.RunInstance:
-                    case CriteriaType.ParticipateInArena:
                     case CriteriaType.EarnTeamArenaRating:
                     case CriteriaType.EarnTitle:
                     case CriteriaType.MoneySpentOnGuildRepair:
@@ -382,8 +394,6 @@ namespace Game.Achievements
                     case CriteriaType.KickVoterInLFRDungeon:
                     case CriteriaType.KickTargetInLFRDungeon:
                     case CriteriaType.GroupedTankLeftEarlyInLFRDungeon:
-                    case CriteriaType.CompleteAnyScenario:
-                    case CriteriaType.CompleteScenario:
                     case CriteriaType.AccountObtainPetThroughBattle:
                     case CriteriaType.WinPetBattle:
                     case CriteriaType.PlayerObtainPetThroughBattle:
@@ -399,7 +409,6 @@ namespace Game.Achievements
                     case CriteriaType.LevelChangedForGarrisonFollower:
                     case CriteriaType.LearnToy:
                     case CriteriaType.LearnAnyToy:
-                    case CriteriaType.LearnAnyHeirloom:
                     case CriteriaType.FindResearchObject:
                     case CriteriaType.ExhaustAnyResearchSite:
                     case CriteriaType.CompleteInternalCriteria:
@@ -410,17 +419,13 @@ namespace Game.Achievements
                     case CriteriaType.BattlePetAchievementPointsEarned:
                     case CriteriaType.ReleasedSpirit:
                     case CriteriaType.AccountKnownPet:
-                    case CriteriaType.CompletedLFGDungeon:
                     case CriteriaType.KickInitiatorInLFGDungeon:
                     case CriteriaType.KickVoterInLFGDungeon:
                     case CriteriaType.KickTargetInLFGDungeon:
                     case CriteriaType.AbandonedLFGDungeon:
                     case CriteriaType.GroupedTankLeftEarlyInLFGDungeon:
-                    case CriteriaType.EnterAreaTriggerWithActionSet:
                     case CriteriaType.StartGarrisonMission:
                     case CriteriaType.QualityUpgradedForGarrisonFollower:
-                    case CriteriaType.EarnArtifactXP:
-                    case CriteriaType.AnyArtifactPowerRankPurchased:
                     case CriteriaType.CompleteResearchGarrisonTalent:
                     case CriteriaType.RecruitAnyGarrisonTroop:
                     case CriteriaType.CompleteAnyWorldQuest:
@@ -784,14 +789,21 @@ namespace Game.Achievements
                 case CriteriaType.DefeatDungeonEncounterWhileElegibleForLoot:
                 case CriteriaType.GetLootByType:
                 case CriteriaType.LearnTradeskillSkillLine:
+                case CriteriaType.CompletedLFGDungeon:
                 case CriteriaType.CompletedLFGDungeonWithStrangers:
                 case CriteriaType.DeliveredKillingBlow:
                 case CriteriaType.CurrencyGained:
-                case CriteriaType.PlaceGarrisonBuilding:
+                case CriteriaType.CompleteAnyScenario:
+                case CriteriaType.CompleteScenario:
                 case CriteriaType.UniquePetsOwned:
                 case CriteriaType.BattlePetReachLevel:
                 case CriteriaType.ActivelyEarnPetLevel:
                 case CriteriaType.DefeatDungeonEncounter:
+                case CriteriaType.PlaceGarrisonBuilding:
+                case CriteriaType.LearnHeirloom:
+                case CriteriaType.LearnAnyHeirloom:
+                case CriteriaType.EarnArtifactXP:
+                case CriteriaType.AnyArtifactPowerRankPurchased:
                 case CriteriaType.LearnAnyTransmogInSlot:
                 case CriteriaType.ParagonLevelIncreaseWithFaction:
                 case CriteriaType.PlayerHasEarnedHonor:
@@ -811,12 +823,14 @@ namespace Game.Achievements
                 case CriteriaType.GotHaircut:
                 case CriteriaType.EquipItemInSlot:
                 case CriteriaType.EquipItem:
+                case CriteriaType.EnterAreaTriggerWithActionSet:
+                case CriteriaType.LeaveAreaTriggerWithActionSet:
                 case CriteriaType.LearnedNewPet:
-                case CriteriaType.HonorLevelIncrease:
-                case CriteriaType.PrestigeLevelIncrease:
                 case CriteriaType.EnterArea:
                 case CriteriaType.LeaveArea:
                 case CriteriaType.RecruitGarrisonFollower:
+                case CriteriaType.HonorLevelIncrease:
+                case CriteriaType.PrestigeLevelIncrease:
                 case CriteriaType.ActivelyReachLevel:
                 case CriteriaType.CollectTransmogSetFromGroup:
                 case CriteriaType.EnterTopLevelArea:
@@ -827,6 +841,7 @@ namespace Game.Achievements
                 case CriteriaType.EarnAchievementPoints:
                     return progress.Counter >= 9000;
                 case CriteriaType.WinArena:
+                case CriteriaType.ParticipateInArena:
                     return requiredAmount != 0 && progress.Counter >= requiredAmount;
                 case CriteriaType.Login:
                     return true;
@@ -928,6 +943,7 @@ namespace Game.Achievements
                 case CriteriaType.KillPlayer:
                 case CriteriaType.TotalDamageTaken:
                 case CriteriaType.TotalHealReceived:
+                case CriteriaType.CompletedLFGDungeon:
                 case CriteriaType.CompletedLFGDungeonWithStrangers:
                 case CriteriaType.GotHaircut:
                 case CriteriaType.WinDuel:
@@ -937,6 +953,8 @@ namespace Game.Achievements
                 case CriteriaType.BuyItemsFromVendors:
                 case CriteriaType.SellItemsToVendors:
                 case CriteriaType.GainLevels:
+                case CriteriaType.LearnAnyTransmog:
+                case CriteriaType.CompleteAnyScenario:
                     if (miscValue1 == 0)
                         return false;
                     break;
@@ -1058,6 +1076,7 @@ namespace Game.Achievements
                 case CriteriaType.UseItem:
                 case CriteriaType.LootItem:
                 case CriteriaType.EquipItem:
+                case CriteriaType.LearnHeirloom:
                     if (miscValue1 == 0 || criteria.Entry.Asset != miscValue1)
                         return false;
                     break;
@@ -1201,6 +1220,15 @@ namespace Game.Achievements
                     if (miscValue1 == 0 || miscValue1 != criteria.Entry.Asset)
                         return false;
                     break;
+                case CriteriaType.CompleteScenario:
+                    if (miscValue1 != criteria.Entry.Asset)
+                        return false;
+                    break;
+                case CriteriaType.EnterAreaTriggerWithActionSet:
+                case CriteriaType.LeaveAreaTriggerWithActionSet:
+                    if (miscValue1 == 0 || miscValue1 != criteria.Entry.Asset)
+                        return false;
+                    break;
                 default:
                     break;
             }
@@ -1254,8 +1282,7 @@ namespace Game.Achievements
                 }
                 case ModifierTreeType.PlayerMeetsCondition: // 2
                 {
-                    PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(reqValue);
-                    if (playerCondition == null || !ConditionManager.IsPlayerMeetingCondition(referencePlayer, playerCondition))
+                    if (!ConditionManager.IsPlayerMeetingCondition(referencePlayer, reqValue))
                         return false;
                     break;
                 }
@@ -1413,7 +1440,10 @@ namespace Game.Achievements
                         return false;
                     break;
                 case ModifierTreeType.ClientVersionEqualOrLessThan: // 33
-                    if (reqValue < Global.RealmMgr.GetMinorMajorBugfixVersionForBuild(Global.WorldMgr.GetRealm().Build))
+                    var currentRealm = Global.RealmMgr.GetCurrentRealm();
+                    if (currentRealm == null)
+                        return false;
+                    if (reqValue < ClientBuildHelper.GetMinorMajorBugfixVersionForBuild(currentRealm.Build))
                         return false;
                     break;
                 case ModifierTreeType.BattlePetTeamLevel: // 34
@@ -1520,8 +1550,7 @@ namespace Game.Achievements
                     if (refe == null || !refe.IsPlayer())
                         return false;
 
-                    PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(reqValue);
-                    if (playerCondition == null || !ConditionManager.IsPlayerMeetingCondition(refe.ToPlayer(), playerCondition))
+                    if (!ConditionManager.IsPlayerMeetingCondition(refe.ToPlayer(), reqValue))
                         return false;
                     break;
                 }
@@ -3352,7 +3381,7 @@ namespace Game.Achievements
                     return (referencePlayer.m_activePlayerData.RuneforgePowers[block] & (1u << (int)bit)) != 0;
                 }
                 case ModifierTreeType.PlayerInChromieTimeForScaling: // 304
-                    if ((referencePlayer.m_playerData.CtrOptions._value.ContentTuningConditionMask & 1) == 0)
+                    if ((referencePlayer.m_playerData.CtrOptions._value.ConditionalFlags & 1) == 0)
                         return false;
                     break;
                 case ModifierTreeType.IsRaFRecruit: // 305
@@ -3671,6 +3700,40 @@ namespace Game.Achievements
                 {
                     var mapEntry = referencePlayer.GetMap().GetEntry();
                     if (mapEntry.ExpansionID != reqValue)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerHasActiveTraitSubTree: // 385
+                {
+                    int traitConfigWithSubtree = referencePlayer.m_activePlayerData.TraitConfigs.FindIndexIf(traitConfig =>
+                    {
+                        if (traitConfig.Type == (int)TraitConfigType.Combat
+                            && (referencePlayer.m_activePlayerData.ActiveCombatTraitConfigID != traitConfig.ID
+                                || !traitConfig.CombatConfigFlags.GetValue().HasAnyFlag((int)TraitCombatConfigFlags.ActiveForSpec)))
+                            return false;
+
+                        return traitConfig.SubTrees.FindIndexIf(traitSubTree =>
+                        {
+                            return traitSubTree.TraitSubTreeID == reqValue && traitSubTree.Active != 0;
+                        }) >= 0;
+                    });
+                    if (traitConfigWithSubtree < 0)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.TargetCreatureClassificationEqual: // 389
+                {
+                    Creature targetCreature = refe?.ToCreature();
+                    if (targetCreature == null)
+                        return false;
+                    if (targetCreature.GetCreatureClassification() != (CreatureClassifications)reqValue)
+                        return false;
+                    break;
+                }
+                case ModifierTreeType.PlayerHasCompletedQuestOrIsReadyToTurnIn: // 392
+                {
+                    QuestStatus status = referencePlayer.GetQuestStatus(reqValue);
+                    if (status != QuestStatus.Complete && status != QuestStatus.Rewarded)
                         return false;
                     break;
                 }

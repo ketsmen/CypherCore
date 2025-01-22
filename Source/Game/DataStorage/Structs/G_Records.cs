@@ -24,6 +24,7 @@ namespace Game.DataStorage
         public int AlternateDisplayType;
         public int ClientCreatureDisplayInfoID;
         public int ClientItemID;
+        public ushort Unknown1100;
 
         public Vector3 GeoBoxMin
         {
@@ -50,6 +51,7 @@ namespace Game.DataStorage
         public int PhaseUseFlags;
         public int PhaseID;
         public int PhaseGroupID;
+        public ushort Unknown1100;
         public int[] PropValue = new int[8];
     }
 
@@ -75,7 +77,7 @@ namespace Game.DataStorage
         public string Description;
         public string Tooltip;
         public sbyte GarrTypeID;
-        public sbyte BuildingType;
+        public byte BuildingType;
         public uint HordeGameObjectID;
         public uint AllianceGameObjectID;
         public int GarrSiteID;
@@ -133,7 +135,7 @@ namespace Game.DataStorage
         public byte AllianceGarrFollRaceID;
         public uint HordeGarrClassSpecID;
         public uint AllianceGarrClassSpecID;
-        public sbyte Quality;
+        public int Quality;
         public byte FollowerLevel;
         public ushort ItemLevelWeapon;
         public ushort ItemLevelArmor;
@@ -185,7 +187,7 @@ namespace Game.DataStorage
         public uint EnvGarrMechanicID;
         public int EnvGarrMechanicTypeID;
         public uint PlayerConditionID;
-        public int GarrMissionSetID;
+        public uint GarrMissionSetID;
         public sbyte TargetLevel;
         public ushort TargetItemLevel;
         public int MissionDuration;
@@ -264,7 +266,7 @@ namespace Game.DataStorage
         public int GarrTalentTreeType;
         public int PlayerConditionID;
         public byte FeatureTypeIndex;
-        public sbyte FeatureSubtypeIndex;
+        public byte FeatureSubtypeIndex;
         public int CurrencyID;
     }
 
@@ -311,7 +313,7 @@ namespace Game.DataStorage
         public int GossipNpcOption;
         public int LFGDungeonsID;
         public int TrainerID;
-        public int GarrFollowerTypeID;
+        public sbyte GarrFollowerTypeID;
         public int CharShipmentID;
         public int GarrTalentTreeID;
         public int UiMapID;

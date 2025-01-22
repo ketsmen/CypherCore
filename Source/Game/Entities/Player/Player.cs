@@ -7,7 +7,6 @@ using Framework.Dynamic;
 using Game.Achievements;
 using Game.AI;
 using Game.Arenas;
-using Game.BattleFields;
 using Game.BattleGrounds;
 using Game.BattlePets;
 using Game.Chat;
@@ -22,11 +21,11 @@ using Game.Misc;
 using Game.Miscellaneous;
 using Game.Networking;
 using Game.Networking.Packets;
+using Game.Scripting.v2;
 using Game.Spells;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
 using static Global;
 
 namespace Game.Entities
@@ -74,6 +73,8 @@ namespace Game.Entities
             m_legacyRaidDifficulty = Difficulty.Raid10N;
             m_InstanceValid = true;
 
+            m_empowerMinHoldStagePercent = 1.0f;
+
             _specializationInfo = new SpecializationInfo();
 
             for (byte i = 0; i < (byte)BaseModGroup.End; ++i)
@@ -115,8 +116,6 @@ namespace Game.Entities
             m_bgData = new BGData();
 
             _restMgr = new RestMgr(this);
-
-            m_groupUpdateTimer = new(5000);
         }
 
         public override void Dispose()
@@ -434,37 +433,6 @@ namespace Game.Entities
                     m_weaponChangeTimer -= diff;
             }
 
-            if (m_zoneUpdateTimer > 0)
-            {
-                if (diff >= m_zoneUpdateTimer)
-                {
-                    // On zone update tick check if we are still in an inn if we are supposed to be in one
-                    if (_restMgr.HasRestFlag(RestFlag.Tavern))
-                    {
-                        AreaTriggerRecord atEntry = CliDB.AreaTriggerStorage.LookupByKey(_restMgr.GetInnTriggerId());
-                        if (atEntry == null || !IsInAreaTriggerRadius(atEntry))
-                            _restMgr.RemoveRestFlag(RestFlag.Tavern);
-                    }
-
-                    uint newzone, newarea;
-                    GetZoneAndAreaId(out newzone, out newarea);
-
-                    if (m_zoneUpdateId != newzone)
-                        UpdateZone(newzone, newarea);                // also update area
-                    else
-                    {
-                        // use area updates as well
-                        // needed for free far all arenas for example
-                        if (m_areaUpdateId != newarea)
-                            UpdateArea(newarea);
-
-                        m_zoneUpdateTimer = 1 * Time.InMilliseconds;
-                    }
-                }
-                else
-                    m_zoneUpdateTimer -= diff;
-            }
-
             if (IsAlive())
             {
                 RegenTimer += diff;
@@ -542,14 +510,6 @@ namespace Game.Entities
                 }
             }
 
-            // group update
-            m_groupUpdateTimer.Update(diff);
-            if (m_groupUpdateTimer.Passed())
-            {
-                SendUpdateToOutOfRangeGroupMembers();
-                m_groupUpdateTimer.Reset(5000);
-            }
-
             Pet pet = GetPet();
             if (pet != null && !pet.IsWithinDistInMap(this, GetMap().GetVisibilityRange()) && !pet.IsPossessed())
                 RemovePet(pet, PetSaveMode.NotInSlot, true);
@@ -569,7 +529,24 @@ namespace Game.Entities
             //we should execute delayed teleports only for alive(!) players
             //because we don't want player's ghost teleported from graveyard
             if (IsHasDelayedTeleport() && IsAlive())
-                TeleportTo(teleportDest, m_teleport_options);
+                TeleportTo(teleportDest, m_teleport_options, m_teleportSpellId);
+        }
+
+        public override void Heartbeat()
+        {
+            base.Heartbeat();
+
+            // Group update
+            SendUpdateToOutOfRangeGroupMembers();
+
+            // Updating Zone and AreaId. This will also trigger spell_area and phasing related updates
+            UpdateZoneAndAreaId();
+
+            // Updating auras which can only be used inside or outside (such as Mounts)
+            UpdateIndoorsOutdoorsAuras();
+
+            // Updating the resting state when entering resting places
+            UpdateTavernRestingState();
         }
 
         public override void SetDeathState(DeathState s)
@@ -955,16 +932,46 @@ namespace Game.Entities
 
                         if (srcPetIndex >= 0)
                         {
+                            PetStableFlags flagToAdd, flagToRemove;
+                            if (SharedConst.IsActivePetSlot(dstPetSlot))
+                            {
+                                flagToAdd = PetStableFlags.Active;
+                                flagToRemove = PetStableFlags.Inactive;
+                            }
+                            else
+                            {
+                                flagToAdd = PetStableFlags.Inactive;
+                                flagToRemove = PetStableFlags.Active;
+                            }
+
                             StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
                             StablePetInfo stablePetInfo = stableInfo.ModifyValue(stableInfo.Pets, srcPetIndex);
+
                             SetUpdateFieldValue(stablePetInfo.ModifyValue(stablePetInfo.PetSlot), (uint)dstPetSlot);
+                            SetUpdateFieldFlagValue(stablePetInfo.ModifyValue(stablePetInfo.PetFlags), (byte)flagToAdd);
+                            RemoveUpdateFieldFlagValue(stablePetInfo.ModifyValue(stablePetInfo.PetFlags), (byte)flagToRemove);
                         }
 
                         if (dstPetIndex >= 0)
                         {
+                            PetStableFlags flagToAdd, flagToRemove;
+                            if (SharedConst.IsActivePetSlot(srcPetSlot))
+                            {
+                                flagToAdd = PetStableFlags.Active;
+                                flagToRemove = PetStableFlags.Inactive;
+                            }
+                            else
+                            {
+                                flagToAdd = PetStableFlags.Inactive;
+                                flagToRemove = PetStableFlags.Active;
+                            }
+
                             StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
                             StablePetInfo stablePetInfo = stableInfo.ModifyValue(stableInfo.Pets, dstPetIndex);
+
                             SetUpdateFieldValue(stablePetInfo.ModifyValue(stablePetInfo.PetSlot), (uint)srcPetSlot);
+                            SetUpdateFieldFlagValue(stablePetInfo.ModifyValue(stablePetInfo.PetFlags), (byte)flagToAdd);
+                            RemoveUpdateFieldFlagValue(stablePetInfo.ModifyValue(stablePetInfo.PetFlags), (byte)flagToRemove);
                         }
 
                         sess.SendPetStableResult(StableResult.StableSuccess);
@@ -1327,11 +1334,8 @@ namespace Game.Entities
 
             // Check award condition
             if (currency.AwardConditionID != 0)
-            {
-                PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(currency.AwardConditionID);
-                if (playerCondition != null && !ConditionManager.IsPlayerMeetingCondition(this, playerCondition))
+                if (!ConditionManager.IsPlayerMeetingCondition(this, (uint)currency.AwardConditionID))
                     return;
-            }
 
             bool isGainOnRefund = false;
 
@@ -1416,7 +1420,11 @@ namespace Game.Entities
                     playerCurrency.EarnedQuantity += (uint)amount;
 
                 if (!isGainOnRefund)
+                {
                     UpdateCriteria(CriteriaType.CurrencyGained, id, (ulong)amount);
+                    if (gainSource == CurrencyGainSource.RenownRepGain)
+                        UpdateCriteria(CriteriaType.ReachRenownLevel, id, playerCurrency.Quantity);
+                }
             }
 
             CurrencyChanged(id, amount);
@@ -1811,6 +1819,34 @@ namespace Game.Entities
 
             return MathFunctions.CalculatePct(rep, percent);
         }
+
+        public void SetVisibleForcedReaction(uint factionId, ReputationRank rank)
+        {
+            var zonePlayerForcedReaction = m_playerData.ForcedReactions.First(p => p.FactionID == factionId);
+            if (zonePlayerForcedReaction == null)
+                zonePlayerForcedReaction = m_playerData.ForcedReactions.First(p => p.FactionID == 0);
+
+            if (zonePlayerForcedReaction == null)
+                return; // no more free slots
+
+            var setter = m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.ForcedReactions, m_playerData.ForcedReactions.IndexOf(zonePlayerForcedReaction));
+
+            SetUpdateFieldValue(setter.ModifyValue(setter.FactionID), (int)factionId);
+            SetUpdateFieldValue(setter.ModifyValue(setter.Reaction), (int)rank);
+        }
+
+        public void RemoveVisibleForcedReaction(uint factionId)
+        {
+            var zonePlayerForcedReaction = m_playerData.ForcedReactions.First(p => p.FactionID == factionId);
+            if (zonePlayerForcedReaction == null)
+                return;
+
+            var setter = m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.ForcedReactions, m_playerData.ForcedReactions.IndexOf(zonePlayerForcedReaction));
+
+            SetUpdateFieldValue(setter.ModifyValue(setter.FactionID), 0);
+            SetUpdateFieldValue(setter.ModifyValue(setter.Reaction), 0);
+        }
+
         // Calculates how many reputation points player gains in victim's enemy factions
         public void RewardReputation(Unit victim, float rate)
         {
@@ -1835,7 +1871,7 @@ namespace Game.Entities
                     LFGDungeonsRecord dungeon = DB2Mgr.GetLfgDungeon(map.GetId(), map.GetDifficultyID());
                     if (dungeon != null)
                     {
-                        var dungeonLevels = DB2Mgr.GetContentTuningData(dungeon.ContentTuningID, m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                        var dungeonLevels = DB2Mgr.GetContentTuningData(dungeon.ContentTuningID, m_playerData.CtrOptions.GetValue().ConditionalFlags);
                         if (dungeonLevels.HasValue)
                             if (dungeonLevels.Value.TargetLevelMax == ObjectMgr.GetMaxLevelForExpansion(Expansion.WrathOfTheLichKing))
                                 ChampioningFaction = GetChampioningFaction();
@@ -1922,33 +1958,42 @@ namespace Game.Entities
 
         //Movement
         bool IsCanDelayTeleport() { return m_bCanDelayTeleport; }
+
         void SetCanDelayTeleport(bool setting) { m_bCanDelayTeleport = setting; }
+
         bool IsHasDelayedTeleport() { return m_bHasDelayedTeleport; }
+
         void SetDelayedTeleportFlag(bool setting) { m_bHasDelayedTeleport = setting; }
-        public bool TeleportTo(WorldLocation loc, TeleportToOptions options = 0, uint? instanceId = null)
+
+        public bool TeleportTo(uint mapid, float x, float y, float z, float orientation, TeleportToOptions options = TeleportToOptions.None, uint? instanceId = null, uint teleportSpellId = 0)
         {
-            return TeleportTo(loc.GetMapId(), loc.posX, loc.posY, loc.posZ, loc.Orientation, options, instanceId);
+            return TeleportTo(new TeleportLocation() { Location = new WorldLocation(mapid, x, y, z, orientation), InstanceId = instanceId }, options, teleportSpellId);
         }
-        public bool TeleportTo(uint mapid, float x, float y, float z, float orientation, TeleportToOptions options = 0, uint? instanceId = null)
+
+        public bool TeleportTo(WorldLocation loc, TeleportToOptions options = TeleportToOptions.None, uint? instanceId = null, uint teleportSpellId = 0)
         {
-            if (!GridDefines.IsValidMapCoord(mapid, x, y, z, orientation))
+            return TeleportTo(new TeleportLocation() { Location = loc, InstanceId = instanceId }, options, teleportSpellId);
+        }
+
+        public bool TeleportTo(TeleportLocation teleportLocation, TeleportToOptions options = TeleportToOptions.None, uint teleportSpellId = 0)
+        {
+            if (!GridDefines.IsValidMapCoord(teleportLocation.Location))
             {
-                Log.outError(LogFilter.Maps, "TeleportTo: invalid map ({0}) or invalid coordinates (X: {1}, Y: {2}, Z: {3}, O: {4}) given when teleporting player (GUID: {5}, name: {6}, map: {7}, {8}).",
-                    mapid, x, y, z, orientation, GetGUID().ToString(), GetName(), GetMapId(), GetPosition().ToString());
+                Log.outError(LogFilter.Maps, $"Player::TeleportTo: Invalid map ({teleportLocation.Location.GetMapId()}) or invalid coordinates ({teleportLocation.Location.ToString()}) given when teleporting player '{GetGUID()}' ({GetName()}, MapID: {GetMapId()}, {GetPosition()}).");
                 return false;
             }
 
-            if (!GetSession().HasPermission(RBACPermissions.SkipCheckDisableMap) && DisableMgr.IsDisabledFor(DisableType.Map, mapid, this))
+            if (!GetSession().HasPermission(RBACPermissions.SkipCheckDisableMap) && DisableMgr.IsDisabledFor(DisableType.Map, teleportLocation.Location.GetMapId(), this))
             {
-                Log.outError(LogFilter.Maps, "Player (GUID: {0}, name: {1}) tried to enter a forbidden map {2}", GetGUID().ToString(), GetName(), mapid);
-                SendTransferAborted(mapid, TransferAbortReason.MapNotAllowed);
+                Log.outError(LogFilter.Maps, $"Player::TeleportTo: Player '{GetGUID()}' ({GetName()}) tried to enter a forbidden map (MapID: {teleportLocation.Location.GetMapId()})");
+                SendTransferAborted(teleportLocation.Location.GetMapId(), TransferAbortReason.MapNotAllowed);
                 return false;
             }
 
             // preparing unsummon pet if lost (we must get pet before teleportation or will not find it later)
             Pet pet = GetPet();
 
-            MapRecord mEntry = CliDB.MapStorage.LookupByKey(mapid);
+            MapRecord mEntry = CliDB.MapStorage.LookupByKey(teleportLocation.Location.GetMapId());
 
             // don't let enter Battlegrounds without assigned Battlegroundid (for example through areatrigger)...
             // don't let gm level > 1 either
@@ -1958,7 +2003,7 @@ namespace Game.Entities
             // client without expansion support
             if (GetSession().GetExpansion() < mEntry.Expansion())
             {
-                Log.outDebug(LogFilter.Maps, "Player {0} using client without required expansion tried teleport to non accessible map {1}", GetName(), mapid);
+                Log.outDebug(LogFilter.Maps, $"Player {GetName()} using client without required expansion tried teleport to non accessible map {teleportLocation.Location.GetMapId()}");
 
                 ITransport _transport = GetTransport();
                 if (_transport != null)
@@ -1967,11 +2012,11 @@ namespace Game.Entities
                     RepopAtGraveyard();                             // teleport to near graveyard if on transport, looks blizz like :)
                 }
 
-                SendTransferAborted(mapid, TransferAbortReason.InsufExpanLvl, (byte)mEntry.Expansion());
+                SendTransferAborted(teleportLocation.Location.GetMapId(), TransferAbortReason.InsufExpanLvl, (byte)mEntry.Expansion());
                 return false;                                       // normal client can't teleport to this map...
             }
             else
-                Log.outDebug(LogFilter.Maps, "Player {0} is being teleported to map {1}", GetName(), mapid);
+                Log.outDebug(LogFilter.Maps, $"Player {GetName()} is being teleported to map {teleportLocation.Location.GetMapId()}");
 
             if (m_vehicle != null)
                 ExitVehicle();
@@ -1984,18 +2029,17 @@ namespace Game.Entities
 
             ITransport transport = GetTransport();
             if (transport != null)
-            {
-                if (!options.HasAnyFlag(TeleportToOptions.NotLeaveTransport))
-                    transport.RemovePassenger(this);
-            }
+                if (!teleportLocation.TransportGuid.HasValue || teleportLocation.TransportGuid != transport.GetTransportGUID())
+                    if (!options.HasFlag(TeleportToOptions.NotLeaveTransport))
+                        transport.RemovePassenger(this);
 
             // The player was ported to another map and loses the duel immediately.
             // We have to perform this check before the teleport, otherwise the
             // ObjectAccessor won't find the flag.
-            if (duel != null && GetMapId() != mapid && GetMap().GetGameObject(m_playerData.DuelArbiter) != null)
+            if (duel != null && GetMapId() != teleportLocation.Location.GetMapId() && GetMap().GetGameObject(m_playerData.DuelArbiter) != null)
                 DuelComplete(DuelCompleteType.Fled);
 
-            if (GetMapId() == mapid && (!instanceId.HasValue || GetInstanceId() == instanceId))
+            if (GetMapId() == teleportLocation.Location.GetMapId() && (!teleportLocation.InstanceId.HasValue || GetInstanceId() == teleportLocation.InstanceId))
             {
                 //lets reset far teleport flag if it wasn't reset during chained teleports
                 SetSemaphoreTeleportFar(false);
@@ -2007,16 +2051,16 @@ namespace Game.Entities
                 {
                     SetSemaphoreTeleportNear(true);
                     //lets save teleport destination for player
-                    teleportDest = new WorldLocation(mapid, x, y, z, orientation);
-                    m_teleport_instanceId = null;
+                    teleportDest = teleportLocation;
                     m_teleport_options = options;
+                    m_teleportSpellId = teleportSpellId;
                     return true;
                 }
 
                 if (!options.HasAnyFlag(TeleportToOptions.NotUnSummonPet))
                 {
                     //same map, only remove pet if out of range for new position
-                    if (pet != null && !pet.IsWithinDist3d(x, y, z, GetMap().GetVisibilityRange()))
+                    if (pet != null && !pet.IsWithinDist3d(teleportLocation.Location, GetMap().GetVisibilityRange()))
                         UnsummonPetTemporaryIfAny();
                 }
 
@@ -2027,9 +2071,9 @@ namespace Game.Entities
                     CombatStop();
 
                 // this will be used instead of the current location in SaveToDB
-                teleportDest = new WorldLocation(mapid, x, y, z, orientation);
-                m_teleport_instanceId = null;
+                teleportDest = teleportLocation;
                 m_teleport_options = options;
+                m_teleportSpellId = teleportSpellId;
                 SetFallInformation(0, GetPositionZ());
 
                 // code for finish transfer called in WorldSession.HandleMovementOpcodes()
@@ -2043,7 +2087,7 @@ namespace Game.Entities
             {
                 if (GetClass() == Class.Deathknight && GetMapId() == 609 && !IsGameMaster() && !HasSpell(50977))
                 {
-                    SendTransferAborted(mapid, TransferAbortReason.UniqueMessage, 1);
+                    SendTransferAborted(teleportLocation.Location.GetMapId(), TransferAbortReason.UniqueMessage, 1);
                     return false;
                 }
 
@@ -2053,15 +2097,15 @@ namespace Game.Entities
 
                 // Check enter rights before map getting to avoid creating instance copy for player
                 // this check not dependent from map instance copy and same for all instance copies of selected map
-                TransferAbortParams abortParams = Map.PlayerCannotEnter(mapid, this);
+                TransferAbortParams abortParams = Map.PlayerCannotEnter(teleportLocation.Location.GetMapId(), this);
                 if (abortParams != null)
                 {
-                    SendTransferAborted(mapid, abortParams.Reason, abortParams.Arg, abortParams.MapDifficultyXConditionId);
+                    SendTransferAborted(teleportLocation.Location.GetMapId(), abortParams.Reason, abortParams.Arg, abortParams.MapDifficultyXConditionId);
                     return false;
                 }
 
                 // Seamless teleport can happen only if cosmetic maps match
-                if (oldmap == null || (oldmap.GetEntry().CosmeticParentMapID != mapid && GetMapId() != mEntry.CosmeticParentMapID &&
+                if (oldmap == null || (oldmap.GetEntry().CosmeticParentMapID != teleportLocation.Location.GetMapId() && GetMapId() != mEntry.CosmeticParentMapID &&
                     !((oldmap.GetEntry().CosmeticParentMapID != -1) ^ (oldmap.GetEntry().CosmeticParentMapID != mEntry.CosmeticParentMapID))))
                     options &= ~TeleportToOptions.Seamless;
 
@@ -2075,9 +2119,9 @@ namespace Game.Entities
                 {
                     SetSemaphoreTeleportFar(true);
                     //lets save teleport destination for player
-                    teleportDest = new(mapid, x, y, z, orientation);
-                    m_teleport_instanceId = instanceId;
+                    teleportDest = teleportLocation;
                     m_teleport_options = options;
+                    m_teleportSpellId = teleportSpellId;
                     return true;
                 }
 
@@ -2094,7 +2138,7 @@ namespace Game.Entities
                     // Note: at Battlegroundjoin Battlegroundid set before teleport
                     // and we already will found "current" Battleground
                     // just need check that this is targeted map or leave
-                    if (bg.GetMapId() != mapid)
+                    if (bg.GetMapId() != teleportLocation.Location.GetMapId())
                         LeaveBattleground(false);                   // don't teleport to entry point
                 }
 
@@ -2130,15 +2174,23 @@ namespace Game.Entities
                 {
                     // send transfer packets
                     TransferPending transferPending = new();
-                    transferPending.MapID = (int)mapid;
-                    transferPending.OldMapPosition = GetPosition();
+                    transferPending.MapID = (int)teleportLocation.Location.GetMapId();
+                    transferPending.OldMapPosition = teleportLocation.Location.GetPosition();
+                    if (teleportSpellId != 0)
+                        transferPending.TransferSpellID = (int)teleportSpellId;
 
-                    Transport transport1 = (Transport)GetTransport();
-                    if (transport1 != null)
+                    if (teleportLocation.TransportGuid.HasValue)
                     {
                         TransferPending.ShipTransferPending shipTransferPending = new();
-                        shipTransferPending.Id = transport1.GetEntry();
-                        shipTransferPending.OriginMapID = (int)GetMapId();
+                        TransportSpawn transportSpawn = TransportMgr.GetTransportSpawn(teleportLocation.TransportGuid.Value.GetCounter());
+                        if (transportSpawn != null)
+                        {
+                            shipTransferPending.Id = transportSpawn.TransportGameObjectId;
+                            if (GetTransport() != null)
+                                shipTransferPending.OriginMapID = (int)GetMapId();
+                            else
+                                shipTransferPending.OriginMapID = -1;
+                        }
                         transferPending.Ship = shipTransferPending;
                     }
 
@@ -2152,15 +2204,17 @@ namespace Game.Entities
                 if (oldmap != null)
                     oldmap.RemovePlayerFromMap(this, false);
 
-                teleportDest = new WorldLocation(mapid, x, y, z, orientation);
-                m_teleport_instanceId = instanceId;
+                teleportDest = teleportLocation;
                 m_teleport_options = options;
+                m_teleportSpellId = teleportSpellId;
                 SetFallInformation(0, GetPositionZ());
                 // if the player is saved before worldportack (at logout for example)
                 // this will be used instead of the current location in SaveToDB
 
                 if (!GetSession().PlayerLogout())
                 {
+                    ++m_newWorldCounter;
+
                     SuspendToken suspendToken = new();
                     suspendToken.SequenceIndex = m_movementCounter; // not incrementing
                     suspendToken.Reason = options.HasAnyFlag(TeleportToOptions.Seamless) ? 2 : 1u;
@@ -2174,6 +2228,7 @@ namespace Game.Entities
             }
             return true;
         }
+
         public bool TeleportToBGEntryPoint()
         {
             if (m_bgData.joinPos.GetMapId() == 0xFFFFFFFF)
@@ -2282,7 +2337,8 @@ namespace Game.Entities
 
             RemoveViolatingFlags(mi.HasMovementFlag(MovementFlag.Flying | MovementFlag.CanFly) && GetSession().GetSecurity() == AccountTypes.Player &&
                 !m_unitMovedByMe.HasAuraType(AuraType.Fly) &&
-                !m_unitMovedByMe.HasAuraType(AuraType.ModIncreaseMountedFlightSpeed),
+                !m_unitMovedByMe.HasAuraType(AuraType.ModIncreaseMountedFlightSpeed) &&
+                !m_unitMovedByMe.HasAuraType(AuraType.AdvFlying),
                 MovementFlag.Flying | MovementFlag.CanFly);
 
             RemoveViolatingFlags(mi.HasMovementFlag(MovementFlag.DisableGravity | MovementFlag.CanFly) && mi.HasMovementFlag(MovementFlag.Falling),
@@ -2368,12 +2424,16 @@ namespace Game.Entities
                 return;
 
             m_summon_expire = GameTime.GetGameTime() + PlayerConst.MaxPlayerSummonDelay;
-            m_summon_location = new WorldLocation(summoner);
-            m_summon_instanceId = summoner.GetInstanceId();
+            m_summon_location = new() { Location = new WorldLocation(summoner), InstanceId = summoner.GetInstanceId() };
 
             SummonRequest summonRequest = new();
             summonRequest.SummonerGUID = summoner.GetGUID();
-            summonRequest.SummonerVirtualRealmAddress = WorldMgr.GetVirtualRealmAddress();
+            Player playerSummoner = summoner.ToPlayer();
+            if (playerSummoner != null)
+                summonRequest.SummonerVirtualRealmAddress = playerSummoner.m_playerData.VirtualPlayerRealm;
+            else
+                summonRequest.SummonerVirtualRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
+
             summonRequest.AreaID = (int)summoner.GetZoneId();
             SendPacket(summonRequest);
 
@@ -2386,29 +2446,62 @@ namespace Game.Entities
             }
         }
 
-        public bool IsInAreaTriggerRadius(AreaTriggerRecord trigger)
+        public bool IsInAreaTrigger(AreaTriggerRecord areaTrigger)
         {
-            if (trigger == null)
+            if (areaTrigger == null)
                 return false;
 
-            if (GetMapId() != trigger.ContinentID && !GetPhaseShift().HasVisibleMapId(trigger.ContinentID))
+            if (GetMapId() != areaTrigger.ContinentID && !GetPhaseShift().HasVisibleMapId(areaTrigger.ContinentID))
                 return false;
 
-            if (trigger.PhaseID != 0 || trigger.PhaseGroupID != 0 || trigger.PhaseUseFlags != 0)
-                if (!PhasingHandler.InDbPhaseShift(this, (PhaseUseFlagsValues)trigger.PhaseUseFlags, trigger.PhaseID, trigger.PhaseGroupID))
+            if (areaTrigger.PhaseID != 0 || areaTrigger.PhaseGroupID != 0 || areaTrigger.PhaseUseFlags != 0)
+                if (!PhasingHandler.InDbPhaseShift(this, (PhaseUseFlagsValues)areaTrigger.PhaseUseFlags, areaTrigger.PhaseID, areaTrigger.PhaseGroupID))
                     return false;
 
-            if (trigger.Radius > 0.0f)
+            bool hasActionSetFlag(AreaTriggerActionSetFlag flag)
             {
-                // if we have radius check it
-                float dist = GetDistance(trigger.Pos.X, trigger.Pos.Y, trigger.Pos.Z);
-                if (dist > trigger.Radius)
-                    return false;
+                var areaTriggerActionSet = CliDB.AreaTriggerActionSetStorage.LookupByKey(areaTrigger.AreaTriggerActionSetID);
+                if (areaTriggerActionSet != null)
+                    return areaTriggerActionSet.GetFlags().HasFlag(flag);
+
+                return false;
             }
-            else
+
+            switch (GetDeathState())
             {
-                Position center = new(trigger.Pos.X, trigger.Pos.Y, trigger.Pos.Z, trigger.BoxYaw);
-                if (!IsWithinBox(center, trigger.BoxLength / 2.0f, trigger.BoxWidth / 2.0f, trigger.BoxHeight / 2.0f))
+                case DeathState.Dead:
+                    if (!hasActionSetFlag(AreaTriggerActionSetFlag.AllowWhileGhost))
+                        return false;
+                    break;
+                case DeathState.Corpse:
+                    if (!hasActionSetFlag(AreaTriggerActionSetFlag.AllowWhileDead))
+                        return false;
+                    break;
+                default:
+                    break;
+            }
+
+            Position areaTriggerPos = new(areaTrigger.Pos.X, areaTrigger.Pos.Y, areaTrigger.Pos.Z, areaTrigger.BoxYaw);
+            switch (areaTrigger.GetShapeType())
+            {
+                case AreaTriggerShapeType.Sphere:
+                    if (!IsInDist(areaTriggerPos, areaTrigger.Radius))
+                        return false;
+                    break;
+                case AreaTriggerShapeType.Box:
+                    if (!IsWithinBox(areaTriggerPos, areaTrigger.BoxLength / 2.0f, areaTrigger.BoxWidth / 2.0f, areaTrigger.BoxHeight / 2.0f))
+                        return false;
+                    break;
+                case AreaTriggerShapeType.Polygon:
+                    var polygon = ObjectMgr.GetAreaTriggerPolygon(areaTrigger.Id);
+                    if (polygon == null || (polygon.Height.HasValue && GetPositionZ() > areaTrigger.Pos.Z + polygon.Height) || !IsInPolygon2D(areaTriggerPos, polygon.Vertices))
+                        return false;
+                    break;
+                case AreaTriggerShapeType.Cylinder:
+                    if (!IsWithinVerticalCylinder(areaTriggerPos, areaTrigger.Radius, areaTrigger.BoxHeight))
+                        return false;
+                    break;
+                default:
                     return false;
             }
 
@@ -2446,18 +2539,12 @@ namespace Game.Entities
             // stop taxi flight at summon
             FinishTaxiFlight();
 
-            // drop flag at summon
-            // this code can be reached only when GM is summoning player who carries flag, because player should be immune to summoning spells when he carries flag
-            Battleground bg = GetBattleground();
-            if (bg != null)
-                bg.EventPlayerDroppedFlag(this);
-
             m_summon_expire = 0;
 
             UpdateCriteria(CriteriaType.AcceptSummon, 1);
             RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.Summon);
 
-            TeleportTo(m_summon_location, 0, m_summon_instanceId);
+            TeleportTo(m_summon_location);
 
             broadcastSummonResponse(true);
         }
@@ -2880,7 +2967,8 @@ namespace Game.Entities
                         PlayerInteractionType.Renown, PlayerInteractionType.BlackMarketAuctioneer, PlayerInteractionType.PerksProgramVendor,
                         PlayerInteractionType.ProfessionsCraftingOrder, PlayerInteractionType.Professions, PlayerInteractionType.ProfessionsCustomerOrder,
                         PlayerInteractionType.TraitSystem, PlayerInteractionType.BarbersChoice, PlayerInteractionType.MajorFactionRenown,
-                        PlayerInteractionType.PersonalTabardVendor
+                        PlayerInteractionType.PersonalTabardVendor, PlayerInteractionType.ForgeMaster, PlayerInteractionType.CharacterBanker,
+                        PlayerInteractionType.AccountBanker
                     };
 
                     PlayerInteractionType interactionType = GossipOptionNpcToInteractionType[(int)gossipOptionNpc];
@@ -3328,6 +3416,10 @@ namespace Game.Entities
             SetFaction(rEntry != null ? (uint)rEntry.FactionID : 0);
         }
 
+        public float GetEmpowerMinHoldStagePercent() { return m_empowerMinHoldStagePercent; }
+
+        public void SetEmpowerMinHoldStagePercent(float empowerMinHoldStagePercent) { m_empowerMinHoldStagePercent = empowerMinHoldStagePercent; }
+
         public void SetResurrectRequestData(WorldObject caster, uint health, uint mana, uint appliedAura)
         {
             Cypher.Assert(!IsResurrectRequested());
@@ -3338,6 +3430,7 @@ namespace Game.Entities
             _resurrectionData.Mana = mana;
             _resurrectionData.Aura = appliedAura;
         }
+
         public void ClearResurrectRequestData()
         {
             _resurrectionData = null;
@@ -3405,11 +3498,12 @@ namespace Game.Entities
                 {
                     Creature creature = GetMap().GetCreature(guid);
                     // Update fields of triggers, transformed units or unselectable units (values dependent on GM state)
-                    if (creature == null || (!creature.IsTrigger() && !creature.HasAuraType(AuraType.Transform) && !creature.IsUninteractible()))
+                    if (creature == null || (!creature.IsTrigger() && !creature.HasAuraType(AuraType.Transform) && !creature.IsUninteractible() && !creature.HasUnitFlag2(UnitFlags2.UntargetableByClient)))
                         continue;
 
                     creature.m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.DisplayID);
                     creature.m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.Flags);
+                    creature.m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.Flags2);
                     creature.ForceUpdateFieldChange();
                     creature.BuildValuesUpdateBlockForPlayer(udata, this);
                 }
@@ -3493,7 +3587,6 @@ namespace Game.Entities
         void RegenerateAll()
         {
             m_regenTimerCount += RegenTimer;
-            m_foodEmoteTimerCount += RegenTimer;
 
             for (PowerType power = PowerType.Mana; power < PowerType.Max; power++)// = power + 1)
                 if (power != PowerType.Runes)
@@ -3530,33 +3623,8 @@ namespace Game.Entities
             }
 
             RegenTimer = 0;
-
-            // Handles the emotes for drinking and eating.
-            // According to sniffs there is a background timer going on that repeats independed from the time window where the aura applies.
-            // That's why we dont need to reset the timer on apply. In sniffs I have seen that the first call for the spell visual is totally random, then after
-            // 5 seconds over and over again which confirms my theory that we have a independed timer.
-            if (m_foodEmoteTimerCount >= 5000)
-            {
-                List<AuraEffect> auraList = GetAuraEffectsByType(AuraType.ModRegen);
-                auraList.AddRange(GetAuraEffectsByType(AuraType.ModPowerRegen));
-
-                foreach (var auraEffect in auraList)
-                {
-                    // Food emote comes above drinking emote if we have to decide (mage regen food for example)
-                    if (auraEffect.GetBase().HasEffectType(AuraType.ModRegen) && auraEffect.GetSpellInfo().HasAuraInterruptFlag(SpellAuraInterruptFlags.Standing))
-                    {
-                        SendPlaySpellVisualKit(SpellConst.VisualKitFood, 0, 0);
-                        break;
-                    }
-                    else if (auraEffect.GetBase().HasEffectType(AuraType.ModPowerRegen) && auraEffect.GetSpellInfo().HasAuraInterruptFlag(SpellAuraInterruptFlags.Standing))
-                    {
-                        SendPlaySpellVisualKit(SpellConst.VisualKitDrink, 0, 0);
-                        break;
-                    }
-                }
-                m_foodEmoteTimerCount -= 5000;
-            }
         }
+
         void Regenerate(PowerType power)
         {
             // Skip regeneration for power type we cannot have
@@ -3923,7 +3991,7 @@ namespace Game.Entities
 
             Player seerPlayer = seer.ToPlayer();
             if (seerPlayer != null)
-                if (IsGroupVisibleFor(seerPlayer))
+                if (IsGroupVisibleFor(seerPlayer) && !GetAuraEffectsByType(AuraType.ModInvisibility).All(invis => invis.GetSpellInfo().HasAttribute(SpellAttr9.ModInvisIncludesParty)))
                     return true;
 
             return false;
@@ -4250,13 +4318,6 @@ namespace Game.Entities
             UpdateZone(newzone, newarea);
             OutdoorPvPMgr.HandlePlayerResurrects(this, newzone);
 
-            if (InBattleground())
-            {
-                Battleground bg = GetBattleground();
-                if (bg != null)
-                    bg.HandlePlayerResurrect(this);
-            }
-
             // update visibility
             UpdateObjectVisibility();
 
@@ -4454,22 +4515,14 @@ namespace Game.Entities
             }
 
             WorldSafeLocsEntry closestGrave = null;
-
-            // Special handle for Battlegroundmaps
-            Battleground bg = GetBattleground();
-            if (bg != null)
-                closestGrave = bg.GetClosestGraveyard(this);
+            var bf = BattleFieldMgr.GetBattlefieldToZoneId(GetMap(), GetZoneId());
+            if (bf != null)
+                closestGrave = bf.GetClosestGraveyard(this);
             else
             {
-                var bf = BattleFieldMgr.GetBattlefieldToZoneId(GetMap(), GetZoneId());
-                if (bf != null)
-                    closestGrave = bf.GetClosestGraveyard(this);
-                else
-                {
-                    InstanceScript instance = GetInstanceScript();
-                    if (instance != null)
-                        closestGrave = ObjectMgr.GetWorldSafeLoc(instance.GetEntranceLocation());
-                }
+                InstanceScript instance = GetInstanceScript();
+                if (instance != null)
+                    closestGrave = ObjectMgr.GetWorldSafeLoc(instance.GetEntranceLocation());
             }
 
             if (closestGrave == null)
@@ -4482,7 +4535,7 @@ namespace Game.Entities
             // and don't show spirit healer location
             if (closestGrave != null)
             {
-                TeleportTo(closestGrave.Loc, shouldResurrect ? TeleportToOptions.ReviveAtTeleport : 0);
+                TeleportTo(new TeleportLocation() { Location = closestGrave.Loc, TransportGuid = closestGrave.TransportSpawnId.HasValue ? ObjectGuid.Create(HighGuid.Transport, closestGrave.TransportSpawnId.Value) : ObjectGuid.Empty }, shouldResurrect ? TeleportToOptions.ReviveAtTeleport : TeleportToOptions.None);
                 if (IsDead())                                        // not send if alive, because it used in TeleportTo()
                 {
                     DeathReleaseLoc packet = new();
@@ -4788,6 +4841,48 @@ namespace Game.Entities
             }
         }
 
+        public void DeletePetFromDB(uint petNumber)
+        {
+            if (m_activePlayerData.PetStable.HasValue())
+            {
+                int ufIndex = m_activePlayerData.PetStable.GetValue().Pets.FindIndexIf(p => p.PetNumber == petNumber);
+                if (ufIndex >= 0)
+                {
+                    StableInfo stableInfo = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.PetStable);
+                    RemoveDynamicUpdateFieldValue(stableInfo.ModifyValue(stableInfo.Pets), ufIndex);
+                }
+            }
+
+            if (m_petStable == null)
+                return;
+
+            var petIndex = m_petStable.GetCurrentActivePetIndex();
+            if (petIndex.HasValue)
+                if (m_petStable.ActivePets[petIndex.Value] != null && m_petStable.ActivePets[petIndex.Value].PetNumber == petNumber)
+                    m_petStable.CurrentPetIndex = null;
+
+            bool foundPet = false;
+
+            void FindAndRemovePet(PetStable.PetInfo[] pets)
+            {
+                for (var i = 0; i < pets.Length; ++i)
+                {
+                    var pet = pets[i];
+                    if (pet != null && pet.PetNumber == petNumber && pet.Type == PetType.Hunter)
+                    {
+                        pets[i] = null;
+                        foundPet = true;
+                    }
+                }
+            };
+
+            FindAndRemovePet(m_petStable.ActivePets);
+            FindAndRemovePet(m_petStable.StabledPets);
+
+            if (foundPet)
+                Pet.DeleteFromDB(petNumber);
+        }
+
         public void SendTameFailure(PetTameResult result)
         {
             PetTameFailure petTameFailure = new();
@@ -4985,12 +5080,7 @@ namespace Game.Entities
 
         public bool MeetPlayerCondition(uint conditionId)
         {
-            PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(conditionId);
-            if (playerCondition != null)
-                if (!ConditionManager.IsPlayerMeetingCondition(this, playerCondition))
-                    return false;
-
-            return true;
+            return ConditionManager.IsPlayerMeetingCondition(this, conditionId);
         }
 
         bool IsInFriendlyArea()
@@ -5143,6 +5233,8 @@ namespace Game.Entities
                     return Team.Alliance;
                 case 1:
                     return Team.Horde;
+                case 2:
+                    return Team.PandariaNeutral;
             }
 
             return Team.Alliance;
@@ -5157,10 +5249,10 @@ namespace Game.Entities
             return BattleGroundTeamId.Neutral;
         }
         public Team GetTeam() { return m_team; }
-        public int GetTeamId() { return m_team == Team.Alliance ? BattleGroundTeamId.Alliance : BattleGroundTeamId.Horde; }
+        public int GetTeamId() { return SharedConst.GetTeamIdForTeam(m_team); }
 
-        public Team GetEffectiveTeam() { return HasPlayerFlagEx(PlayerFlagsEx.MercenaryMode) ? (GetTeam() == Team.Alliance ? Team.Horde : Team.Alliance) : GetTeam(); }
-        public int GetEffectiveTeamId() { return GetEffectiveTeam() == Team.Alliance ? BattleGroundTeamId.Alliance : BattleGroundTeamId.Horde; }
+        public Team GetEffectiveTeam() { return HasPlayerFlagEx(PlayerFlagsEx.MercenaryMode) ? SharedConst.GetOtherTeam(GetTeam()) : GetTeam(); }
+        public int GetEffectiveTeamId() { return SharedConst.GetTeamIdForTeam(GetEffectiveTeam()); }
 
         //Money
         public ulong GetMoney() { return m_activePlayerData.Coinage; }
@@ -5414,6 +5506,8 @@ namespace Game.Entities
                 tag |= ChatFlags.AFK;
             if (IsDeveloper())
                 tag |= ChatFlags.Dev;
+            if (m_activePlayerData.TimerunningSeasonID != 0)
+                tag |= ChatFlags.Timerunning;
 
             return tag;
         }
@@ -5676,11 +5770,11 @@ namespace Game.Entities
             {
                 AuraType.ModFear, AuraType.Transform, AuraType.WaterWalk,
                 AuraType.FeatherFall, AuraType.Hover, AuraType.SafeFall,
-                AuraType.Fly, AuraType.ModIncreaseMountedFlightSpeed, AuraType.None
+                AuraType.Fly, AuraType.ModIncreaseMountedFlightSpeed, AuraType.AdvFlying
             };
-            foreach (var aura in auratypes)
+            foreach (var auraType in auratypes)
             {
-                var auraList = GetAuraEffectsByType(aura);
+                var auraList = GetAuraEffectsByType(auraType);
                 if (!auraList.Empty())
                     auraList.First().HandleEffect(this, AuraEffectHandleModes.SendForClient, true);
             }
@@ -5702,7 +5796,7 @@ namespace Game.Entities
             if (HasAuraType(AuraType.Hover))
                 setCompoundState.StateChanges.Add(new MoveSetCompoundState.MoveStateChange(ServerOpcodes.MoveSetHovering, m_movementCounter++));
 
-            if (HasAuraType(AuraType.ModRootDisableGravity) || HasAuraType(AuraType.ModStunDisableGravity))
+            if (HasAuraType(AuraType.ModRootDisableGravity) || HasAuraType(AuraType.ModStunDisableGravity) || HasAuraType(AuraType.DisableGravity))
                 setCompoundState.StateChanges.Add(new MoveSetCompoundState.MoveStateChange(ServerOpcodes.MoveDisableGravity, m_movementCounter++));
 
             if (HasAuraType(AuraType.CanTurnWhileFalling))
@@ -5726,6 +5820,7 @@ namespace Game.Entities
             SendAurasForTarget(this);
             SendEnchantmentDurations();                             // must be after add to map
             SendItemDurations();                                    // must be after add to map
+            SendItemPassives();                                     // must be after add to map
 
             // raid downscaling - send difficulty to player
             if (GetMap().IsRaid())
@@ -5801,11 +5896,10 @@ namespace Game.Entities
 
         public void SaveRecallPosition()
         {
-            m_recall_location = new WorldLocation(this);
-            m_recall_instanceId = GetInstanceId();
+            m_recall_location = new TeleportLocation() { Location = new WorldLocation(this), InstanceId = GetInstanceId() };
         }
 
-        public void Recall() { TeleportTo(m_recall_location, 0, m_recall_instanceId); }
+        public void Recall() { TeleportTo(m_recall_location); }
 
         public uint GetSaveTimer() { return m_nextSave; }
         void SetSaveTimer(uint timer) { m_nextSave = timer; }
@@ -5863,6 +5957,7 @@ namespace Game.Entities
             SetModRangedHaste(1.0f);
             SetModHasteRegen(1.0f);
             SetModTimeRate(1.0f);
+            SetSpellEmpowerStage(-1);
 
             // reset size before reapply auras
             SetObjectScale(1.0f);
@@ -6296,7 +6391,7 @@ namespace Game.Entities
             if (GetTrader() != null && !IsWithinDistInMap(GetTrader(), SharedConst.InteractionDistance))
                 GetSession().SendCancelTrade();
 
-            CheckAreaExploreAndOutdoor();
+            CheckAreaExplore();
 
             return true;
         }
@@ -6318,11 +6413,8 @@ namespace Game.Entities
 
                 // Check award condition
                 if (currencyRecord.AwardConditionID != 0)
-                {
-                    PlayerConditionRecord playerCondition = CliDB.PlayerConditionStorage.LookupByKey(currencyRecord.AwardConditionID);
-                    if (playerCondition != null && !ConditionManager.IsPlayerMeetingCondition(this, playerCondition))
+                    if (!ConditionManager.IsPlayerMeetingCondition(this, (uint)currencyRecord.AwardConditionID))
                         continue;
-                }
 
                 SetupCurrency.Record record = new();
                 record.Type = currencyRecord.Id;
@@ -6376,16 +6468,13 @@ namespace Game.Entities
             SendPacket(new ResetWeeklyCurrency());
         }
 
-        void CheckAreaExploreAndOutdoor()
+        void CheckAreaExplore()
         {
             if (!IsAlive())
                 return;
 
             if (IsInFlight())
                 return;
-
-            if (WorldConfig.GetBoolValue(WorldCfg.VmapIndoorCheck))
-                RemoveAurasWithAttribute(IsOutdoors() ? SpellAttr0.OnlyIndoors : SpellAttr0.OnlyOutdoors);
 
             uint areaId = GetAreaId();
             if (areaId == 0)
@@ -6402,14 +6491,14 @@ namespace Game.Entities
             int offset = (areaEntry.AreaBit / PlayerConst.ExploredZonesBits);
             ulong val = 1ul << (areaEntry.AreaBit % PlayerConst.ExploredZonesBits);
 
-            if (offset >= m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size()
-                || (m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][offset] & val) == 0)
+            if (offset >= m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values.Size()
+                || (m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values[offset] & val) == 0)
             {
                 AddExploredZones(offset, val);
 
                 UpdateCriteria(CriteriaType.RevealWorldMapOverlay, GetAreaId());
 
-                var areaLevels = DB2Mgr.GetContentTuningData(areaEntry.ContentTuningID, m_playerData.CtrOptions.GetValue().ContentTuningConditionMask);
+                var areaLevels = DB2Mgr.GetContentTuningData(areaEntry.ContentTuningID, m_playerData.CtrOptions.GetValue().ConditionalFlags);
                 if (areaLevels.HasValue)
                 {
                     if (IsMaxLevel())
@@ -6444,6 +6533,8 @@ namespace Game.Entities
                             XP = Math.Max(minScaledXP, XP);
                         }
 
+                        XP += (uint)(XP * GetTotalAuraMultiplier(AuraType.ModExplorationExperience));
+
                         GiveXP(XP, null);
                         SendExplorationExperience(areaId, XP);
                     }
@@ -6454,12 +6545,16 @@ namespace Game.Entities
 
         public void AddExploredZones(int pos, ulong mask)
         {
-            SetUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex, pos), mask);
+            BitVectors bitVectors = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.BitVectors);
+            BitVector bitVector = bitVectors.ModifyValue(bitVectors.Values, (int)PlayerDataFlag.ExploredZonesIndex);
+            SetUpdateFieldFlagValue(bitVector.ModifyValue(bitVector.Values, pos), mask);
         }
 
         public void RemoveExploredZones(int pos, ulong mask)
         {
-            RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.DataFlags, (int)PlayerDataFlag.ExploredZonesIndex, pos), mask);
+            BitVectors bitVectors = m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.BitVectors);
+            BitVector bitVector = bitVectors.ModifyValue(bitVectors.Values, (int)PlayerDataFlag.ExploredZonesIndex);
+            RemoveUpdateFieldFlagValue(bitVector.ModifyValue(bitVector.Values, pos), mask);
         }
 
         public bool HasExploredZone(uint areaId)
@@ -6472,16 +6567,47 @@ namespace Game.Entities
                 return false;
 
             int playerIndexOffset = area.AreaBit / PlayerConst.ExploredZonesBits;
-            if (playerIndexOffset >= m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex].Size())
+            if (playerIndexOffset >= m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values.Size())
                 return false;
 
             ulong mask = 1ul << (area.AreaBit % PlayerConst.ExploredZonesBits);
-            return (m_activePlayerData.DataFlags[(int)PlayerDataFlag.ExploredZonesIndex][playerIndexOffset] & mask) != 0;
+            return (m_activePlayerData.BitVectors.GetValue().Values[(int)PlayerDataFlag.ExploredZonesIndex].Values[playerIndexOffset] & mask) != 0;
         }
 
         void SendExplorationExperience(uint Area, uint Experience)
         {
             SendPacket(new ExplorationExperience(Experience, Area));
+        }
+
+        public void UpdateZoneAndAreaId()
+        {
+            GetZoneAndAreaId(out uint newzone, out uint newarea);
+
+            if (m_zoneUpdateId != newzone)
+                UpdateZone(newzone, newarea);                // also update area
+            else
+            {
+                // use area updates as well
+                // needed for free far all arenas for example
+                if (m_areaUpdateId != newarea)
+                    UpdateArea(newarea);
+            }
+        }
+
+        public void UpdateIndoorsOutdoorsAuras()
+        {
+            if (WorldConfig.GetBoolValue(WorldCfg.VmapIndoorCheck))
+                RemoveAurasWithAttribute(IsOutdoors() ? SpellAttr0.OnlyIndoors : SpellAttr0.OnlyOutdoors);
+        }
+
+        public void UpdateTavernRestingState()
+        {
+            var atEntry = CliDB.AreaTriggerStorage.LookupByKey(_restMgr.GetInnTriggerId());
+
+            if (_restMgr.HasRestFlag(RestFlag.Tavern) && (atEntry == null || !IsInAreaTrigger(atEntry)))
+                _restMgr.RemoveRestFlag(RestFlag.Tavern);
+            else if (!_restMgr.HasRestFlag(RestFlag.Tavern) && IsInAreaTrigger(atEntry))
+                _restMgr.SetRestFlag(RestFlag.Tavern);
         }
 
         public void SendSysMessage(CypherStrings str, params object[] args)
@@ -6937,6 +7063,7 @@ namespace Game.Entities
 
             SendMessageToSet(data, true);
         }
+
         public static DrunkenState GetDrunkenstateByValue(byte value)
         {
             if (value >= 90)
@@ -6949,7 +7076,8 @@ namespace Game.Entities
         }
 
         public uint GetDeathTimer() { return m_deathTimer; }
-        public bool ActivateTaxiPathTo(List<uint> nodes, Creature npc = null, uint spellid = 0, uint preferredMountDisplay = 0)
+
+        public bool ActivateTaxiPathTo(List<uint> nodes, Creature npc = null, uint spellid = 0, uint preferredMountDisplay = 0, float? speed = null, ActionResultSetter<MovementStopReason> scriptResult = null)
         {
             if (nodes.Count < 2)
             {
@@ -7126,23 +7254,18 @@ namespace Game.Entities
                 ModifyMoney(-firstcost);
                 UpdateCriteria(CriteriaType.MoneySpentOnTaxis, firstcost);
                 GetSession().SendActivateTaxiReply();
-                GetSession().SendDoFlight(mount_display_id, sourcepath);
+                StartTaxiMovement(mount_display_id, sourcepath, 0, speed, scriptResult);
             }
             return true;
         }
 
-        public bool ActivateTaxiPathTo(uint taxi_path_id, uint spellid = 0)
+        public bool ActivateTaxiPathTo(uint taxi_path_id, uint spellid = 0, float? speed = null, ActionResultSetter<MovementStopReason> scriptResult = null)
         {
             var entry = CliDB.TaxiPathStorage.LookupByKey(taxi_path_id);
             if (entry == null)
                 return false;
 
-            List<uint> nodes = new();
-
-            nodes.Add(entry.FromTaxiNode);
-            nodes.Add(entry.ToTaxiNode);
-
-            return ActivateTaxiPathTo(nodes, null, spellid);
+            return ActivateTaxiPathTo([entry.FromTaxiNode, entry.ToTaxiNode], null, spellid, 0, speed, scriptResult);
         }
 
         public void FinishTaxiFlight()
@@ -7208,7 +7331,18 @@ namespace Game.Entities
                 }
             }
 
-            GetSession().SendDoFlight(mountDisplayId, path, startNode);
+            StartTaxiMovement(mountDisplayId, path, startNode, null, null);
+        }
+
+        void StartTaxiMovement(uint mountDisplayId, uint path, uint pathNode, float? speed, ActionResultSetter<MovementStopReason> scriptResult)
+        {
+            // remove fake death
+            RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags.Interacting);
+
+            if (mountDisplayId != 0)
+                Mount(mountDisplayId);
+
+            GetMotionMaster().MoveTaxiFlight(path, pathNode, speed, scriptResult);
         }
 
         public bool GetsRecruitAFriendBonus(bool forXP)
@@ -7272,6 +7406,8 @@ namespace Game.Entities
         public bool IsBeingTeleportedSeamlessly() { return IsBeingTeleportedFar() && m_teleport_options.HasAnyFlag(TeleportToOptions.Seamless); }
         public void SetSemaphoreTeleportNear(bool semphsetting) { mSemaphoreTeleport_Near = semphsetting; }
         public void SetSemaphoreTeleportFar(bool semphsetting) { mSemaphoreTeleport_Far = semphsetting; }
+
+        public int GetNewWorldCounter() { return m_newWorldCounter; }
 
         public bool IsReagentBankUnlocked() { return HasPlayerFlagEx(PlayerFlagsEx.ReagentBankUnlocked); }
         public void UnlockReagentBank() { SetPlayerFlagEx(PlayerFlagsEx.ReagentBankUnlocked); }
@@ -7365,7 +7501,6 @@ namespace Game.Entities
 
             return false;
         }
-
 
         void SetActiveCombatTraitConfigID(int traitConfigId) { SetUpdateFieldValue(m_values.ModifyValue(m_activePlayerData).ModifyValue(m_activePlayerData.ActiveCombatTraitConfigID), (uint)traitConfigId); }
 
@@ -7592,14 +7727,9 @@ namespace Game.Entities
             }
         }
 
-        public WorldLocation GetTeleportDest()
+        public TeleportLocation GetTeleportDest()
         {
             return teleportDest;
-        }
-
-        public uint? GetTeleportDestInstanceId()
-        {
-            return m_teleport_instanceId;
         }
 
         public WorldLocation GetHomebind()
@@ -7607,7 +7737,7 @@ namespace Game.Entities
             return homebind;
         }
 
-        public WorldLocation GetRecall()
+        public TeleportLocation GetRecall()
         {
             return m_recall_location;
         }
@@ -7633,8 +7763,7 @@ namespace Game.Entities
         public void RemovePlayerFlagEx(PlayerFlagsEx flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.PlayerFlagsEx), (uint)flags); }
         public void ReplaceAllPlayerFlagsEx(PlayerFlagsEx flags) { SetUpdateFieldValue(m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.PlayerFlagsEx), (uint)flags); }
 
-        public void SetAverageItemLevelTotal(float newItemLevel) { SetUpdateFieldValue(ref m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.AvgItemLevel, 0), newItemLevel); }
-        public void SetAverageItemLevelEquipped(float newItemLevel) { SetUpdateFieldValue(ref m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.AvgItemLevel, 1), newItemLevel); }
+        public void SetAverageItemLevel(float newItemLevel, AvgItemLevelCategory category) { SetUpdateFieldValue(ref m_values.ModifyValue(m_playerData).ModifyValue(m_playerData.AvgItemLevel, (int)category), newItemLevel); }
 
         public uint GetCustomizationChoice(uint chrCustomizationOptionId)
         {
@@ -7794,42 +7923,29 @@ namespace Game.Entities
             return flags;
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_unitData.WriteCreate(buffer, flags, this, target);
-            m_playerData.WriteCreate(buffer, flags, this, target);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_unitData.WriteCreate(data, flags, this, target);
+            m_playerData.WriteCreate(data, flags, this, target);
             if (target == this)
-                m_activePlayerData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+                m_activePlayerData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt32((uint)(m_values.GetChangedObjectTypeMask() & ~((target != this ? 1 : 0) << (int)TypeId.ActivePlayer)));
+            data.WriteUInt32((uint)(m_values.GetChangedObjectTypeMask() & ~((target != this ? 1 : 0) << (int)TypeId.ActivePlayer)));
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Unit))
-                m_unitData.WriteUpdate(buffer, flags, this, target);
+                m_unitData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.Player))
-                m_playerData.WriteUpdate(buffer, flags, this, target);
+                m_playerData.WriteUpdate(data, flags, this, target);
 
             if (target == this && m_values.HasChanged(TypeId.ActivePlayer))
-                m_activePlayerData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+                m_activePlayerData.WriteUpdate(data, flags, this, target);
         }
 
         public override void BuildValuesUpdateWithFlag(WorldPacket data, UpdateFieldFlag flags, Player target)
@@ -7838,19 +7954,15 @@ namespace Game.Entities
             valuesMask.Set((int)TypeId.Unit);
             valuesMask.Set((int)TypeId.Player);
 
-            WorldPacket buffer = new();
+            data.WriteUInt32(valuesMask.GetBlock(0));
 
             UpdateMask mask = m_unitData.GetStaticUpdateMask();
             m_unitData.AppendAllowedFieldsMaskForFlag(mask, flags);
-            m_unitData.WriteUpdate(buffer, mask, true, this, target);
+            m_unitData.WriteUpdate(data, mask, true, this, target);
 
             UpdateMask mask2 = m_playerData.GetStaticUpdateMask();
             m_playerData.AppendAllowedFieldsMaskForFlag(mask2, flags);
-            m_playerData.WriteUpdate(buffer, mask2, true, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteUInt32(valuesMask.GetBlock(0));
-            data.WriteBytes(buffer);
+            m_playerData.WriteUpdate(data, mask2, true, this, target);
         }
 
         void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedUnitMask, UpdateMask requestedPlayerMask, UpdateMask requestedActivePlayerMask, Player target)
@@ -7872,6 +7984,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.ActivePlayer);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])
@@ -7936,5 +8049,13 @@ namespace Game.Entities
             SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.BorderColor), borderColor);
             SetUpdateFieldValue(personalTabard.ModifyValue(personalTabard.BackgroundColor), backgroundColor);
         }
+    }
+
+    public class TeleportLocation
+    {
+        public WorldLocation Location;
+        public ObjectGuid? TransportGuid;
+        public uint? InstanceId;
+        public uint? LfgDungeonsId;
     }
 }

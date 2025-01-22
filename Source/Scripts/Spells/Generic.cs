@@ -357,35 +357,6 @@ namespace Scripts.Spells.Generic
     {
         List<uint> RacialSkills = new();
 
-        Dictionary<Race, Race[]> RaceInfo = new()
-        {
-            { Race.Human , new[] { Race.Undead, Race.BloodElf } },
-            { Race.Orc , new[] { Race.Dwarf } },
-            { Race.Dwarf , new[] { Race.Orc, Race.Undead, Race.Tauren } },
-            { Race.NightElf , new[] { Race.Troll, Race.BloodElf } },
-            { Race.Undead , new[] { Race.Human } },
-            { Race.Tauren , new[] { Race.Draenei, Race.NightElf } },
-            { Race.Gnome , new[] { Race.Goblin, Race.BloodElf } },
-            { Race.Troll , new[] { Race.NightElf, Race.Human, Race.Draenei } },
-            { Race.Goblin , new[] { Race.Gnome, Race.Dwarf } },
-            { Race.BloodElf , new[] { Race.Human, Race.NightElf } },
-            { Race.Draenei , new[] { Race.Tauren, Race.Orc } },
-            { Race.Worgen , new[] { Race.Troll } },
-            { Race.PandarenNeutral , new[] { Race.PandarenNeutral } },
-            { Race.PandarenAlliance , new[] { Race.PandarenHorde, Race.PandarenNeutral } },
-            { Race.PandarenHorde , new[] { Race.PandarenAlliance, Race.PandarenNeutral } },
-            { Race.Nightborne , new[] { Race.NightElf, Race.Human } },
-            { Race.HighmountainTauren , new[] { Race.Draenei, Race.NightElf } },
-            { Race.VoidElf , new[] { Race.Troll, Race.BloodElf } },
-            { Race.LightforgedDraenei , new[] { Race.Tauren, Race.Orc } },
-            { Race.ZandalariTroll , new[] { Race.KulTiran, Race.Human } },
-            { Race.KulTiran , new[] { Race.ZandalariTroll } },
-            { Race.DarkIronDwarf , new[] { Race.MagharOrc, Race.Orc } },
-            { Race.Vulpera , new[] { Race.MechaGnome, Race.DarkIronDwarf } },
-            { Race.MagharOrc , new[] { Race.DarkIronDwarf } },
-            { Race.MechaGnome , new[] { Race.Vulpera } },
-        };
-
         Dictionary<Race, uint[]> RaceDisplayIds = new()
         {
             {  Race.Human , new uint[] { 55239, 55238 } },
@@ -417,11 +388,9 @@ namespace Scripts.Spells.Generic
 
         Race GetReplacementRace(Race nativeRace, Class playerClass)
         {
-            var otherRaces = RaceInfo.LookupByKey(nativeRace);
-            if (!otherRaces.Empty())
-                foreach (Race race in otherRaces)
-                    if (ObjectMgr.GetPlayerInfo(race, playerClass) != null)
-                        return race;
+            CharBaseInfoRecord charBaseInfo = DB2Mgr.GetCharBaseInfo(nativeRace, playerClass);
+            if (charBaseInfo != null && ObjectMgr.GetPlayerInfo((Race)charBaseInfo.OtherFactionRaceID, playerClass) != null)
+                return (Race)charBaseInfo.OtherFactionRaceID;
 
             return Race.None;
         }
@@ -437,16 +406,6 @@ namespace Scripts.Spells.Generic
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            foreach (var (race, otherRaces) in RaceInfo)
-            {
-                if (!CliDB.ChrRacesStorage.ContainsKey(race))
-                    return false;
-
-                foreach (Race otherRace in otherRaces)
-                    if (!CliDB.ChrRacesStorage.ContainsKey(otherRace))
-                        return false;
-            }
-
             foreach (var (race, displayIds) in RaceDisplayIds)
             {
                 if (!CliDB.ChrRacesStorage.ContainsKey(race))
@@ -1016,7 +975,7 @@ namespace Scripts.Spells.Generic
             {
                 if (target.GetTeam() == Team.Alliance)
                     GetCaster().CastSpell(target, SpellCreateLanceAlliance, true);
-                else
+                else if (target.GetTeam() == Team.Horde)
                     GetCaster().CastSpell(target, SpellCreateLanceHorde, true);
             }
         }
@@ -1578,6 +1537,42 @@ namespace Scripts.Spells.Generic
             target.RemoveUnitFlag(UnitFlags.PreventEmotesFromChatText);
             target.SetImmuneToAll(false);
             target.SetUninteractible(false);
+
+            Creature creature = target.ToCreature();
+            if (creature != null)
+                creature.InitializeReactState();
+        }
+
+        public override void Register()
+        {
+            OnEffectApply.Add(new(HandleEffectApply, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+            OnEffectRemove.Add(new(OnRemove, 0, AuraType.Dummy, AuraEffectHandleModes.Real));
+        }
+    }
+
+    [Script] // 96733 - Permanent Feign Death (Stun)
+    class spell_gen_feign_death_all_flags_no_uninteractible : AuraScript
+    {
+        void HandleEffectApply(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit target = GetTarget();
+            target.SetUnitFlag3(UnitFlags3.FakeDead);
+            target.SetUnitFlag2(UnitFlags2.FeignDeath);
+            target.SetUnitFlag(UnitFlags.PreventEmotesFromChatText);
+            target.SetImmuneToAll(true);
+
+            Creature creature = target.ToCreature();
+            if (creature != null)
+                creature.SetReactState(ReactStates.Passive);
+        }
+
+        void OnRemove(AuraEffect aurEff, AuraEffectHandleModes mode)
+        {
+            Unit target = GetTarget();
+            target.RemoveUnitFlag3(UnitFlags3.FakeDead);
+            target.RemoveUnitFlag2(UnitFlags2.FeignDeath);
+            target.RemoveUnitFlag(UnitFlags.PreventEmotesFromChatText);
+            target.SetImmuneToAll(false);
 
             Creature creature = target.ToCreature();
             if (creature != null)
@@ -4830,7 +4825,7 @@ namespace Scripts.Spells.Generic
                     case SkillType.CataclysmSkinning: return SpellCataclysmSkinning;
                     case SkillType.PandariaSkinning: return SpellPandariaSkinning;
                     case SkillType.DraenorSkinning: return SpellDraenorSkinning;
-                    case SkillType.KulTiranSkinning: return player.GetTeam() == Team.Alliance ? SpellKulTiranSkinning : SpellZandalariSkinning;
+                    case SkillType.KulTiranSkinning: return player.GetTeam() == Team.Alliance ? SpellKulTiranSkinning : (player.GetTeam() == Team.Horde ? SpellZandalariSkinning : 0);
                     case SkillType.ShadowlandsSkinning: return SpellShadowlandsSkinning;
                     case SkillType.DragonIslesSkinning: return SpellDragonIslesSkinning;
                     case SkillType.ClassicSkinning:      // Trainer only
@@ -5143,4 +5138,32 @@ namespace Scripts.Spells.Generic
             DoEffectCalcDamageAndHealing.Add(new(CalculateHealingBonus, SpellConst.EffectAll, AuraType.Any));
         }
     }
+
+    // 24931 - 100 Health
+    // 24959 - 500 Health
+    // 28838 - 1 Health
+    // 43645 - 1 Health
+    // 73342 - 1 Health
+    [Script] // 86562 - 1 Health
+    class spell_gen_set_health : SpellScript
+    {
+        ulong _health;
+
+        public spell_gen_set_health(ulong health)
+        {
+            _health = health;
+        }
+
+        void HandleHit(uint effIndex)
+        {
+            if (GetHitUnit().IsAlive() && _health > 0)
+                GetHitUnit().SetHealth(_health);
+        }
+
+        public override void Register()
+        {
+            OnEffectHitTarget.Add(new EffectHandler(HandleHit, 0, SpellEffectName.ScriptEffect));
+        }
+    }
+
 }

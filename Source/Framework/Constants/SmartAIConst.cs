@@ -88,14 +88,14 @@ namespace Framework.Constants
         Difficulty1_Deprecated = 0x04,             //Event only occurs in instance difficulty 1
         Difficulty2_Deprecated = 0x08,             //Event only occurs in instance difficulty 2
         Difficulty3_Deprecated = 0x10,             //Event only occurs in instance difficulty 3
-        Reserved5 = 0x20,
+        ActionlistWaits = 0x20, // Timed action list will wait for action from this event to finish before moving on to next action
         Reserved6 = 0x40,
         DebugOnly = 0x80,               //Event only occurs in debug build
         DontReset = 0x100,              //Event will not reset in SmartScript.OnReset()
         WhileCharmed = 0x200,           //Event occurs even if AI owner is charmed
 
         Deprecated = (Difficulty0_Deprecated | Difficulty1_Deprecated | Difficulty2_Deprecated | Difficulty3_Deprecated),
-        All = (NotRepeatable | Deprecated | Reserved5 | Reserved6 | DebugOnly | DontReset | WhileCharmed),
+        All = (NotRepeatable | Deprecated | ActionlistWaits | Reserved6 | DebugOnly | DontReset | WhileCharmed),
         
         // Temp flags, used only at runtime, never stored in DB
         TempIgnoreChanceRoll = 0x40000000,              //Event occurs no matter what roll_chance_i(e.event.event_chance) returns.
@@ -127,7 +127,8 @@ namespace Framework.Constants
         //CAST_NO_MELEE_IF_OOM        = 0x08,                     //Prevents creature from entering melee if out of mana or out of range
         //CAST_FORCE_TARGET_SELF      = 0x10,                     //Forces the target to cast this spell on itself
         AuraNotPresent = 0x20,                      //Only casts the spell if the target does not have an aura from the spell
-        CombatMove = 0x40                      //Prevents combat movement if cast successful. Allows movement on range, OOM, LOS
+        CombatMove = 0x40,                      //Prevents combat movement if cast successful. Allows movement on range, OOM, LOS
+        WaitForHit = 0x80
     }
 
     public enum SmartActionSummonCreatureFlags
@@ -187,7 +188,7 @@ namespace Framework.Constants
         TransportRemovePlayer = 43,      // None
         TransportRelocate = 44,      // Pointid
         InstancePlayerEnter = 45,      // Team (0 Any), Cooldownmin, Cooldownmax
-        AreatriggerOntrigger = 46,      // Triggerid(0 Any)
+        AreatriggerEnter = 46,      // None
         QuestAccepted = 47,      // None
         QuestObjCompletion = 48,      // None
         QuestCompletion = 49,      // None
@@ -229,6 +230,7 @@ namespace Framework.Constants
         OnSpellStart = 85,      // SpellID, CooldownMin, CooldownMax
         OnDespawn = 86,      // NONE
         SendEventTrigger = 87, // NONE
+        AreatriggerExit = 88,      // None
 
         End
     }
@@ -250,7 +252,7 @@ namespace Framework.Constants
         SummonCreature = 12,     // Creatureid, Summontype, Duration In Ms, Storageid, Attackinvoker, flags(SmartActionSummonCreatureFlags)
         ThreatSinglePct = 13,     // Threat%
         ThreatAllPct = 14,     // Threat%
-        CallAreaexploredoreventhappens = 15,     // Questid
+        CallAreaexploredoreventhappens = 15,     // UNUSED, DO NOT REUSE
         SetIngamePhaseGroup = 16,     // phaseGroupId, apply
         SetEmoteState = 17,     // Emoteid
         SetUnitFlag = 18,     // UNUSED, DO NOT REUSE
@@ -261,7 +263,7 @@ namespace Framework.Constants
         IncEventPhase = 23,     // Value (May Be Negative To Decrement Phase, Should Not Be 0)
         Evade = 24,     // No Params
         FleeForAssist = 25,     // With Emote
-        CallGroupeventhappens = 26,     // Questid
+        CallGroupeventhappens = 26,     // UNUSED, DO NOT REUSE
         CombatStop = 27,     //
         RemoveAurasFromSpell = 28,     // Spellid, 0 Removes All Auras
         Follow = 29,     // Distance (0 = Default), Angle (0 = Default), Endcreatureentry, Credit, Credittype (0monsterkill, 1event)
@@ -321,7 +323,7 @@ namespace Framework.Constants
         RemoveNpcFlag = 83,     // Flags
         SimpleTalk = 84,     // Groupid, Can Be Used To Make Players Say Groupid, TextOver Event Is Not Triggered, Whisper Can Not Be Used (Target Units Will Say The Text)
         SelfCast = 85,     // Spellid, Castflags
-        CrossCast = 86,     // Spellid, Castflags, Castertargettype, Castertarget Param1, Castertarget Param2, Castertarget Param3, ( + The Origonal Target Fields As Destination Target),   Castertargets Will Cast Spellid On All Targets (Use With Caution If Targeting Multiple * Multiple Units)
+        CrossCast = 86,     // spellID, castFlags, CasterTargetType, CasterTarget param1, CasterTarget param2, CasterTarget param3, CasterTarget param4, CasterTarget ParamString ( + the original target fields as Destination target),   CasterTargets will cast spellID on all Targets (use with caution if targeting multiple * multiple units)
         CallRandomTimedActionlist = 87,     // Script9 Ids 1-9
         CallRandomRangeTimedActionlist = 88,     // Script9 Id Min, Max
         RandomMove = 89,     // Maxdist
@@ -387,6 +389,8 @@ namespace Framework.Constants
         BecomePersonalCloneForPlayer = 149, // summonType 1-8, duration in ms
         TriggerGameEvent = 150, // eventId, useSaiTargetAsGameEventSource
         DoAction = 151,
+        CompleteQuest = 152, // QuestId. Regular quests with objectives can't be completed with this action (only quests with QUEST_FLAGS_COMPLETION_EVENT, QUEST_FLAGS_COMPLETION_AREA_TRIGGER or QUEST_FLAGS_TRACKING_EVENT)
+        CreditQuestObjectiveTalkTo = 153,
         End
     }
 
@@ -401,18 +405,18 @@ namespace Framework.Constants
         HostileRandomNotTop = 6,    // Any random target except top threat, maxdist, playerOnly, powerType + 1
         ActionInvoker = 7,    // Unit Who Caused This Event To Occur
         Position = 8,    // Use Xyz From Event Params
-        CreatureRange = 9,    // Creatureentry(0any), Mindist, Maxdist
+        CreatureRange = 9,    // Creatureentry(0any), Mindist, Maxdist, maxSize, StringId
         CreatureGuid = 10,   // Guid, Entry
-        CreatureDistance = 11,   // Creatureentry(0any), Maxdist
+        CreatureDistance = 11,   // Creatureentry(0any), Maxdist, maxSize, StringId
         Stored = 12,   // Id, Uses Pre-Stored Target(List)
-        GameobjectRange = 13,   // Entry(0any), Min, Max
+        GameobjectRange = 13,   // Entry(0any), minDist, maxDist, StringId
         GameobjectGuid = 14,   // Guid, Entry
-        GameobjectDistance = 15,   // Entry(0any), Maxdist
+        GameobjectDistance = 15,   // Entry(0any), Maxdist, StringId
         InvokerParty = 16,   // Invoker'S Party Members
         PlayerRange = 17,   // Min, Max
         PlayerDistance = 18,   // Maxdist
-        ClosestCreature = 19,   // Creatureentry(0any), Maxdist, Dead?
-        ClosestGameobject = 20,   // Entry(0any), Maxdist
+        ClosestCreature = 19,   // Creatureentry(0any), Maxdist, Dead?, StringId
+        ClosestGameobject = 20,   // Entry(0any), Maxdist, StringId
         ClosestPlayer = 21,   // Maxdist
         ActionInvokerVehicle = 22,   // Unit'S Vehicle Who Caused This Event To Occur
         OwnerOrSummoner = 23,   // Unit's owner or summoner, Use Owner/Charmer of this unit

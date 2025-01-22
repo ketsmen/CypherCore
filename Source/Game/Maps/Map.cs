@@ -60,17 +60,10 @@ namespace Game.Maps
             m_terrain.LoadMMapInstance(GetId(), GetInstanceId());
 
             _worldStateValues = Global.WorldStateMgr.GetInitialWorldStatesForMap(this);
-
-            Global.OutdoorPvPMgr.CreateOutdoorPvPForMap(this);
-            Global.BattleFieldMgr.CreateBattlefieldsForMap(this);
-
-            Global.ScriptMgr.OnCreateMap(this);
         }
 
         public void Dispose()
         {
-            Global.ScriptMgr.OnDestroyMap(this);
-
             // Delete all waiting spawns
             // This doesn't delete from database.
             UnloadAllRespawnInfos();
@@ -85,9 +78,6 @@ namespace Game.Maps
 
             if (!m_scriptSchedule.Empty())
                 Global.MapMgr.DecreaseScheduledScriptCount((uint)m_scriptSchedule.Count);
-
-            Global.OutdoorPvPMgr.DestroyOutdoorPvPForMap(this);
-            Global.BattleFieldMgr.DestroyBattlefieldsForMap(this);
 
             m_terrain.UnloadMMapInstance(GetId(), GetInstanceId());
         }
@@ -1792,6 +1782,9 @@ namespace Game.Maps
                 }
             }
 
+            if (!transData.HasData())
+                return;
+
             UpdateObject packet;
             transData.BuildPacket(out packet);
             player.SendPacket(packet);
@@ -1808,6 +1801,9 @@ namespace Game.Maps
                     player.m_visibleTransports.Remove(transport.GetGUID());
                 }
             }
+
+            if (!transData.HasData())
+                return;
 
             UpdateObject packet;
             transData.BuildPacket(out packet);
@@ -1838,6 +1834,9 @@ namespace Game.Maps
                     player.m_visibleTransports.Remove(transport.GetGUID());
                 }
             }
+
+            if (!transData.HasData())
+                return;
 
             UpdateObject packet;
             transData.BuildPacket(out packet);
@@ -2429,7 +2428,7 @@ namespace Game.Maps
             foreach (uint spawnGroupId in spawnGroups)
             {
                 SpawnGroupTemplateData spawnGroupTemplate = GetSpawnGroupData(spawnGroupId);
-                if (spawnGroupTemplate.flags.HasAnyFlag(SpawnGroupFlags.System))
+                if (spawnGroupTemplate.flags.HasAnyFlag(SpawnGroupFlags.System | SpawnGroupFlags.ManualSpawn))
                     continue;
 
                 SetSpawnGroupActive(spawnGroupId, Global.ConditionMgr.IsMapMeetingNotGroupedConditions(ConditionSourceType.SpawnGroup, spawnGroupId, this));
@@ -3712,12 +3711,12 @@ namespace Game.Maps
                     case SummonCategory.Puppet:
                         mask = UnitTypeMask.Puppet;
                         break;
+                    case SummonCategory.PossessedVehicle:
                     case SummonCategory.Vehicle:
                         mask = UnitTypeMask.Minion;
                         break;
                     case SummonCategory.Wild:
                     case SummonCategory.Ally:
-                    case SummonCategory.Unk:
                     {
                         switch (properties.Title)
                         {
@@ -3831,6 +3830,44 @@ namespace Game.Maps
             Cell.VisitAllObjects(summon, notifier, GetVisibilityRange());
 
             return summon;
+        }
+
+        public static void SummonCreatureGroup(uint summonerId, SummonerType summonerType, byte group, List<TempSummon> summoned, Func<TempSummonData, TempSummon> summonCreature)
+        {
+            var data = Global.ObjectMgr.GetSummonGroup(summonerId, summonerType, group);
+            if (data == null)
+            {
+                Log.outWarn(LogFilter.Scripts, $"Summoner {summonerId} type {summonerType} tried to summon non-existing summon group {group}.");
+                return;
+            }
+
+            List<TempSummon> summons = new();
+
+            foreach (TempSummonData tempSummonData in data)
+            {
+                TempSummon summon = summonCreature(tempSummonData);
+                if (summon != null)
+                    summons.Add(summon);
+            }
+
+            CreatureGroup creatureGroup = new CreatureGroup(0);
+            foreach (TempSummon summon in summons)
+            {
+                if (!summon.IsInWorld)   // evil script might despawn a summon
+                    continue;
+
+                creatureGroup.AddMember(summon);
+                if (summoned != null)
+                    summoned.Add(summon);
+            }
+        }
+
+        public void SummonCreatureGroup(byte group, List<TempSummon> list = null)
+        {
+            SummonCreatureGroup(GetId(), SummonerType.Map, group, list, tempSummonData =>
+            {
+                return SummonCreature(tempSummonData.entry, tempSummonData.pos, null, tempSummonData.time);
+            });
         }
 
         public ulong GenerateLowGuid(HighGuid high)
@@ -4843,9 +4880,10 @@ namespace Game.Maps
 
     public class InstanceMap : Map
     {
-        public InstanceMap(uint id, long expiry, uint InstanceId, Difficulty spawnMode, int instanceTeam, InstanceLock instanceLock) : base(id, expiry, InstanceId, spawnMode)
+        public InstanceMap(uint id, long expiry, uint InstanceId, Difficulty spawnMode, int instanceTeam, InstanceLock instanceLock, uint? lfgDungeonsId) : base(id, expiry, InstanceId, spawnMode)
         {
             i_instanceLock = instanceLock;
+            i_lfgDungeonsId = lfgDungeonsId;
 
             //lets initialize visibility distance for dungeons
             InitVisibilityDistance();
@@ -5242,6 +5280,8 @@ namespace Game.Maps
 
         public Team GetTeamInInstance() { return GetTeamIdInInstance() == BattleGroundTeamId.Alliance ? Team.Alliance : Team.Horde; }
 
+        public uint? GetLfgDungeonsId() { return i_lfgDungeonsId; }
+
         public uint GetScriptId()
         {
             return i_script_id;
@@ -5268,11 +5308,16 @@ namespace Game.Maps
         InstanceScenario i_scenario;
         InstanceLock i_instanceLock;
         GroupInstanceReference i_owningGroupRef = new();
+        uint? i_lfgDungeonsId;
         DateTime? i_instanceExpireEvent;
     }
 
     public class BattlegroundMap : Map
     {
+        Battleground m_bg;
+        BattlegroundScript _battlegroundScript;
+        uint _scriptId;
+
         public BattlegroundMap(uint id, uint expiry, uint InstanceId, Difficulty spawnMode)
             : base(id, expiry, InstanceId, spawnMode)
         {
@@ -5283,6 +5328,37 @@ namespace Game.Maps
         {
             m_VisibleDistance = IsBattleArena() ? Global.WorldMgr.GetMaxVisibleDistanceInArenas() : Global.WorldMgr.GetMaxVisibleDistanceInBG();
             m_VisibilityNotifyPeriod = IsBattleArena() ? Global.WorldMgr.GetVisibilityNotifyPeriodInArenas() : Global.WorldMgr.GetVisibilityNotifyPeriodInBG();
+        }
+
+        string GetScriptName()
+        {
+            return Global.ObjectMgr.GetScriptName(_scriptId);
+        }
+
+        public void InitScriptData()
+        {
+            if (_battlegroundScript != null)
+                return;
+
+            Cypher.Assert(GetBG() != null, "Battleground not set yet!");
+
+            BattlegroundScriptTemplate scriptTemplate = Global.BattlegroundMgr.FindBattlegroundScriptTemplate(GetId(), GetBG().GetTypeID());
+            if (scriptTemplate != null)
+            {
+                _scriptId = scriptTemplate.ScriptId;
+                _battlegroundScript = Global.ScriptMgr.CreateBattlegroundData(this);
+            }
+
+            // Make sure every battleground has a default script
+            if (_battlegroundScript == null)
+            {
+                if (IsBattleArena())
+                    _battlegroundScript = new ArenaScript(this);
+                else
+                    _battlegroundScript = new BattlegroundScript(this);
+            }
+
+            _battlegroundScript.OnInit();
         }
 
         public override TransferAbortParams CannotEnter(Player player)
@@ -5327,10 +5403,18 @@ namespace Game.Maps
                         player.TeleportTo(player.GetBattlegroundEntryPoint());
         }
 
+        public override void Update(uint diff)
+        {
+            base.Update(diff);
+            _battlegroundScript.OnUpdate(diff);
+        }
+
         public Battleground GetBG() { return m_bg; }
         public void SetBG(Battleground bg) { m_bg = bg; }
 
-        Battleground m_bg;
+        public uint GetScriptId() { return _scriptId; }
+
+        public BattlegroundScript GetBattlegroundScript() { return _battlegroundScript; }
     }
 
     public class TransferAbortParams
@@ -5396,7 +5480,7 @@ namespace Game.Maps
         public float FloorZ;
         public bool outdoors = true;
         public ZLiquidStatus LiquidStatus;
-        public WmoLocation? wmoLocation;
+        public WmoLocation wmoLocation;
         public LiquidData LiquidInfo;
     }
 

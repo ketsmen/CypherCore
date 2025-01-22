@@ -17,6 +17,9 @@ namespace Scripts.Spells.Druid
     {
         public const uint Abundance = 207383;
         public const uint AbundanceEffect = 207640;
+        public const uint AstralCommunionEnergize = 450599;
+        public const uint AstralCommunionTalent = 450598;
+        public const uint AstralSmolderDamage = 394061;
         public const uint BalanceT10Bonus = 70718;
         public const uint BalanceT10BonusProc = 70721;
         public const uint BearForm = 5487;
@@ -41,6 +44,8 @@ namespace Scripts.Spells.Druid
         public const uint EclipseOoc = 329910;
         public const uint EclipseSolarAura = 48517;
         public const uint EclipseSolarSpellCnt = 326053;
+        public const uint EclipseVisualLunar = 93431;
+        public const uint EclipseVisualSolar = 93430;
         public const uint EfflorescenceAura = 81262;
         public const uint EfflorescenceHeal = 81269;
         public const uint EmbraceOfTheDreamEffect = 392146;
@@ -57,12 +62,15 @@ namespace Scripts.Spells.Druid
         public const uint FormsTrinketMoonkin = 37343;
         public const uint FormsTrinketNone = 37344;
         public const uint FormsTrinketTree = 37342;
+        public const uint FullMoon = 274283;
         public const uint GalacticGuardianAura = 213708;
         public const uint Germination = 155675;
         public const uint GlyphOfStars = 114301;
         public const uint GlyphOfStarsVisual = 114302;
         public const uint GoreProc = 93622;
         public const uint Growl = 6795;
+        public const uint HalfMoon = 274282;
+        public const uint HalfMoonOverride = 274297;
         public const uint IdolOfFeralShadows = 34241;
         public const uint IdolOfWorship = 60774;
         public const uint Incarnation = 117679;
@@ -78,6 +86,8 @@ namespace Scripts.Spells.Druid
         public const uint Mangle = 33917;
         public const uint MassEntanglement = 102359;
         public const uint MoonfireDamage = 164812;
+        public const uint NewMoon = 274281;
+        public const uint NewMoonOverride = 274295;
         public const uint PowerOfTheArchdruid = 392302;
         public const uint Prowl = 5215;
         public const uint Regrowth = 8936;
@@ -92,6 +102,7 @@ namespace Scripts.Spells.Druid
         public const uint SkullBashInterrupt = 93985;
         public const uint SpringBlossoms = 207385;
         public const uint SpringBlossomsHeal = 207386;
+        public const uint StarBurst = 356474;
         public const uint SunfireDamage = 164815;
         public const uint SurvivalInstincts = 50322;
         public const uint TravelForm = 783;
@@ -144,6 +155,70 @@ namespace Scripts.Spells.Druid
         {
             AfterEffectApply.Add(new(HandleOnApplyOrReapply, 0, AuraType.PeriodicHeal, AuraEffectHandleModes.RealOrReapplyMask));
             AfterEffectRemove.Add(new(HandleOnRemove, 0, AuraType.PeriodicHeal, AuraEffectHandleModes.Real));
+        }
+    }
+
+    // 102560 - Incarnation: Chosen of Elune
+    // 194223 - Celestial Alignment
+    // 383410 - Celestial Alignment
+    [Script] // 390414 - Incarnation: Chosen of Elune
+    class spell_dru_astral_communion_celestial_alignment : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.AstralCommunionTalent, SpellIds.AstralCommunionEnergize);
+        }
+
+        public override bool Load()
+        {
+            return GetCaster().HasAura(SpellIds.AstralCommunionTalent);
+        }
+
+        void Energize()
+        {
+            GetCaster().CastSpell(GetCaster(), SpellIds.AstralCommunionEnergize, new CastSpellExtraArgs()
+                .SetTriggeringSpell(GetSpell())
+                .SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError));
+        }
+
+        public override void Register()
+        {
+            AfterCast.Add(new(Energize));
+        }
+    }
+    
+    [Script] // 394058 - Astral Smolder
+    class spell_dru_astral_smolder : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellEffect((SpellIds.AstralSmolderDamage, 0))
+                && SpellMgr.GetSpellInfo(SpellIds.AstralSmolderDamage, Difficulty.None).GetMaxTicks() != 0;
+        }
+
+        bool CheckProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return eventInfo.GetProcTarget() != null;
+        }
+
+        void HandleProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            PreventDefaultAction();
+
+            SpellInfo astralSmolderDmg = SpellMgr.GetSpellInfo(SpellIds.AstralSmolderDamage, GetCastDifficulty());
+            int pct = aurEff.GetAmount();
+
+            int amount = (int)(MathFunctions.CalculatePct(eventInfo.GetDamageInfo().GetDamage(), pct) / astralSmolderDmg.GetMaxTicks());
+
+            CastSpellExtraArgs args = new(aurEff);
+            args.AddSpellMod(SpellValueMod.BasePoint0, amount);
+            GetTarget().CastSpell(eventInfo.GetProcTarget(), SpellIds.AstralSmolderDamage, args);
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new(CheckProc, 0, AuraType.Dummy));
+            OnEffectProc.Add(new(HandleProc, 0, AuraType.Dummy));
         }
     }
 
@@ -273,6 +348,37 @@ namespace Scripts.Spells.Druid
         }
     }
 
+    // 102560 - Incarnation: Chosen of Elune
+    // 194223 - Celestial Alignment
+    // 383410 - Celestial Alignment
+    // 390414 - Incarnation: Chosen of Elune
+    [Script]
+    class spell_dru_celestial_alignment : SpellScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.EclipseSolarAura, SpellIds.EclipseLunarAura, SpellIds.EclipseVisualSolar, SpellIds.EclipseVisualLunar);
+        }
+
+        void TriggerEclipses()
+        {
+            Unit caster = GetCaster();
+            CastSpellExtraArgs args = new();
+            args.SetTriggeringSpell(GetSpell());
+            args.SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError);
+
+            caster.CastSpell(caster, SpellIds.EclipseSolarAura, args);
+            caster.CastSpell(caster, SpellIds.EclipseLunarAura, args);
+            caster.CastSpell(caster, SpellIds.EclipseVisualSolar, args);
+            caster.CastSpell(caster, SpellIds.EclipseVisualLunar, args);
+        }
+
+        public override void Register()
+        {
+            AfterCast.Add(new(TriggerEclipses));
+        }
+    }
+
     // 774 - Rejuvenation
     [Script] // 155777 - Rejuventation (Germination)
     class spell_dru_cultivation : AuraScript
@@ -397,7 +503,7 @@ namespace Scripts.Spells.Druid
 
         public override bool Validate(SpellInfo spellInfo)
         {
-            return ValidateSpellInfo(SpellIds.EclipseSolarSpellCnt, SpellIds.EclipseLunarSpellCnt, SpellIds.EclipseSolarAura, SpellIds.EclipseLunarAura);
+            return ValidateSpellInfo(SpellIds.EclipseSolarSpellCnt, SpellIds.EclipseLunarSpellCnt, SpellIds.EclipseSolarAura, SpellIds.EclipseLunarAura, SpellIds.AstralCommunionTalent, SpellIds.AstralCommunionEnergize);
         }
 
         void HandleProc(ProcEventInfo eventInfo)
@@ -454,6 +560,9 @@ namespace Scripts.Spells.Druid
                 {
                     // cast eclipse
                     target.CastSpell(target, eclipseAuraSpellId, TriggerCastFlags.FullMask);
+
+                    if (target.HasAura(SpellIds.AstralCommunionTalent))
+                        target.CastSpell(target, SpellIds.AstralCommunionEnergize, true);
 
                     // Remove stacks from other one as well
                     // reset remaining power on other spellId
@@ -1161,6 +1270,62 @@ namespace Scripts.Spells.Druid
         }
     }
 
+    // 274283 - Full Moon
+    // 274282 - Half Moon
+    // 274281 - New Moon
+    [Script("spell_dru_full_moon", 0, SpellIds.HalfMoonOverride)]
+    [Script("spell_dru_half_moon", SpellIds.HalfMoonOverride, SpellIds.NewMoonOverride)]
+    [Script("spell_dru_new_moon", SpellIds.NewMoonOverride, 0)]
+    class spell_dru_new_moon : SpellScript
+    {
+        public spell_dru_new_moon(uint newOverrideSpell, uint removeOverrideSpell)
+        {
+            _newOverrideSpell = newOverrideSpell;
+            _removeOverrideSpell = removeOverrideSpell;
+        }
+
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return (_newOverrideSpell == 0 || ValidateSpellInfo(_newOverrideSpell))
+            && (_removeOverrideSpell == 0 || ValidateSpellInfo(_removeOverrideSpell));
+        }
+
+        void OverrideMoon()
+        {
+            Unit caster = GetCaster();
+            if (_newOverrideSpell != 0)
+                caster.CastSpell(caster, _newOverrideSpell, new CastSpellExtraArgs()
+                    .SetTriggerFlags(TriggerCastFlags.IgnoreCastInProgress | TriggerCastFlags.DontReportCastError)
+                    .SetTriggeringSpell(GetSpell()));
+
+            if (_removeOverrideSpell != 0)
+                caster.RemoveAurasDueToSpell(_removeOverrideSpell);
+        }
+
+        public override void Register()
+        {
+            AfterCast.Add(new(OverrideMoon));
+        }
+
+        uint _newOverrideSpell;
+        uint _removeOverrideSpell;
+    }
+
+    [Script] // 113043 - Omen of Clarity
+    class spell_dru_omen_of_clarity_restoration : AuraScript
+    {
+        bool CheckProc(AuraEffect aurEff, ProcEventInfo eventInfo)
+        {
+            return RandomHelper.randChance(aurEff.GetAmount());
+        }
+
+        public override void Register()
+        {
+            DoCheckEffectProc.Add(new(CheckProc, 0, AuraType.ProcTriggerSpell));
+        }
+    }
+
+
     [Script] // 16864 - Omen of Clarity
     class spell_dru_omen_of_clarity : AuraScript
     {
@@ -1454,6 +1619,25 @@ namespace Scripts.Spells.Druid
         {
             OnObjectAreaTargetSelect.Add(new(FilterTargets, 0, Targets.UnitDestAreaEnemy));
             OnEffectHitTarget.Add(new(HandleDummy, 0, SpellEffectName.Dummy));
+        }
+    }
+
+    [Script] // 202347 - Stellar Flare
+    class spell_dru_stellar_flare : AuraScript
+    {
+        public override bool Validate(SpellInfo spellInfo)
+        {
+            return ValidateSpellInfo(SpellIds.StarBurst);
+        }
+
+        void HandleDispel(DispelInfo dispelInfo)
+        {
+            GetCaster()?.CastSpell(dispelInfo.GetDispeller(), SpellIds.StarBurst, true);
+        }
+
+        public override void Register()
+        {
+            AfterDispel.Add(new(HandleDispel));
         }
     }
 

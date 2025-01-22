@@ -57,7 +57,7 @@ namespace Game.Entities
             return map;
         }
 
-        InstanceMap CreateInstance(uint mapId, uint instanceId, InstanceLock instanceLock, Difficulty difficulty, int team, Group group)
+        InstanceMap CreateInstance(uint mapId, uint instanceId, InstanceLock instanceLock, Difficulty difficulty, int team, Group group, uint? lfgDungeonsId)
         {
             // make sure we have a valid map id
             var entry = CliDB.MapStorage.LookupByKey(mapId);
@@ -73,7 +73,7 @@ namespace Game.Entities
 
             Log.outDebug(LogFilter.Maps, $"MapInstanced::CreateInstance: {(instanceLock?.IsNew() == true ? "new" : " ")} map instance {instanceId} for {mapId} created with difficulty {difficulty}");
 
-            InstanceMap map = new InstanceMap(mapId, i_gridCleanUpDelay, instanceId, difficulty, team, instanceLock);
+            InstanceMap map = new InstanceMap(mapId, i_gridCleanUpDelay, instanceId, difficulty, team, instanceLock, lfgDungeonsId);
             Cypher.Assert(map.IsDungeon());
 
             map.LoadRespawnTimes();
@@ -99,6 +99,7 @@ namespace Game.Entities
             Cypher.Assert(map.IsBattlegroundOrArena());
             map.SetBG(bg);
             bg.SetBgMap(map);
+            map.InitScriptData();
             map.InitSpawnGroupState();
 
             if (WorldConfig.GetBoolValue(WorldCfg.BattlegroundMapLoadGrids))
@@ -121,9 +122,9 @@ namespace Game.Entities
         /// </summary>
         /// <param name="mapId"></param>
         /// <param name="player"></param>
-        /// <param name="loginInstanceId"></param>
+        /// <param name="lfgDungeonsId"></param>
         /// <returns>the right instance for the object, based on its InstanceId</returns>
-        public Map CreateMap(uint mapId, Player player)
+        public Map CreateMap(uint mapId, Player player, uint? lfgDungeonsId = null)
         {
             if (player == null)
                 return null;
@@ -198,7 +199,7 @@ namespace Game.Entities
 
                     if (map == null)
                     {
-                        map = CreateInstance(mapId, newInstanceId, instanceLock, difficulty, player.GetTeamId(), group);
+                        map = CreateInstance(mapId, newInstanceId, instanceLock, difficulty, SharedConst.GetTeamIdForTeam(Global.CharacterCacheStorage.GetCharacterTeamByGuid(instanceOwnerGuid)), group, lfgDungeonsId);
                         if (group != null)
                             group.SetRecentInstance(mapId, instanceOwnerGuid, newInstanceId);
                         else
@@ -224,8 +225,14 @@ namespace Game.Entities
                 }
 
                 if (map != null)
+                {
                     i_maps[(map.GetId(), map.GetInstanceId())] = map;
 
+                    Global.ScriptMgr.OnCreateMap(map);
+                    Global.OutdoorPvPMgr.CreateOutdoorPvPForMap(map);
+                    Global.BattleFieldMgr.CreateBattlefieldsForMap(map);
+                }
+                
                 return map;
             }
         }
@@ -289,7 +296,7 @@ namespace Game.Entities
             var time = (uint)i_timer.GetCurrent();
             foreach (var (key, map) in i_maps)
             {
-                if (map.CanUnload(diff))
+                if (map.CanUnload((uint)i_timer.GetCurrent()))
                 {
                     if (DestroyMap(map))
                         i_maps.Remove(key);
@@ -320,6 +327,10 @@ namespace Game.Entities
 
             map.UnloadAll();
 
+            Global.OutdoorPvPMgr.DestroyOutdoorPvPForMap(map);
+            Global.BattleFieldMgr.DestroyBattlefieldsForMap(map);
+            Global.ScriptMgr.OnDestroyMap(map);
+
             // Free up the instance id and allow it to be reused for normal dungeons, bgs and arenas
             if (map.IsBattlegroundOrArena() || (map.IsDungeon() && !map.GetMapDifficulty().HasResetSchedule()))
                 FreeInstanceId(map.GetInstanceId());
@@ -337,11 +348,17 @@ namespace Game.Entities
         public void UnloadAll()
         {
             // first unload maps
-            foreach (var pair in i_maps)
-                pair.Value.UnloadAll();
+            foreach (var (_, map) in i_maps)
+            {
+                map.UnloadAll();
 
-            foreach (var pair in i_maps)
-                pair.Value.Dispose();
+                Global.OutdoorPvPMgr.DestroyOutdoorPvPForMap(map);
+                Global.BattleFieldMgr.DestroyBattlefieldsForMap(map);
+                Global.ScriptMgr.OnDestroyMap(map);
+            }
+
+            foreach (var (_, map) in i_maps)
+                map.Dispose();
 
             i_maps.Clear();
 

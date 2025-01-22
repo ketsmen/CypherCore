@@ -43,8 +43,6 @@ namespace Game
 
             m_allowedSecurityLevel = AccountTypes.Player;
 
-            _realm = new Realm();
-
             _worldUpdateTime = new WorldUpdateTime();
             _warnShutdownTime = GameTime.GetGameTime();
         }
@@ -79,12 +77,9 @@ namespace Game
 
         public void LoadDBAllowedSecurityLevel()
         {
-            PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_REALMLIST_SECURITY_LEVEL);
-            stmt.AddValue(0, (int)_realm.Id.Index);
-            SQLResult result = DB.Login.Query(stmt);
-
-            if (!result.IsEmpty())
-                SetPlayerSecurityLimit((AccountTypes)result.Read<byte>(0));
+            var currentRealm = Global.RealmMgr.GetCurrentRealm();
+            if (currentRealm != null)
+                SetPlayerSecurityLimit(currentRealm.AllowedSecurityLevel);
         }
 
         public void SetPlayerSecurityLimit(AccountTypes _sec)
@@ -256,8 +251,13 @@ namespace Game
             {
                 float popu = GetActiveSessionCount();              // updated number of users on the server
                 popu /= pLimit;
-                popu *= 2;
-                Log.outInfo(LogFilter.Server, "Server Population ({0}).", popu);
+
+                PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.UPD_REALM_POPULATION);
+                stmt.AddValue(0, popu);
+                stmt.AddValue(1, Global.RealmMgr.GetCurrentRealmId().Index);
+                DB.Login.Execute(stmt);
+
+                Log.outInfo(LogFilter.Server, $"Server Population ({popu}).");
             }
         }
 
@@ -379,11 +379,9 @@ namespace Game
             return found;
         }
 
-        public void SetInitialWorldSettings()
+        public bool SetInitialWorldSettings()
         {
-            LoadRealmInfo();
-
-            Log.SetRealmId(_realm.Id.Index);
+            Log.SetRealmId(Global.RealmMgr.GetCurrentRealmId().Index);
 
             LoadConfigSettings();
 
@@ -397,8 +395,8 @@ namespace Game
                 || !TerrainManager.ExistMapAndVMap(1, 10311.3f, 832.463f) || !TerrainManager.ExistMapAndVMap(1, -2917.58f, -257.98f)
                 || (WorldConfig.GetIntValue(WorldCfg.Expansion) != 0 && (!TerrainManager.ExistMapAndVMap(530, 10349.6f, -6357.29f) || !TerrainManager.ExistMapAndVMap(530, -3961.64f, -13931.2f))))
             {
-                Log.outError(LogFilter.ServerLoading, "Unable to load map and vmap data for starting zones - server shutting down!");
-                Environment.Exit(1);
+                Log.outFatal(LogFilter.ServerLoading, "Unable to load map and vmap data for starting zones - server shutting down!");
+                return false;
             }
 
             // Initialize pool manager
@@ -415,7 +413,7 @@ namespace Game
             RealmType server_type = IsFFAPvPRealm() ? RealmType.PVP : (RealmType)WorldConfig.GetIntValue(WorldCfg.GameType);
             uint realm_zone = WorldConfig.GetUIntValue(WorldCfg.RealmZone);
 
-            DB.Login.Execute("UPDATE realmlist SET icon = {0}, timezone = {1} WHERE id = '{2}'", (byte)server_type, realm_zone, _realm.Id.Index);      // One-time query
+            DB.Login.Execute($"UPDATE realmlist SET icon = {(byte)server_type}, timezone = {realm_zone} WHERE id = '{Global.RealmMgr.GetCurrentRealmId().Index}'");      // One-time query
 
             Log.outInfo(LogFilter.ServerLoading, "Initialize DataStorage...");
             // Load DB2s
@@ -423,14 +421,14 @@ namespace Game
             if (m_availableDbcLocaleMask == null || !m_availableDbcLocaleMask[(int)m_defaultDbcLocale])
             {
                 Log.outFatal(LogFilter.ServerLoading, $"Unable to load db2 files for {m_defaultDbcLocale} locale specified in DBC.Locale config!");
-                Environment.Exit(1);
+                return false;
             }
 
             Log.outInfo(LogFilter.ServerLoading, "Loading GameObject models...");
             if (!GameObjectModel.LoadGameObjectModelList())
             {
                 Log.outFatal(LogFilter.ServerLoading, "Unable to load gameobject models (part of vmaps), objects using WMO models will crash the client - server shutting down!");
-                Environment.Exit(1);
+                return false;
             }
 
             Log.outInfo(LogFilter.ServerLoading, "Loading hotfix blobs...");
@@ -520,15 +518,19 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Localization strings...");
             uint oldMSTime = Time.GetMSTime();
-            Global.ObjectMgr.LoadCreatureLocales();
-            Global.ObjectMgr.LoadGameObjectLocales();
-            Global.ObjectMgr.LoadQuestTemplateLocale();
-            Global.ObjectMgr.LoadQuestOfferRewardLocale();
-            Global.ObjectMgr.LoadQuestRequestItemsLocale();
-            Global.ObjectMgr.LoadQuestObjectivesLocale();
-            Global.ObjectMgr.LoadPageTextLocales();
-            Global.ObjectMgr.LoadGossipMenuItemsLocales();
-            Global.ObjectMgr.LoadPointOfInterestLocales();
+            if (WorldConfig.GetBoolValue(WorldCfg.LoadLocales))
+            {
+                Global.ObjectMgr.LoadCreatureLocales();
+                Global.ObjectMgr.LoadGameObjectLocales();
+                Global.ObjectMgr.LoadQuestTemplateLocale();
+                Global.ObjectMgr.LoadQuestOfferRewardLocale();
+                Global.ObjectMgr.LoadQuestRequestItemsLocale();
+                Global.ObjectMgr.LoadQuestObjectivesLocale();
+                Global.ObjectMgr.LoadPageTextLocales();
+                Global.ObjectMgr.LoadGossipMenuItemsLocales();
+                Global.ObjectMgr.LoadPointOfInterestLocales();
+            }
+
             Log.outInfo(LogFilter.ServerLoading, "Localization strings loaded in {0} ms", Time.GetMSTimeDiffToNow(oldMSTime));
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Account Roles and Permissions...");
@@ -538,6 +540,7 @@ namespace Game
             Global.ObjectMgr.LoadPageTexts();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading GameObject Template...");
+            Global.ObjectMgr.LoadDestructibleHitpoints();
             Global.ObjectMgr.LoadGameObjectTemplate();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Game Object template addons...");
@@ -701,7 +704,8 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Quest Greetings...");
             Global.ObjectMgr.LoadQuestGreetings();
-            Global.ObjectMgr.LoadQuestGreetingLocales();
+            if (WorldConfig.GetBoolValue(WorldCfg.LoadLocales))
+                Global.ObjectMgr.LoadQuestGreetingLocales();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Objects Pooling Data...");
             Global.PoolMgr.LoadFromDB();
@@ -738,6 +742,9 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Area Trigger Teleports definitions...");
             Global.ObjectMgr.LoadAreaTriggerTeleports();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading Area Trigger Polygon data...");
+            Global.ObjectMgr.LoadAreaTriggerPolygons();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Access Requirements...");
             Global.ObjectMgr.LoadAccessRequirements();                        // must be after item template load
@@ -793,8 +800,17 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Player Choices...");
             Global.ObjectMgr.LoadPlayerChoices();
 
-            Log.outInfo(LogFilter.ServerLoading, "Loading Player Choices Locales...");
-            Global.ObjectMgr.LoadPlayerChoicesLocale();
+            if (WorldConfig.GetBoolValue(WorldCfg.LoadLocales))
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loading Player Choices Locales...");
+                Global.ObjectMgr.LoadPlayerChoicesLocale();
+            }
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading UIMap questlines...");
+            Global.ObjectMgr.LoadUiMapQuestLines();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading UIMap quests...");
+            Global.ObjectMgr.LoadUiMapQuests();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Jump Charge Params...");
             Global.ObjectMgr.LoadJumpChargeParams();
@@ -840,8 +856,13 @@ namespace Game
             Global.AchievementMgr.LoadAchievementScripts();
             Log.outInfo(LogFilter.ServerLoading, "Loading Achievement Rewards...");
             Global.AchievementMgr.LoadRewards();
-            Log.outInfo(LogFilter.ServerLoading, "Loading Achievement Reward Locales...");
-            Global.AchievementMgr.LoadRewardLocales();
+
+            if (WorldConfig.GetBoolValue(WorldCfg.LoadLocales))
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loading Achievement Reward Locales...");
+                Global.AchievementMgr.LoadRewardLocales();
+            }
+
             Log.outInfo(LogFilter.ServerLoading, "Loading Completed Achievements...");
             Global.AchievementMgr.LoadCompletedAchievements();
 
@@ -981,8 +1002,14 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Texts...");
             Global.CreatureTextMgr.LoadCreatureTexts();
 
-            Log.outInfo(LogFilter.ServerLoading, "Loading Creature Text Locales...");
-            Global.CreatureTextMgr.LoadCreatureTextLocales();
+            if (WorldConfig.GetBoolValue(WorldCfg.LoadLocales))
+            {
+                Log.outInfo(LogFilter.ServerLoading, "Loading Creature Text Locales...");
+                Global.CreatureTextMgr.LoadCreatureTextLocales();
+            }
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading creature StaticFlags overrides...");
+            Global.ObjectMgr.LoadCreatureStaticFlagsOverride(); // must be after LoadCreatures
 
             Log.outInfo(LogFilter.ServerLoading, "Initializing Scripts...");
             Global.ScriptMgr.Initialize();
@@ -1013,7 +1040,7 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Initialize game time and timers");
             GameTime.UpdateGameTimers();
 
-            DB.Login.Execute("INSERT INTO uptime (realmid, starttime, uptime, revision) VALUES({0}, {1}, 0, '{2}')", _realm.Id.Index, GameTime.GetStartTime(), "");       // One-time query
+            DB.Login.Execute($"INSERT INTO uptime (realmid, starttime, uptime, revision) VALUES({Global.RealmMgr.GetCurrentRealmId().Index}, {GameTime.GetStartTime()}, 0, '{""}')");       // One-time query
 
             m_timers[WorldTimers.Auctions].SetInterval(Time.Minute * Time.InMilliseconds);
             m_timers[WorldTimers.AuctionsPending].SetInterval(250);
@@ -1074,6 +1101,7 @@ namespace Game
             // Initialize Battlegrounds
             Log.outInfo(LogFilter.ServerLoading, "Starting BattlegroundSystem");
             Global.BattlegroundMgr.LoadBattlegroundTemplates();
+            Global.BattlegroundMgr.LoadBattlegroundScriptTemplate();
 
             // Initialize outdoor pvp
             Log.outInfo(LogFilter.ServerLoading, "Starting Outdoor PvP System");
@@ -1127,6 +1155,8 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading phase names...");
             Global.ObjectMgr.LoadPhaseNames();
+
+            return true;
         }
 
         public void LoadConfigSettings(bool reload = false)
@@ -1281,7 +1311,7 @@ namespace Game
             m_Autobroadcasts.Clear();
 
             PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_AUTOBROADCAST);
-            stmt.AddValue(0, _realm.Id.Index);
+            stmt.AddValue(0, Global.RealmMgr.GetCurrentRealmId().Index);
 
             SQLResult result = DB.Login.Query(stmt);
             if (result.IsEmpty())
@@ -1334,11 +1364,14 @@ namespace Game
 
                 if (WorldConfig.GetBoolValue(WorldCfg.PreserveCustomChannels))
                 {
-                    ChannelManager mgr1 = ChannelManager.ForTeam(Team.Alliance);
+                    ChannelManager mgr1 = ChannelManager.ForTeam(Team.PandariaNeutral);
                     mgr1.SaveToDB();
-                    ChannelManager mgr2 = ChannelManager.ForTeam(Team.Horde);
+                    ChannelManager mgr2 = ChannelManager.ForTeam(Team.Alliance);
                     if (mgr1 != mgr2)
                         mgr2.SaveToDB();
+                    ChannelManager mgr3 = ChannelManager.ForTeam(Team.Horde);
+                    if (mgr1 != mgr3)
+                        mgr3.SaveToDB();
                 }
             }
 
@@ -1413,7 +1446,7 @@ namespace Game
 
                 stmt.AddValue(0, tmpDiff);
                 stmt.AddValue(1, maxOnlinePlayers);
-                stmt.AddValue(2, _realm.Id.Index);
+                stmt.AddValue(2, Global.RealmMgr.GetCurrentRealmId().Index);
                 stmt.AddValue(3, (uint)GameTime.GetStartTime());
 
                 DB.Login.Execute(stmt);
@@ -1429,7 +1462,7 @@ namespace Game
                     PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.DEL_OLD_LOGS);
                     stmt.AddValue(0, WorldConfig.GetIntValue(WorldCfg.LogdbCleartime));
                     stmt.AddValue(1, 0);
-                    stmt.AddValue(2, GetRealm().Id.Index);
+                    stmt.AddValue(2, Global.RealmMgr.GetCurrentRealmId().Index);
 
                     DB.Login.Execute(stmt);
                 }
@@ -1992,7 +2025,7 @@ namespace Game
                 PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.REP_REALM_CHARACTERS);
                 stmt.AddValue(0, charCount);
                 stmt.AddValue(1, Id);
-                stmt.AddValue(2, _realm.Id.Index);
+                stmt.AddValue(2, Global.RealmMgr.GetCurrentRealmId().Index);
                 DB.Login.DirectExecute(stmt);
             }
         }
@@ -2425,30 +2458,6 @@ namespace Game
 
         public Locale GetDefaultDbcLocale() { return m_defaultDbcLocale; }
 
-        public bool LoadRealmInfo()
-        {
-            SQLResult result = DB.Login.Query("SELECT id, name, address, localAddress, port, icon, flag, timezone, allowedSecurityLevel, population, gamebuild, Region, Battlegroup FROM realmlist WHERE id = {0}", _realm.Id.Index);
-            if (result.IsEmpty())
-                return false;
-
-            _realm.SetName(result.Read<string>(1));
-            _realm.Addresses.Add(System.Net.IPAddress.Parse(result.Read<string>(2)));
-            _realm.Addresses.Add(System.Net.IPAddress.Parse(result.Read<string>(3)));
-            _realm.Port = result.Read<ushort>(4);
-            _realm.Type = result.Read<byte>(5);
-            _realm.Flags = (RealmFlags)result.Read<byte>(6);
-            _realm.Timezone = result.Read<byte>(7);
-            _realm.AllowedSecurityLevel = (AccountTypes)result.Read<byte>(8);
-            _realm.PopulationLevel = result.Read<float>(9);
-            _realm.Build = result.Read<uint>(10);
-            _realm.Id.Region = result.Read<byte>(11);
-            _realm.Id.Site = result.Read<byte>(12);
-            return true;
-        }
-
-        public Realm GetRealm() { return _realm; }
-        public RealmId GetRealmId() { return _realm.Id; }
-
         public void RemoveOldCorpses()
         {
             m_timers[WorldTimers.Corpses].SetCurrent(m_timers[WorldTimers.Corpses].GetInterval());
@@ -2516,7 +2525,7 @@ namespace Game
 
         public uint GetVirtualRealmAddress()
         {
-            return _realm.Id.GetAddress();
+            return Global.RealmMgr.GetCurrentRealmId().GetAddress();
         }
 
         public float GetMaxVisibleDistanceOnContinents() { return m_MaxVisibleDistanceOnContinents; }
@@ -2602,8 +2611,6 @@ namespace Game
         ConcurrentQueue<Tuple<WorldSocket, ulong>> _linkSocketQueue = new();
 
         AsyncCallbackProcessor<QueryCallback> _queryProcessor = new();
-
-        Realm _realm;
 
         string _dataPath;
         string m_DBVersion;

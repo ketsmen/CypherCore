@@ -28,6 +28,8 @@ namespace Game.Entities
             m_updateFlag.Stationary = true;
             m_updateFlag.AreaTrigger = true;
 
+            m_entityFragments.Add(EntityFragment.Tag_AreaTrigger, false);
+
             m_areaTriggerData = new AreaTriggerFieldData();
 
             _spline = new();
@@ -77,6 +79,14 @@ namespace Game.Entities
             }
         }
 
+        void PlaySpellVisual(uint spellVisualId)
+        {
+            AreaTriggerPlaySpellVisual packet = new();
+            packet.AreaTriggerGUID = GetGUID();
+            packet.SpellVisualID = spellVisualId;
+            SendMessageToSet(packet, false);
+        }
+
         bool Create(AreaTriggerId areaTriggerCreatePropertiesId, Map map, Position pos, int duration, AreaTriggerSpawn spawnData = null, Unit caster = null, Unit target = null, SpellCastVisual spellVisual = default, SpellInfo spellInfo = null, Spell spell = null, AuraEffect aurEff = null)
         {
             _targetGuid = target != null ? target.GetGUID() : ObjectGuid.Empty;
@@ -120,8 +130,17 @@ namespace Game.Entities
 
             if (spellInfo != null && !IsStaticSpawn())
                 SetUpdateFieldValue(areaTriggerData.ModifyValue(m_areaTriggerData.SpellID), spellInfo.Id);
-            if (spellInfo != null)
-                SetUpdateFieldValue(areaTriggerData.ModifyValue(m_areaTriggerData.SpellForVisuals), spellInfo.Id);
+
+            SpellInfo spellForVisuals = spellInfo;
+            if (GetCreateProperties().SpellForVisuals.HasValue)
+            {
+                spellForVisuals = Global.SpellMgr.GetSpellInfo(GetCreateProperties().SpellForVisuals.Value, Difficulty.None);
+
+                if (spellForVisuals != null)
+                    spellVisual.SpellXSpellVisualID = spellForVisuals.GetSpellXSpellVisualId();
+            }
+            if (spellForVisuals != null)
+                SetUpdateFieldValue(areaTriggerData.ModifyValue(m_areaTriggerData.SpellForVisuals), spellForVisuals.Id);
 
             SpellCastVisualField spellCastVisual = areaTriggerData.ModifyValue(m_areaTriggerData.SpellVisual);
             SetUpdateFieldValue(ref spellCastVisual.SpellXSpellVisualID, spellVisual.SpellXSpellVisualID);
@@ -157,8 +176,8 @@ namespace Game.Entities
             VisualAnim visualAnim = areaTriggerData.ModifyValue(m_areaTriggerData.VisualAnim);
             SetUpdateFieldValue(visualAnim.ModifyValue(visualAnim.AnimationDataID), GetCreateProperties().AnimId);
             SetUpdateFieldValue(visualAnim.ModifyValue(visualAnim.AnimKitID), GetCreateProperties().AnimKitId);
-            if (GetCreateProperties() != null && GetCreateProperties().Flags.HasFlag(AreaTriggerCreatePropertiesFlag.Unk3))
-                SetUpdateFieldValue(visualAnim.ModifyValue(visualAnim.Field_C), true);
+            if (GetCreateProperties() != null && GetCreateProperties().Flags.HasFlag(AreaTriggerCreatePropertiesFlag.VisualAnimIsDecay))
+                SetUpdateFieldValue(visualAnim.ModifyValue(visualAnim.IsDecay), true);
 
             if (caster != null)
                 PhasingHandler.InheritPhaseShift(this, caster);
@@ -260,15 +279,7 @@ namespace Game.Entities
             if (createProperties == null)
                 return false;
 
-            SpellInfo spellInfo = null;
-            SpellCastVisual spellVisual = default;
-            if (spawnData.SpellForVisuals.HasValue)
-            {
-                spellInfo = Global.SpellMgr.GetSpellInfo(spawnData.SpellForVisuals.Value, Difficulty.None);
-                if (spellInfo != null)
-                    spellVisual.SpellXSpellVisualID = spellInfo.GetSpellXSpellVisualId();
-            }
-            return Create(spawnData.Id, map, spawnData.SpawnPoint, -1, spawnData, null, null, spellVisual, spellInfo);
+            return Create(spawnData.Id, map, spawnData.SpawnPoint, -1, spawnData);
         }
 
         public override void Update(uint diff)
@@ -597,8 +608,55 @@ namespace Game.Entities
             if (GetTemplate() != null)
             {
                 var conditions = Global.ConditionMgr.GetConditionsForAreaTrigger(GetTemplate().Id.Id, GetTemplate().Id.IsCustom);
-                if (conditions != null && !conditions.Empty())
-                    targetList.RemoveAll(target => !Global.ConditionMgr.IsObjectMeetToConditions(target, conditions));
+                targetList.RemoveAll(target =>
+                {
+                    if (GetCasterGuid() == target.GetGUID())
+                    {
+                        if (HasActionSetFlag(AreaTriggerActionSetFlag.NotTriggeredbyCaster))
+                            return true;
+                    }
+                    else
+                    {
+                        if (HasActionSetFlag(AreaTriggerActionSetFlag.OnlyTriggeredByCaster))
+                            return true;
+
+                        if (HasActionSetFlag(AreaTriggerActionSetFlag.CreatorsPartyOnly))
+                        {
+                            Unit caster = GetCaster();
+                            if (caster == null)
+                                return true;
+
+                            if (!caster.IsInRaidWith(target))
+                                return true;
+                        }
+                    }
+
+                    Player player = target.ToPlayer();
+                    if (player != null)
+                    {
+                        switch (player.GetDeathState())
+                        {
+                            case DeathState.Dead:
+                                if (!HasActionSetFlag(AreaTriggerActionSetFlag.AllowWhileGhost))
+                                    return true;
+                                break;
+                            case DeathState.Corpse:
+                                if (!HasActionSetFlag(AreaTriggerActionSetFlag.AllowWhileDead))
+                                    return true;
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+
+                    if (!HasActionSetFlag(AreaTriggerActionSetFlag.CanAffectUninteractible) && target.IsUninteractible())
+                        return true;
+
+                    if (conditions != null)
+                        return !Global.ConditionMgr.IsObjectMeetToConditions(target, conditions);
+
+                    return false;
+                });
             }
 
             HandleUnitEnterExit(targetList);
@@ -606,11 +664,13 @@ namespace Game.Entities
 
         void SearchUnits(List<Unit> targetList, float radius, bool check3D)
         {
-            var check = new AnyUnitInObjectRangeCheck(this, radius, check3D);
+            var check = new AnyUnitInObjectRangeCheck(this, radius, check3D, false);
             if (IsStaticSpawn())
             {
-                var searcher = new PlayerListSearcher(this, targetList, check);
+                List<Player> temp = new List<Player>();
+                var searcher = new PlayerListSearcher(this, temp, check);
                 Cell.VisitWorldObjects(this, searcher, GetMaxSearchRadius());
+                targetList.AddRange(temp);
             }
             else
             {
@@ -667,7 +727,7 @@ namespace Game.Entities
 
             SearchUnits(targetList, GetMaxSearchRadius(), false);
 
-            targetList.RemoveAll(unit => unit.GetPositionZ() < minZ || unit.GetPositionZ() > maxZ || !CheckIsInPolygon2D(unit));
+            targetList.RemoveAll(unit => unit.GetPositionZ() < minZ || unit.GetPositionZ() > maxZ || !unit.IsInPolygon2D(this, _polygonVertices));
         }
 
         void SearchUnitInCylinder(List<Unit> targetList)
@@ -759,6 +819,9 @@ namespace Game.Entities
                         player.SendSysMessage(CypherStrings.DebugAreatriggerEntityEntered, GetEntry(), IsCustom(), IsStaticSpawn(), _spawnId);
 
                     player.UpdateQuestObjectiveProgress(QuestObjectiveType.AreaTriggerEnter, (int)GetEntry(), 1);
+
+                    if (GetTemplate().ActionSetId != 0)
+                        player.UpdateCriteria(CriteriaType.EnterAreaTriggerWithActionSet, GetTemplate().ActionSetId);
                 }
 
                 DoActions(unit);
@@ -778,6 +841,9 @@ namespace Game.Entities
                             player.SendSysMessage(CypherStrings.DebugAreatriggerEntityLeft, GetEntry(), IsCustom(), IsStaticSpawn(), _spawnId);
 
                         player.UpdateQuestObjectiveProgress(QuestObjectiveType.AreaTriggerExit, (int)GetEntry(), 1);
+
+                        if (GetTemplate().ActionSetId != 0)
+                            player.UpdateCriteria(CriteriaType.LeaveAreaTriggerWithActionSet, GetTemplate().ActionSetId);
                     }
 
                     UndoActions(leavingUnit);
@@ -846,7 +912,7 @@ namespace Game.Entities
             if (MathFunctions.fuzzyEq(_verticesUpdatePreviousOrientation, newOrientation) && shape.PolygonVerticesTarget.Empty())
                 return;
 
-            _polygonVertices = shape.PolygonVertices;
+            _polygonVertices.AddRange(shape.PolygonVertices.Select(p => new Position(p.X, p.Y)));
 
             if (!shape.PolygonVerticesTarget.Empty())
             {
@@ -877,75 +943,6 @@ namespace Game.Entities
             }
 
             _verticesUpdatePreviousOrientation = newOrientation;
-        }
-
-        bool CheckIsInPolygon2D(Position pos)
-        {
-            float testX = pos.GetPositionX();
-            float testY = pos.GetPositionY();
-
-            //this method uses the ray tracing algorithm to determine if the point is in the polygon
-            bool locatedInPolygon = false;
-
-            for (int vertex = 0; vertex < _polygonVertices.Count; ++vertex)
-            {
-                int nextVertex;
-
-                //repeat loop for all sets of points
-                if (vertex == (_polygonVertices.Count - 1))
-                {
-                    //if i is the last vertex, let j be the first vertex
-                    nextVertex = 0;
-                }
-                else
-                {
-                    //for all-else, let j=(i+1)th vertex
-                    nextVertex = vertex + 1;
-                }
-
-                float vertX_i = GetPositionX() + _polygonVertices[vertex].X;
-                float vertY_i = GetPositionY() + _polygonVertices[vertex].Y;
-                float vertX_j = GetPositionX() + _polygonVertices[nextVertex].X;
-                float vertY_j = GetPositionY() + _polygonVertices[nextVertex].Y;
-
-                // following statement checks if testPoint.Y is below Y-coord of i-th vertex
-                bool belowLowY = vertY_i > testY;
-                // following statement checks if testPoint.Y is below Y-coord of i+1-th vertex
-                bool belowHighY = vertY_j > testY;
-
-                /* following statement is true if testPoint.Y satisfies either (only one is possible)
-                -.(i).Y < testPoint.Y < (i+1).Y        OR
-                -.(i).Y > testPoint.Y > (i+1).Y
-
-                (Note)
-                Both of the conditions indicate that a point is located within the edges of the Y-th coordinate
-                of the (i)-th and the (i+1)- th vertices of the polygon. If neither of the above
-                conditions is satisfied, then it is assured that a semi-infinite horizontal line draw
-                to the right from the testpoint will NOT cross the line that connects vertices i and i+1
-                of the polygon
-                */
-                bool withinYsEdges = belowLowY != belowHighY;
-
-                if (withinYsEdges)
-                {
-                    // this is the slope of the line that connects vertices i and i+1 of the polygon
-                    float slopeOfLine = (vertX_j - vertX_i) / (vertY_j - vertY_i);
-
-                    // this looks up the x-coord of a point lying on the above line, given its y-coord
-                    float pointOnLine = (slopeOfLine * (testY - vertY_i)) + vertX_i;
-
-                    //checks to see if x-coord of testPoint is smaller than the point on the line with the same y-coord
-                    bool isLeftToLine = testX < pointOnLine;
-
-                    if (isLeftToLine)
-                    {
-                        //this statement changes true to false (and vice-versa)
-                        locatedInPolygon = !locatedInPolygon;
-                    }//end if (isLeftToLine)
-                }//end if (withinYsEdges
-            }
-
-            return locatedInPolygon;
         }
 
         bool HasOverridePosition()
@@ -1335,37 +1332,25 @@ namespace Game.Entities
             return false;
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt8((byte)flags);
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_areaTriggerData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_areaTriggerData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt32(m_values.GetChangedObjectTypeMask());
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.AreaTrigger))
-                m_areaTriggerData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+                m_areaTriggerData.WriteUpdate(data, flags, this, target);
         }
 
         public void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedAreaTriggerMask, Player target)
         {
+            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
             UpdateMask valuesMask = new((int)TypeId.Max);
             if (requestedObjectMask.IsAnySet())
                 valuesMask.Set((int)TypeId.Object);
@@ -1374,6 +1359,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.AreaTrigger);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])
@@ -1402,6 +1388,7 @@ namespace Game.Entities
         public bool IsCustom() { return _areaTriggerTemplate.Id.IsCustom; }
         public bool IsServerSide() { return _areaTriggerTemplate.Flags.HasFlag(AreaTriggerFlag.IsServerSide); }
         public bool IsStaticSpawn() { return _spawnId != 0; }
+        public bool HasActionSetFlag(AreaTriggerActionSetFlag flag) { return _areaTriggerTemplate.ActionSetFlags.HasFlag(flag); }
 
         [System.Diagnostics.Conditional("DEBUG")]
         void DebugVisualizePosition()
@@ -1480,9 +1467,9 @@ namespace Game.Entities
         float _verticesUpdatePreviousOrientation;
         bool _isRemoved;
 
-        Vector3 _rollPitchYaw;
-        Vector3 _targetRollPitchYaw;
-        List<Vector2> _polygonVertices;
+        Position _rollPitchYaw;
+        Position _targetRollPitchYaw;
+        List<Position> _polygonVertices;
         Spline<int> _spline;
 
         bool _reachedDestination;

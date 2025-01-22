@@ -370,7 +370,7 @@ namespace Game.Achievements
                 if (!achievement.Flags.HasAnyFlag(AchievementFlags.Account))
                 {
                     earned.Owner = _owner.GetGUID();
-                    earned.VirtualRealmAddress = earned.NativeRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
+                    earned.VirtualRealmAddress = earned.NativeRealmAddress = _owner.m_playerData.VirtualPlayerRealm;
                 }
 
                 achievementData.Data.Earned.Add(earned);
@@ -430,7 +430,7 @@ namespace Game.Achievements
                 if (!achievement.Flags.HasAnyFlag(AchievementFlags.Account))
                 {
                     earned.Owner = _owner.GetGUID();
-                    earned.VirtualRealmAddress = earned.NativeRealmAddress = Global.WorldMgr.GetVirtualRealmAddress();
+                    earned.VirtualRealmAddress = earned.NativeRealmAddress = _owner.m_playerData.VirtualPlayerRealm;
                 }
 
                 inspectedAchievements.Data.Earned.Add(earned);
@@ -506,13 +506,25 @@ namespace Game.Achievements
             //! Since no common attributes were found, (not even in titleRewardFlags field)
             //! we explicitly check by ID. Maybe in the future we could move the achievement_reward
             //! condition fields to the condition system.
-            uint titleId = reward.TitleId[achievement.Id == 1793 ? (int)_owner.GetNativeGender() : (_owner.GetTeam() == Team.Alliance ? 0 : 1)];
-            if (titleId != 0)
+            uint titleId = 0;
+            if (achievement.Id == 1793)
+                titleId = reward.TitleId[(int)_owner.GetNativeGender()];
+            else
             {
-                CharTitlesRecord titleEntry = CliDB.CharTitlesStorage.LookupByKey(titleId);
-                if (titleEntry != null)
-                    _owner.SetTitle(titleEntry);
+                switch (_owner.GetTeam())
+                {
+                    case Team.Alliance:
+                        titleId = reward.TitleId[0];
+                        break;
+                    case Team.Horde:
+                        titleId = reward.TitleId[1];
+                        break;
+                }
             }
+
+            var titleEntry = CliDB.CharTitlesStorage.LookupByKey(titleId);
+            if (titleEntry != null)
+                _owner.SetTitle(titleEntry);
 
             // mail
             if (reward.SenderCreatureId != 0)
@@ -653,12 +665,14 @@ namespace Game.Achievements
                 AchievementEarned achievementEarned = new();
                 achievementEarned.Sender = _owner.GetGUID();
                 achievementEarned.Earner = _owner.GetGUID();
-                achievementEarned.EarnerNativeRealm = achievementEarned.EarnerVirtualRealm = Global.WorldMgr.GetVirtualRealmAddress();
+                achievementEarned.EarnerNativeRealm = achievementEarned.EarnerVirtualRealm = _owner.m_playerData.VirtualPlayerRealm;
                 achievementEarned.AchievementID = achievement.Id;
                 achievementEarned.Time = GameTime.GetUtcWowTime();
                 achievementEarned.Time += receiver.GetSession().GetTimezoneOffset();
                 receiver.SendPacket(achievementEarned);
             };
+            
+            achievementEarnedBuilder(_owner);
 
             if (!achievement.Flags.HasAnyFlag(AchievementFlags.TrackingFlag))
             {
@@ -666,8 +680,6 @@ namespace Game.Achievements
                 MessageDistDeliverer notifier = new(_owner, achievementEarnedBuilder, dist);
                 Cell.VisitWorldObjects(_owner, notifier, dist);
             }
-            else
-                achievementEarnedBuilder(_owner);
         }
 
         public override void SendPacket(ServerPacket data)
@@ -1038,7 +1050,7 @@ namespace Game.Achievements
                 Global.WorldMgr.SendGlobalMessage(serverFirstAchievement);
             }
 
-            var guildAchievementEarnedBuilder = (Player receiver) =>
+            _owner.BroadcastWorker(receiver =>
             {
                 GuildAchievementEarned guildAchievementEarned = new();
                 guildAchievementEarned.AchievementID = achievement.Id;
@@ -1046,9 +1058,7 @@ namespace Game.Achievements
                 guildAchievementEarned.TimeEarned = GameTime.GetUtcWowTime();
                 guildAchievementEarned.TimeEarned += receiver.GetSession().GetTimezoneOffset();
                 receiver.SendPacket(guildAchievementEarned);
-            };
-
-            _owner.BroadcastWorker(guildAchievementEarnedBuilder);
+            });
         }
 
         public override void SendPacket(ServerPacket data)

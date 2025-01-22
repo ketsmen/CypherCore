@@ -36,7 +36,7 @@ namespace Game.DataStorage
         public uint Id;
         public int MaxQualityRoll;
         public float StateMultiplier;
-        public sbyte QualityEnum;
+        public byte QualityEnum;
     }
 
     public sealed class BattlePetBreedStateRecord
@@ -92,9 +92,15 @@ namespace Game.DataStorage
         public int Flags;
         public int IconFileDataID;
         public int RequiredPlayerConditionID;
-        public short[] MapId = new short[16];
 
         public bool HasFlag(BattlemasterListFlags battlemasterListFlags) { return (Flags & (int)battlemasterListFlags) != 0; }
+    }
+
+    public sealed class BattlemasterListXMapRecord
+    {
+        public uint ID;
+        public int MapID;
+        public uint BattlemasterListID;
     }
 
     public sealed class BroadcastTextRecord
@@ -116,8 +122,8 @@ namespace Game.DataStorage
     public sealed class BroadcastTextDurationRecord
     {
         public uint Id;
-        public int BroadcastTextID;
         public int Locale;
         public int Duration;
+        public uint BroadcastTextID;
     }
 }

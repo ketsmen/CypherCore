@@ -1,7 +1,6 @@
 ﻿// Copyright (c) CypherCore <http://github.com/CypherCore> All rights reserved.
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
-using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
 using Game.DataStorage;
@@ -10,9 +9,9 @@ using Game.Movement;
 using Game.Spells;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using static Game.AI.SmartAction;
 
 namespace Game.AI
 {
@@ -122,7 +121,7 @@ namespace Game.AI
                         {
                             if (Global.AreaTriggerDataStorage.GetAreaTriggerTemplate(new AreaTriggerId((uint)temp.EntryOrGuid, false)) == null)
                             {
-                                Log.outError(LogFilter.Sql, $"SmartAIMgr.LoadFromDB: AreaTrigger entry ({temp.EntryOrGuid} IsServerSide false) does not exist, skipped loading.");
+                                Log.outError(LogFilter.Sql, $"SmartAIMgr.LoadFromDB: AreaTrigger entry ({temp.EntryOrGuid} IsCustom false) does not exist, skipped loading.");
                                 continue;
                             }
                             break;
@@ -244,16 +243,18 @@ namespace Game.AI
                 temp.Action.raw.param5 = result.Read<uint>(20);
                 temp.Action.raw.param6 = result.Read<uint>(21);
                 temp.Action.raw.param7 = result.Read<uint>(22);
+                temp.Action.param_string = result.Read<string>(23);
 
-                temp.Target.type = (SmartTargets)result.Read<byte>(23);
-                temp.Target.raw.param1 = result.Read<uint>(24);
-                temp.Target.raw.param2 = result.Read<uint>(25);
-                temp.Target.raw.param3 = result.Read<uint>(26);
-                temp.Target.raw.param4 = result.Read<uint>(27);
-                temp.Target.x = result.Read<float>(28);
-                temp.Target.y = result.Read<float>(29);
-                temp.Target.z = result.Read<float>(30);
-                temp.Target.o = result.Read<float>(31);
+                temp.Target.type = (SmartTargets)result.Read<byte>(24);
+                temp.Target.raw.param1 = result.Read<uint>(25);
+                temp.Target.raw.param2 = result.Read<uint>(26);
+                temp.Target.raw.param3 = result.Read<uint>(27);
+                temp.Target.raw.param4 = result.Read<uint>(28);
+                temp.Target.param_string = result.Read<string>(29);
+                temp.Target.x = result.Read<float>(30);
+                temp.Target.y = result.Read<float>(31);
+                temp.Target.z = result.Read<float>(32);
+                temp.Target.o = result.Read<float>(33);
 
                 //check target
                 if (!IsTargetValid(temp))
@@ -283,7 +284,6 @@ namespace Game.AI
                         }
                         break;
                     case SmartEvents.VictimCasting:
-                    case SmartEvents.IsBehindTarget:
                         if (temp.Event.minMaxRepeat.min == 0 && temp.Event.minMaxRepeat.max == 0 && !temp.Event.event_flags.HasAnyFlag(SmartEventFlags.NotRepeatable) && temp.SourceType != SmartScriptType.TimedActionlist)
                         {
                             temp.Event.event_flags |= SmartEventFlags.NotRepeatable;
@@ -371,7 +371,7 @@ namespace Game.AI
                 case SmartEvents.FollowCompleted:
                 case SmartEvents.OnSpellclick:
                 case SmartEvents.GoLootStateChanged:
-                case SmartEvents.AreatriggerOntrigger:
+                case SmartEvents.AreatriggerEnter:
                 case SmartEvents.IcLos:
                 case SmartEvents.OocLos:
                 case SmartEvents.DistanceCreature:
@@ -395,6 +395,7 @@ namespace Game.AI
                 case SmartEvents.SceneCancel:
                 case SmartEvents.SceneComplete:
                 case SmartEvents.SendEventTrigger:
+                case SmartEvents.AreatriggerExit:
                     return true;
                 default:
                     return false;
@@ -585,7 +586,7 @@ namespace Game.AI
                 SmartEvents.TransportRemovePlayer => 0,
                 SmartEvents.TransportRelocate => Marshal.SizeOf(typeof(SmartEvent.TransportRelocate)),
                 SmartEvents.InstancePlayerEnter => Marshal.SizeOf(typeof(SmartEvent.InstancePlayerEnter)),
-                SmartEvents.AreatriggerOntrigger => Marshal.SizeOf(typeof(SmartEvent.Areatrigger)),
+                SmartEvents.AreatriggerEnter => 0,
                 SmartEvents.QuestAccepted => 0,
                 SmartEvents.QuestObjCompletion => 0,
                 SmartEvents.QuestCompletion => 0,
@@ -625,6 +626,7 @@ namespace Game.AI
                 SmartEvents.OnSpellStart => Marshal.SizeOf(typeof(SmartEvent.SpellCast)),
                 SmartEvents.OnDespawn => 0,
                 SmartEvents.SendEventTrigger => 0,
+                SmartEvents.AreatriggerExit => 0,
                 _ => Marshal.SizeOf(typeof(SmartEvent.Raw)),
             };
 
@@ -657,6 +659,22 @@ namespace Game.AI
                     Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused event_param{index + 1} with value {value}, it should be 0.");
             }
 
+            bool eventUsesStringParam()
+            {
+                switch (e.GetEventType())
+                {
+                    case SmartEvents.SceneTrigger:
+                        return true;
+                    default:
+                        break;
+                }
+
+                return false;
+            }
+
+            if (!eventUsesStringParam() && !e.Event.param_string.IsEmpty())
+                Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused event_param_string with value {e.Event.param_string}, it should be NULL.");
+
             return true;
         }
 
@@ -679,7 +697,6 @@ namespace Game.AI
                 SmartActions.SummonCreature => Marshal.SizeOf(typeof(SmartAction.SummonCreature)),
                 SmartActions.ThreatSinglePct => Marshal.SizeOf(typeof(SmartAction.ThreatPCT)),
                 SmartActions.ThreatAllPct => Marshal.SizeOf(typeof(SmartAction.ThreatPCT)),
-                SmartActions.CallAreaexploredoreventhappens => Marshal.SizeOf(typeof(SmartAction.Quest)),
                 SmartActions.SetIngamePhaseGroup => Marshal.SizeOf(typeof(SmartAction.IngamePhaseGroup)),
                 SmartActions.SetEmoteState => Marshal.SizeOf(typeof(SmartAction.Emote)),
                 SmartActions.AutoAttack => Marshal.SizeOf(typeof(SmartAction.AutoAttack)),
@@ -688,7 +705,6 @@ namespace Game.AI
                 SmartActions.IncEventPhase => Marshal.SizeOf(typeof(SmartAction.IncEventPhase)),
                 SmartActions.Evade => Marshal.SizeOf(typeof(SmartAction.Evade)),
                 SmartActions.FleeForAssist => Marshal.SizeOf(typeof(SmartAction.FleeAssist)),
-                SmartActions.CallGroupeventhappens => Marshal.SizeOf(typeof(SmartAction.Quest)),
                 SmartActions.CombatStop => 0,
                 SmartActions.RemoveAurasFromSpell => Marshal.SizeOf(typeof(SmartAction.RemoveAura)),
                 SmartActions.Follow => Marshal.SizeOf(typeof(SmartAction.Follow)),
@@ -799,6 +815,8 @@ namespace Game.AI
                 SmartActions.BecomePersonalCloneForPlayer => Marshal.SizeOf(typeof(SmartAction.BecomePersonalClone)),
                 SmartActions.TriggerGameEvent => Marshal.SizeOf(typeof(SmartAction.TriggerGameEvent)),
                 SmartActions.DoAction => Marshal.SizeOf(typeof(SmartAction.DoAction)),
+                SmartActions.CompleteQuest => Marshal.SizeOf(typeof(SmartAction.Quest)),
+                SmartActions.CreditQuestObjectiveTalkTo => 0,
                 _ => Marshal.SizeOf(typeof(SmartAction.Raw)),
             };
 
@@ -833,6 +851,22 @@ namespace Game.AI
                 if (value != 0)
                     Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused action_param{index + 1} with value {value}, it should be 0.");
             }
+
+            bool actionUsesStringParam()
+            {
+                switch (e.GetActionType())
+                {
+                    case SmartActions.CrossCast:
+                        return true;
+                    default:
+                        break;
+                }
+
+                return false;
+            };
+
+            if (!actionUsesStringParam() && !e.Action.param_string.IsEmpty())
+                Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused action_param_string with value {e.Action.param_string}, it should be NULL.");
 
             return true;
         }
@@ -900,6 +934,27 @@ namespace Game.AI
                 if (value != 0)
                     Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused target_param{index + 1} with value {value}, it must be 0, skipped.");
             }
+
+            bool targetUsesStringParam()
+            {
+                switch (e.GetTargetType())
+                {
+                    case SmartTargets.CreatureRange:
+                    case SmartTargets.CreatureDistance:
+                    case SmartTargets.GameobjectRange:
+                    case SmartTargets.GameobjectDistance:
+                    case SmartTargets.ClosestCreature:
+                    case SmartTargets.ClosestGameobject:
+                        return true;
+                    default:
+                        break;
+                }
+
+                return false;
+            }
+
+            if (!targetUsesStringParam() && !e.Target.param_string.IsEmpty())
+                Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused target_param_string with value {e.Target.param_string}, it should be NULL.");
 
             return true;
         }
@@ -1121,18 +1176,6 @@ namespace Game.AI
                             return false;
                         break;
                     }
-                    case SmartEvents.AreatriggerOntrigger:
-                    {
-                        if (e.Event.areatrigger.id != 0 && (e.GetScriptType() == SmartScriptType.AreaTriggerEntity || e.GetScriptType() == SmartScriptType.AreaTriggerEntityCustom))
-                        {
-                            Log.outError(LogFilter.Sql, $"SmartAIMgr: Entry {e.EntryOrGuid} SourceType {e.GetScriptType()} Event {e.EventId} Action {e.GetActionType()} areatrigger param not supported for SMART_SCRIPT_TYPE_AREATRIGGER_ENTITY and SMART_SCRIPT_TYPE_AREATRIGGER_ENTITY_CUSTOM, skipped.");
-                            return false;
-                        }
-
-                        if (e.Event.areatrigger.id != 0 && !IsAreaTriggerValid(e, e.Event.areatrigger.id))
-                            return false;
-                        break;
-                    }
                     case SmartEvents.TextOver:
                     {
                         if (!IsTextValid(e, e.Event.textOver.textGroupID))
@@ -1287,6 +1330,8 @@ namespace Game.AI
                     case SmartEvents.WaypointResumed:
                     case SmartEvents.WaypointStopped:
                     case SmartEvents.WaypointEnded:
+                    case SmartEvents.AreatriggerEnter:
+                    case SmartEvents.AreatriggerExit:
                     case SmartEvents.GossipSelect:
                     case SmartEvents.GossipHello:
                     case SmartEvents.JustCreated:
@@ -1313,6 +1358,11 @@ namespace Game.AI
                     default:
                         Log.outError(LogFilter.ScriptsAi, "SmartAIMgr: Not handled event_type({0}), Entry {1} SourceType {2} Event {3} Action {4}, skipped.", e.GetEventType(), e.EntryOrGuid, e.GetScriptType(), e.EventId, e.GetActionType());
                         return false;
+                }
+                if (e.Event.event_flags.HasAnyFlag(SmartEventFlags.ActionlistWaits))
+                {
+                    Log.outError(LogFilter.Sql, "SmartAIMgr: {e}, uses SMART_EVENT_FLAG_ACTIONLIST_WAITS but is not part of a timed actionlist.");
+                    return false;
                 }
             }
 
@@ -1451,6 +1501,11 @@ namespace Game.AI
                                 Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} Effect: SPELL_EFFECT_KILL_CREDIT: (SpellId: {e.Action.cast.spell} targetA: {spellEffectInfo.TargetA.GetTarget()} - targetB: {spellEffectInfo.TargetB.GetTarget()}) has invalid target for this Action");
                         }
                     }
+                    if (e.Action.cast.castFlags.HasAnyFlag((uint)SmartCastFlags.WaitForHit) && !e.Event.event_flags.HasAnyFlag(SmartEventFlags.ActionlistWaits))
+                    {
+                        Log.outError(LogFilter.Sql, "SmartAIMgr: {e} uses SMARTCAST_WAIT_FOR_HIT but is not part of actionlist event that has SMART_EVENT_FLAG_ACTIONLIST_WAITS");
+                        return false;
+                    }
                     break;
                 }
                 case SmartActions.CrossCast:
@@ -1483,6 +1538,11 @@ namespace Game.AI
                             return false;
                         }
                     }
+                    if (e.Action.crossCast.castFlags.HasAnyFlag((uint)SmartCastFlags.WaitForHit) && !e.Event.event_flags.HasAnyFlag(SmartEventFlags.ActionlistWaits))
+                    {
+                        Log.outError(LogFilter.Sql, "SmartAIMgr: {e} uses SMARTCAST_WAIT_FOR_HIT but is not part of actionlist event that has SMART_EVENT_FLAG_ACTIONLIST_WAITS");
+                        return false;
+                    }
                     break;
                 }
                 case SmartActions.InvokerCast:
@@ -1497,21 +1557,9 @@ namespace Game.AI
                 case SmartActions.SelfCast:
                     if (!IsSpellValid(e, e.Action.cast.spell))
                         return false;
-                    break;
-                case SmartActions.CallAreaexploredoreventhappens:
-                case SmartActions.CallGroupeventhappens:
-                    Quest qid = Global.ObjectMgr.GetQuestTemplate(e.Action.quest.questId);
-                    if (qid != null)
+                    if (e.Action.cast.castFlags.HasAnyFlag((uint)SmartCastFlags.WaitForHit) && !e.Event.event_flags.HasAnyFlag(SmartEventFlags.ActionlistWaits))
                     {
-                        if (!qid.HasFlag(QuestFlags.CompletionEvent) && !qid.HasFlag(QuestFlags.CompletionAreaTrigger))
-                        {
-                            Log.outError(LogFilter.ScriptsAi, $"SmartAIMgr: {e} Flags for Quest entry {e.Action.quest.questId} does not include QUEST_FLAGS_COMPLETION_EVENT or QUEST_FLAGS_COMPLETION_AREA_TRIGGER, skipped.");
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        Log.outError(LogFilter.ScriptsAi, $"SmartAIMgr: {e} uses non-existent Quest entry {e.Action.quest.questId}, skipped.");
+                        Log.outError(LogFilter.Sql, "SmartAIMgr: {e} uses SMARTCAST_WAIT_FOR_HIT but is not part of actionlist event that has SMART_EVENT_FLAG_ACTIONLIST_WAITS");
                         return false;
                     }
                     break;
@@ -1732,6 +1780,33 @@ namespace Game.AI
                             return false;
                         }
                     }
+
+                    bool isValidEquipmentSlot(uint itemEntry, byte slot)
+                    {
+                        ItemRecord dbcItem = CliDB.ItemStorage.LookupByKey(itemEntry);
+                        if (dbcItem == null)
+                        {
+                            Log.outError(LogFilter.Sql, $"SmartScript: SMART_ACTION_EQUIP uses unknown item {itemEntry} (slot {slot}) for creature {e.EntryOrGuid}, skipped.");
+                            return false;
+                        }
+
+                        if (ItemConst.InventoryTypesEquipable.All(inventoryType => inventoryType != dbcItem.inventoryType))
+                        {
+                            Log.outError(LogFilter.Sql, $"SmartScript: SMART_ACTION_EQUIP uses item {itemEntry} (slot {slot}) not equipable in a hand for creature {e.EntryOrGuid}, skipped.");
+                            return false;
+                        }
+
+                        return true;
+                    };
+
+                    if (e.Action.equip.slot1 != 0 && !isValidEquipmentSlot(e.Action.equip.slot1, 0))
+                        return false;
+
+                    if (e.Action.equip.slot2 != 0 && !isValidEquipmentSlot(e.Action.equip.slot2, 1))
+                        return false;
+
+                    if (e.Action.equip.slot3 != 0 && !isValidEquipmentSlot(e.Action.equip.slot3, 2))
+                        return false;
                     break;
                 }
                 case SmartActions.SetInstData:
@@ -2114,7 +2189,36 @@ namespace Game.AI
                     TC_SAI_IS_BOOLEAN_VALID(e, e.Action.triggerGameEvent.useSaiTargetAsGameEventSource);
                     break;
                 }
+                case SmartActions.CompleteQuest:
+                {
+                    Quest quest = Global.ObjectMgr.GetQuestTemplate(e.Action.quest.questId);
+                    if (quest != null)
+                    {
+                        if (!quest.HasFlag(QuestFlags.CompletionEvent) && !quest.HasFlag(QuestFlags.CompletionAreaTrigger) && !quest.HasFlag(QuestFlags.TrackingEvent))
+                        {
+                            Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} Flags for Quest entry {e.Action.quest.questId} does not include QUEST_FLAGS_COMPLETION_EVENT or QUEST_FLAGS_COMPLETION_AREA_TRIGGER or QUEST_FLAGS_TRACKING_EVENT, skipped.");
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} uses non-existent Quest entry {e.Action.quest.questId}, skipped.");
+                        return false;
+                    }
+                    break;
+                }
+                case SmartActions.CreditQuestObjectiveTalkTo:
+                {
+                    if (e.GetScriptType() != SmartScriptType.Creature)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} uses non-valid SourceType (only valid for SourceType {SmartScriptType.Creature}), skipped.");
+                        return false;
+                    }
+                    break;
+                }
                 // No longer supported
+                case SmartActions.CallAreaexploredoreventhappens:
+                case SmartActions.CallGroupeventhappens:
                 case SmartActions.SetUnitFlag:
                 case SmartActions.RemoveUnitFlag:
                 case SmartActions.InstallAITemplate:
@@ -2282,15 +2386,6 @@ namespace Game.AI
             }
             return true;
         }
-        static bool IsAreaTriggerValid(SmartScriptHolder e, uint entry)
-        {
-            if (!CliDB.AreaTriggerStorage.ContainsKey(entry))
-            {
-                Log.outError(LogFilter.ScriptsAi, $"SmartAIMgr: {e} uses non-existent AreaTrigger entry {entry}, skipped.");
-                return false;
-            }
-            return true;
-        }
         static bool IsSoundValid(SmartScriptHolder e, uint entry)
         {
             if (!CliDB.SoundKitStorage.ContainsKey(entry))
@@ -2404,7 +2499,7 @@ namespace Game.AI
                 SmartEvents.TransportRemovePlayer => SmartScriptTypeMaskId.Transport,
                 SmartEvents.TransportRelocate => SmartScriptTypeMaskId.Transport,
                 SmartEvents.InstancePlayerEnter => SmartScriptTypeMaskId.Instance,
-                SmartEvents.AreatriggerOntrigger => SmartScriptTypeMaskId.Areatrigger + SmartScriptTypeMaskId.AreatrigggerEntity,
+                SmartEvents.AreatriggerEnter => SmartScriptTypeMaskId.Areatrigger + SmartScriptTypeMaskId.AreatrigggerEntity,
                 SmartEvents.QuestAccepted => SmartScriptTypeMaskId.Quest,
                 SmartEvents.QuestObjCompletion => SmartScriptTypeMaskId.Quest,
                 SmartEvents.QuestRewarded => SmartScriptTypeMaskId.Quest,
@@ -2446,6 +2541,7 @@ namespace Game.AI
                 SmartEvents.OnSpellStart => SmartScriptTypeMaskId.Creature,
                 SmartEvents.OnDespawn => SmartScriptTypeMaskId.Creature,
                 SmartEvents.SendEventTrigger => SmartScriptTypeMaskId.Event,
+                SmartEvents.AreatriggerExit => SmartScriptTypeMaskId.Areatrigger + SmartScriptTypeMaskId.AreatrigggerEntity,
                 _ => 0,
             };
 
@@ -2594,9 +2690,6 @@ namespace Game.AI
 
         [FieldOffset(16)]
         public InstancePlayerEnter instancePlayerEnter;
-
-        [FieldOffset(16)]
-        public Areatrigger areatrigger;
 
         [FieldOffset(16)]
         public TextOver textOver;
@@ -2766,10 +2859,6 @@ namespace Game.AI
             public uint team;
             public uint cooldownMin;
             public uint cooldownMax;
-        }
-        public struct Areatrigger
-        {
-            public uint id;
         }
         public struct TextOver
         {
@@ -3172,6 +3261,9 @@ namespace Game.AI
         [FieldOffset(4)]
         public Raw raw;
 
+        [FieldOffset(32)]
+        public string param_string;
+
         #region Stucts
         public struct Talk
         {
@@ -3241,6 +3333,7 @@ namespace Game.AI
             public uint targetParam1;
             public uint targetParam2;
             public uint targetParam3;
+            public uint targetParam4;
         }
         public struct SummonCreature
         {
@@ -3806,6 +3899,9 @@ namespace Game.AI
 
         [FieldOffset(20)]
         public Raw raw;
+
+        [FieldOffset(40)]
+        public string param_string;
 
         #region Structs
         public struct HostilRandom

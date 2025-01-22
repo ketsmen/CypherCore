@@ -19,6 +19,7 @@ namespace Game.Networking.Packets
         public AuctionHouseFilterMask Filters;
         public byte[] KnownPets;
         public sbyte MaxPetLevel;
+        public uint Unused1026;
         public AddOnInfo? TaintedBy;
         public string Name;
         public Array<AuctionListFilterClass> ItemClassFilters = new(7);
@@ -37,6 +38,7 @@ namespace Game.Networking.Packets
             Filters = (AuctionHouseFilterMask)_worldPacket.ReadUInt32();
             uint knownPetSize = _worldPacket.ReadUInt32();
             MaxPetLevel = _worldPacket.ReadInt8();
+            Unused1026 = _worldPacket.ReadUInt32();
 
             uint sizeLimit = CliDB.BattlePetSpeciesStorage.GetNumRows() / 8 + 1;
             if (knownPetSize >= sizeLimit)
@@ -53,15 +55,15 @@ namespace Game.Networking.Packets
             uint itemClassFilterCount = _worldPacket.ReadBits<uint>(3);
             uint sortSize = _worldPacket.ReadBits<uint>(2);
 
-            for (var i = 0; i < sortSize; ++i)
-                Sorts[i] = new AuctionSortDef(_worldPacket);
-
             if (TaintedBy.HasValue)
                 TaintedBy.Value.Read(_worldPacket);
 
             Name = _worldPacket.ReadString(nameLength);
-            for (var i = 0; i < itemClassFilterCount; ++i)// AuctionListFilterClass filterClass in ItemClassFilters)
+            for (var i = 0; i < itemClassFilterCount; ++i)
                 ItemClassFilters[i] = new AuctionListFilterClass(_worldPacket);
+
+            for (var i = 0; i < sortSize; ++i)
+                Sorts[i] = new AuctionSortDef(_worldPacket);
         }
     }
 
@@ -139,14 +141,14 @@ namespace Game.Networking.Packets
             uint auctionIDCount = _worldPacket.ReadBits<uint>(7);
             uint sortCount = _worldPacket.ReadBits<uint>(2);
 
-            for (var i = 0; i < sortCount; ++i)
-                Sorts[i] = new AuctionSortDef(_worldPacket);
-
             if (TaintedBy.HasValue)
                 TaintedBy.Value.Read(_worldPacket);
 
             for (var i = 0; i < auctionIDCount; ++i)
                 AuctionItemIDs[i] = _worldPacket.ReadUInt32();
+
+            for (var i = 0; i < sortCount; ++i)
+                Sorts[i] = new AuctionSortDef(_worldPacket);
         }
     }
 
@@ -168,14 +170,14 @@ namespace Game.Networking.Packets
             uint bucketKeysCount = _worldPacket.ReadBits<uint>(7);
             uint sortCount = _worldPacket.ReadBits<uint>(2);
 
-            for (var i = 0; i < sortCount; ++i)
-                Sorts[i] = new AuctionSortDef(_worldPacket);
-
             if (TaintedBy.HasValue)
                 TaintedBy.Value.Read(_worldPacket);
 
             for (var i = 0; i < bucketKeysCount; ++i)
                 BucketKeys[i] = new AuctionBucketKey(_worldPacket);
+
+            for (var i = 0; i < sortCount; ++i)
+                Sorts[i] = new AuctionSortDef(_worldPacket);
         }
     }
 
@@ -199,13 +201,14 @@ namespace Game.Networking.Packets
                 TaintedBy = new();
 
             uint sortCount = _worldPacket.ReadBits<uint>(2);
-            for (var i = 0; i < sortCount; ++i)
-                Sorts[i] = new AuctionSortDef(_worldPacket);
 
             BucketKey = new AuctionBucketKey(_worldPacket);
 
             if (TaintedBy.HasValue)
                 TaintedBy.Value.Read(_worldPacket);
+
+            for (var i = 0; i < sortCount; ++i)
+                Sorts[i] = new AuctionSortDef(_worldPacket);
         }
     }
 
@@ -232,11 +235,11 @@ namespace Game.Networking.Packets
 
             uint sortCount = _worldPacket.ReadBits<uint>(2);
 
-            for (var i = 0; i < sortCount; ++i)
-                Sorts[i] = new AuctionSortDef(_worldPacket);
-
             if (TaintedBy.HasValue)
                 TaintedBy.Value.Read(_worldPacket);
+
+            for (var i = 0; i < sortCount; ++i)
+                Sorts[i] = new AuctionSortDef(_worldPacket);
         }
     }
 
@@ -258,11 +261,11 @@ namespace Game.Networking.Packets
 
             uint sortCount = _worldPacket.ReadBits<uint>(2);
 
-            for (var i = 0; i < sortCount; ++i)
-                Sorts[i] = new AuctionSortDef(_worldPacket);
-
             if (TaintedBy.HasValue)
                 TaintedBy.Value.Read(_worldPacket);
+
+            for (var i = 0; i < sortCount; ++i)
+                Sorts[i] = new AuctionSortDef(_worldPacket);
         }
     }
 
@@ -337,13 +340,6 @@ namespace Game.Networking.Packets
                 TaintedBy.Value.Read(_worldPacket);
             }
         }
-    }
-
-    class AuctionRequestFavoriteList : ClientPacket
-    {
-        public AuctionRequestFavoriteList(WorldPacket packet) : base(packet) { }
-
-        public override void Read() { }
     }
     
     class AuctionSellCommodity : ClientPacket
@@ -613,16 +609,16 @@ namespace Game.Networking.Packets
         {
             _worldPacket.WriteInt32(Items.Count);
             _worldPacket.WriteUInt32(Unknown830);
-            _worldPacket.WriteUInt32(TotalCount);
             _worldPacket.WriteUInt32(DesiredDelay);
+            foreach (AuctionItem item in Items)
+                item.Write(_worldPacket);
+
             _worldPacket.WriteBits((int)ListType, 2);
             _worldPacket.WriteBit(HasMoreResults);
             _worldPacket.FlushBits();
 
             BucketKey.Write(_worldPacket);
-
-            foreach (AuctionItem item in Items)
-                item.Write(_worldPacket);
+            _worldPacket.WriteUInt32(TotalCount);
         }
     }
 
@@ -726,7 +722,7 @@ namespace Game.Networking.Packets
         public uint ItemID;
         public ushort ItemLevel;
         public ushort? BattlePetSpeciesID;
-        public ushort? SuffixItemNameDescriptionID;
+        public ushort? ItemSuffix;
 
         public AuctionBucketKey() { }
 
@@ -739,7 +735,7 @@ namespace Game.Networking.Packets
                 BattlePetSpeciesID = key.BattlePetSpeciesId;
 
             if (key.SuffixItemNameDescriptionId != 0)
-                SuffixItemNameDescriptionID = key.SuffixItemNameDescriptionId;
+                ItemSuffix = key.SuffixItemNameDescriptionId;
         }
 
         public AuctionBucketKey(WorldPacket data)
@@ -754,7 +750,7 @@ namespace Game.Networking.Packets
                 BattlePetSpeciesID = data.ReadUInt16();
 
             if (hasSuffixItemNameDescriptionId)
-                SuffixItemNameDescriptionID = data.ReadUInt16();
+                ItemSuffix = data.ReadUInt16();
         }
 
         public void Write(WorldPacket data)
@@ -762,14 +758,14 @@ namespace Game.Networking.Packets
             data.WriteBits(ItemID, 20);
             data.WriteBit(BattlePetSpeciesID.HasValue);
             data.WriteBits(ItemLevel, 11);
-            data.WriteBit(SuffixItemNameDescriptionID.HasValue);
+            data.WriteBit(ItemSuffix.HasValue);
             data.FlushBits();
 
             if (BattlePetSpeciesID.HasValue)
                 data.WriteUInt16(BattlePetSpeciesID.Value);
 
-            if (SuffixItemNameDescriptionID.HasValue)
-                data.WriteUInt16(SuffixItemNameDescriptionID.Value);
+            if (ItemSuffix.HasValue)
+                data.WriteUInt16(ItemSuffix.Value);
         }
     }
 
@@ -889,7 +885,7 @@ namespace Game.Networking.Packets
         public byte? MaxBattlePetQuality;
         public byte? MaxBattlePetLevel;
         public byte? BattlePetBreedID;
-        public uint? Unk901_1;
+        public uint? BattlePetLevelMask;
         public bool ContainsOwnerItem;
         public bool ContainsOnlyCollectedAppearances;
 
@@ -909,7 +905,7 @@ namespace Game.Networking.Packets
             data.WriteBit(MaxBattlePetQuality.HasValue);
             data.WriteBit(MaxBattlePetLevel.HasValue);
             data.WriteBit(BattlePetBreedID.HasValue);
-            data.WriteBit(Unk901_1.HasValue);
+            data.WriteBit(BattlePetLevelMask.HasValue);
             data.WriteBit(ContainsOwnerItem);
             data.WriteBit(ContainsOnlyCollectedAppearances);
             data.FlushBits();
@@ -923,8 +919,8 @@ namespace Game.Networking.Packets
             if (BattlePetBreedID.HasValue)
                 data.WriteUInt8(BattlePetBreedID.Value);
 
-            if (Unk901_1.HasValue)
-                data.WriteUInt32(Unk901_1.Value);
+            if (BattlePetLevelMask.HasValue)
+                data.WriteUInt32(BattlePetLevelMask.Value);
         }
     }
 

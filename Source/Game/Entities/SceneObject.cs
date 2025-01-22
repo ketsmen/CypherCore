@@ -25,6 +25,8 @@ namespace Game.Entities
             m_updateFlag.Stationary = true;
             m_updateFlag.SceneObject = true;
 
+            m_entityFragments.Add(EntityFragment.Tag_SceneObject, false);
+
             m_sceneObjectData = new();
             _stationaryPosition = new();
         }
@@ -121,39 +123,25 @@ namespace Game.Entities
             return true;
         }
 
-        public override void BuildValuesCreate(WorldPacket data, Player target)
+        public override void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            m_objectData.WriteCreate(buffer, flags, this, target);
-            m_sceneObjectData.WriteCreate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteUInt8((byte)flags);
-            data.WriteBytes(buffer);
-
-
+            m_objectData.WriteCreate(data, flags, this, target);
+            m_sceneObjectData.WriteCreate(data, flags, this, target);
         }
 
-        public override void BuildValuesUpdate(WorldPacket data, Player target)
+        public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
         {
-            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
-            WorldPacket buffer = new();
-
-            buffer.WriteUInt32(m_values.GetChangedObjectTypeMask());
+            data.WriteUInt32(m_values.GetChangedObjectTypeMask());
             if (m_values.HasChanged(TypeId.Object))
-                m_objectData.WriteUpdate(buffer, flags, this, target);
+                m_objectData.WriteUpdate(data, flags, this, target);
 
             if (m_values.HasChanged(TypeId.SceneObject))
-                m_sceneObjectData.WriteUpdate(buffer, flags, this, target);
-
-            data.WriteUInt32(buffer.GetSize());
-            data.WriteBytes(buffer);
+                m_sceneObjectData.WriteUpdate(data, flags, this, target);
         }
 
         void BuildValuesUpdateForPlayerWithMask(UpdateData data, UpdateMask requestedObjectMask, UpdateMask requestedSceneObjectMask, Player target)
         {
+            UpdateFieldFlag flags = GetUpdateFieldFlagsFor(target);
             UpdateMask valuesMask = new((int)TypeId.Max);
             if (requestedObjectMask.IsAnySet())
                 valuesMask.Set((int)TypeId.Object);
@@ -162,6 +150,7 @@ namespace Game.Entities
                 valuesMask.Set((int)TypeId.SceneObject);
 
             WorldPacket buffer = new();
+            BuildEntityFragmentsForValuesUpdateForPlayerWithMask(buffer, flags);
             buffer.WriteUInt32(valuesMask.GetBlock(0));
 
             if (valuesMask[(int)TypeId.Object])
