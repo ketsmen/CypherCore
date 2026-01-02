@@ -13,6 +13,7 @@ namespace Game.Networking.Packets
         public int BestRunLevel;
         public int BestRunDurationMS;
         public bool FinishedSuccess;
+        public byte Unknown1110;
 
         public void Write(WorldPacket data)
         {
@@ -20,6 +21,7 @@ namespace Game.Networking.Packets
             data.WriteFloat(MapScore);
             data.WriteInt32(BestRunLevel);
             data.WriteInt32(BestRunDurationMS);
+            data.WriteUInt8(Unknown1110);
             data.WriteBit(FinishedSuccess);
             data.FlushBits();
         }
@@ -50,7 +52,7 @@ namespace Game.Networking.Packets
         public uint NativeRealmAddress;
         public uint VirtualRealmAddress;
         public int ChrSpecializationID;
-        public short RaceID;
+        public sbyte RaceID;
         public int ItemLevel;
         public int CovenantID;
         public int SoulbindID;
@@ -64,7 +66,7 @@ namespace Game.Networking.Packets
             data.WriteUInt32(NativeRealmAddress);
             data.WriteUInt32(VirtualRealmAddress);
             data.WriteInt32(ChrSpecializationID);
-            data.WriteInt16(RaceID);
+            data.WriteInt8(RaceID);
             data.WriteInt32(ItemLevel);
             data.WriteInt32(CovenantID);
             data.WriteInt32(SoulbindID);
@@ -82,6 +84,7 @@ namespace Game.Networking.Packets
         public int Season;
         public List<MythicPlusMember> Members = new();
         public float RunScore;
+        public int Unknown_1120;
         public int[] KeystoneAffixIDs = new int[4];
 
         public void Write(WorldPacket data)
@@ -97,6 +100,7 @@ namespace Game.Networking.Packets
 
             data.WriteInt32(Members.Count);
             data.WriteFloat(RunScore);
+            data.WriteInt32(Unknown_1120);
             foreach (var member in Members)
                 member.Write(data);
 

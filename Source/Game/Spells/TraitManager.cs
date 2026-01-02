@@ -139,7 +139,7 @@ namespace Game
                 if (tree != null)
                     tree.SubTrees.Add(subTree);
 
-                _traitSubTrees[(int)traitSubTree.ID] = subTree;
+                _traitSubTrees[(int)traitSubTree.Id] = subTree;
             }
 
             foreach (var (_, traitNodeGroup) in CliDB.TraitNodeGroupStorage)
@@ -470,6 +470,12 @@ namespace Game
                                 }
                             }
                             break;
+                        case TraitCurrencyType.TraitSourcedPlayerDataElement:
+                            if (currency.PlayerDataElementAccountID != 0)
+                                currencies[currency.Id] += player.GetDataElementAccount((uint)currency.CurrencyTypesID);
+                    else if (currency.PlayerDataElementCharacterID != 0)
+                                currencies[currency.Id] +=  player.GetDataElementCharacter((uint)currency.CurrencyTypesID);
+                            break;
                         default:
                             break;
                     }
@@ -748,19 +754,17 @@ namespace Game
 
             bool isNodeFullyFilled(Node node)
             {
-                if (node.Data.GetNodeType() == TraitNodeType.Selection)
-                    return node.Entries.Any(nodeEntry =>
-                    {
-                        TraitEntryPacket traitEntry = getNodeEntry(node.Data.Id, nodeEntry.Data.Id);
-                        return traitEntry != null && (traitEntry.Rank + traitEntry.GrantedRanks) == nodeEntry.Data.MaxRanks;
-                    });
-
-                return node.Entries.All(nodeEntry =>
+                bool nodeEntryMatches(NodeEntry nodeEntry)
                 {
                     TraitEntryPacket traitEntry = getNodeEntry(node.Data.Id, nodeEntry.Data.Id);
                     return traitEntry != null && (traitEntry.Rank + traitEntry.GrantedRanks) == nodeEntry.Data.MaxRanks;
-                });
-            };
+                };
+
+                if (node.Data.GetNodeType() == TraitNodeType.Selection)
+                    return node.Entries.Any(nodeEntryMatches);
+
+                return node.Entries.All(nodeEntryMatches);
+            }
 
             Dictionary<int, int> spentCurrencies = new();
             FillSpentCurrenciesMap(traitConfig.Entries, spentCurrencies);

@@ -48,6 +48,10 @@ namespace Framework.Constants
         Bassalim = 296,
         EmbeddedLanguages = 297,
         Unknowable = 298,
+        Furbolg = 303,
+        Earthen = 304,
+        Nerubian = 307,
+        TonguesOfSanctuary = 308,
     }
 
     public enum CypherStrings
@@ -142,7 +146,7 @@ namespace Framework.Constants
         GoinfoAddon = 85,
         GoinfoModel = 86,
         UnknownError = 87,
-    TwoFACommandsNotSetup = 88,
+        TwoFACommandsNotSetup = 88,
         TwoFAAlreadySetup = 89,
         TwoFAInvalidToken = 90,
         TwoFASecretSuggestion = 91,
@@ -369,7 +373,7 @@ namespace Framework.Constants
         CommandNpcShowlootMoney = 292,
         CommandNpcShowlootLabel2 = 293,
         CommandNpcShowlootSublabel = 294,
-        CommandNpcShowlootEntry2 = 295,
+        CommandNpcShowlootTrackingQuest = 295,
         CommandNpcShowLootCurrency = 296,
 
         // End
@@ -784,7 +788,7 @@ namespace Framework.Constants
         NeedCharacterName = 807,
         PlayerNotExistOrOffline = 808,
         AccountForPlayerNotFound = 809,
-        // Unused                             = 810,
+        BankTabName = 810,
         GuildMaster = 811,
         GuildOfficer = 812,
         GuildVeteran = 813,
@@ -1017,7 +1021,13 @@ namespace Framework.Constants
         AccountBnetUnlinked = 1216,
         AccountBnetNotLinked = 1217,
         DisallowTicketsConfig = 1218,
-        // 1219-1499 - Free
+
+        // Guild list (.guild list)
+        GuildListTitle = 1219,
+        GuildListHeader = 1220,
+        GuildListRow = 1221,
+        GuildListTotal = 1222,
+        // 1223-1499 - free
 
         // Command Argument Parsers
         CmdparserEither = 1500,

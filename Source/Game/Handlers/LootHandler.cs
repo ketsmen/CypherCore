@@ -99,12 +99,9 @@ namespace Game
                     Group group = player.GetGroup();
 
                     List<Player> playersNear = new();
-                    for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
+                    foreach (GroupReference groupRef in group.GetMembers())
                     {
-                        Player member = refe.GetSource();
-                        if (member == null)
-                            continue;
-
+                        Player member = groupRef.GetSource();
                         if (!loot.HasAllowedLooter(member.GetGUID()))
                             continue;
 
@@ -222,6 +219,8 @@ namespace Game
             {
                 CreatureListSearcher searcher = new(_player, corpses, check);
                 Cell.VisitGridObjects(_player, searcher, AELootCreatureCheck.LootDistance);
+                if (corpses.Count > 49)
+                    corpses.Resize(49); // lootTarget is 50th, not in corpses vector
             }
 
             if (!corpses.Empty())

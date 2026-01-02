@@ -53,7 +53,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt8(DosZeroBits);
         }
 
-        public byte[] Challenge = new byte[16];
+        public byte[] Challenge = new byte[32];
         public byte[] DosChallenge = new byte[32]; // Encryption seeds
         public byte DosZeroBits;
     }
@@ -83,7 +83,7 @@ namespace Game.Networking.Packets
         public uint RegionID;
         public uint BattlegroupID;
         public uint RealmID;
-        public Array<byte> LocalChallenge = new(16);
+        public Array<byte> LocalChallenge = new(32);
         public byte[] Digest = new byte[24];
         public ulong DosResponse;
         public string RealmJoinTicket;
@@ -133,7 +133,7 @@ namespace Game.Networking.Packets
                 _worldPacket.WriteBit(SuccessInfo.NumPlayersHorde.HasValue);
                 _worldPacket.WriteBit(SuccessInfo.NumPlayersAlliance.HasValue);
                 _worldPacket.WriteBit(SuccessInfo.ExpansionTrialExpiration.HasValue);
-                _worldPacket.WriteBit(SuccessInfo.NewBuildKeys != null);
+                _worldPacket.WriteBit(SuccessInfo.CurrentBuild != null);
                 _worldPacket.FlushBits();
 
                 {
@@ -155,12 +155,12 @@ namespace Game.Networking.Packets
                 if (SuccessInfo.ExpansionTrialExpiration.HasValue)
                     _worldPacket.WriteInt64(SuccessInfo.ExpansionTrialExpiration.Value);
 
-                if (SuccessInfo.NewBuildKeys != null)
+                if (SuccessInfo.CurrentBuild != null)
                 {
                     for (int i = 0; i < 16; ++i)
                     {
-                        _worldPacket.WriteUInt8(SuccessInfo.NewBuildKeys.NewBuildKey[i]);
-                        _worldPacket.WriteUInt8(SuccessInfo.NewBuildKeys.SomeKey[i]);
+                        _worldPacket.WriteUInt8(SuccessInfo.CurrentBuild.BuildKey[i]);
+                        _worldPacket.WriteUInt8(SuccessInfo.CurrentBuild.ConfigKey[i]);
                     }
                 }
 
@@ -217,7 +217,7 @@ namespace Game.Networking.Packets
             public ushort? NumPlayersHorde; // number of horde players in this realm. @todo implement
             public ushort? NumPlayersAlliance; // number of alliance players in this realm. @todo implement
             public long? ExpansionTrialExpiration; // expansion trial expiration unix timestamp
-            public NewBuild NewBuildKeys;
+            public BaseBuildKey CurrentBuild;
 
             public struct GameTime
             {
@@ -229,10 +229,10 @@ namespace Game.Networking.Packets
                 public bool IsCAISEnabled;
             }
 
-            public class NewBuild
+            public class BaseBuildKey
             {
-                public Array<byte> NewBuildKey = new Array<byte>(16);
-                public Array<byte> SomeKey = new Array<byte>(16);
+                public Array<byte> BuildKey = new Array<byte>(16);
+                public Array<byte> ConfigKey = new Array<byte>(16);
             }
         }
     }
@@ -288,7 +288,9 @@ namespace Game.Networking.Packets
             hash.Process((uint)Payload.Where.Type);
             hash.Finish(BitConverter.GetBytes(Payload.Port));
 
-            Payload.Signature = RsaCrypt.RSA.SignHash(hash.Digest, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).Reverse().ToArray();
+            var signHash = RsaCrypt.RSA.SignHash(hash.Digest, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            signHash.Reverse();
+            Payload.Signature = signHash;
 
             _worldPacket.WriteBytes(Payload.Signature, (uint)Payload.Signature.Length);
             _worldPacket.WriteBytes(whereBuffer);
@@ -335,13 +337,13 @@ namespace Game.Networking.Packets
         {
             DosResponse = _worldPacket.ReadUInt64();
             Key = _worldPacket.ReadUInt64();
-            LocalChallenge = _worldPacket.ReadBytes(16);
+            LocalChallenge = _worldPacket.ReadBytes(32);
             Digest = _worldPacket.ReadBytes(24);
         }
 
         public ulong DosResponse;
         public ulong Key;
-        public byte[] LocalChallenge = new byte[16];
+        public byte[] LocalChallenge = new byte[32];
         public byte[] Digest = new byte[24];
     }
 
@@ -368,11 +370,13 @@ namespace Game.Networking.Packets
 
     class EnterEncryptedMode : ServerPacket
     {
+        int RegionGroup;
         byte[] EncryptionKey;
         bool Enabled;
         static byte[] expandedPrivateKey;
 
-        static byte[] EnableEncryptionSeed = { 0x90, 0x9C, 0xD0, 0x50, 0x5A, 0x2C, 0x14, 0xDD, 0x5C, 0x2C, 0xC0, 0x64, 0x14, 0xF3, 0xFE, 0xC9 };
+        static byte[] EnableEncryptionSeed = { 0x66, 0xBE, 0x29, 0x79, 0xEF, 0xF2, 0xD5, 0xB5, 0x61, 0x53, 0xF6, 0x5F, 0x45, 0xAE, 0x81, 0xCB,
+            0x32, 0xEC, 0x94, 0xEC, 0x75, 0xB3, 0x5F, 0x44, 0x6A, 0x63, 0x43, 0x67, 0x17, 0x20, 0x44, 0x34 };
         static byte[] EnableEncryptionContext = { 0xA7, 0x1F, 0xB6, 0x9B, 0xC9, 0x7C, 0xDD, 0x96, 0xE9, 0xBB, 0xB8, 0x21, 0x39, 0x8D, 0x5A, 0xD4 };
 
         static byte[] EnterEncryptedModePrivateKey =
@@ -396,13 +400,26 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            HmacSha256 toSign = new(EncryptionKey);
+            HmacSha512 toSign = new(EncryptionKey);
             toSign.Process(BitConverter.GetBytes(Enabled), 1);
-            toSign.Finish(EnableEncryptionSeed, 16);
+            toSign.Finish(EnableEncryptionSeed, 32);
 
+            _worldPacket.WriteInt32(RegionGroup);
             _worldPacket.WriteBytes(Ed25519.Sign(toSign.Digest, expandedPrivateKey, 0, EnableEncryptionContext));
             _worldPacket.WriteBit(Enabled);
             _worldPacket.FlushBits();
+        }
+    }
+
+    class QueuedMessagesEnd : ClientPacket
+    {
+        public uint Timestamp;
+
+        public QueuedMessagesEnd(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            Timestamp = _worldPacket.ReadUInt32();
         }
     }
 
@@ -413,7 +430,7 @@ namespace Game.Networking.Packets
         {
             data.WriteUInt32(WaitCount);
             data.WriteUInt32(WaitTime);
-            data.WriteUInt32(AllowedFactionGroupForCharacterCreate);
+            data.WriteUInt8(AllowedFactionGroupForCharacterCreate);
             data.WriteBit(HasFCM);
             data.WriteBit(CanCreateOnlyIfExisting);
             data.FlushBits();
@@ -421,7 +438,7 @@ namespace Game.Networking.Packets
 
         public uint WaitCount; // position of the account in the login queue
         public uint WaitTime; // Wait time in login queue in minutes, if sent queued and this value is 0 client displays "unknown time"
-        public uint AllowedFactionGroupForCharacterCreate;
+        public byte AllowedFactionGroupForCharacterCreate;
         public bool HasFCM; // true if the account has a forced character migration pending. @todo implement
         public bool CanCreateOnlyIfExisting; ///< Can create characters on realm only if player has other existing characters there
     }

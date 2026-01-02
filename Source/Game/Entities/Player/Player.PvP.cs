@@ -45,7 +45,7 @@ namespace Game.Entities
 
             m_lastHonorUpdateTime = now;
         }
-        public bool RewardHonor(Unit victim, uint groupsize, int honor = -1, bool pvptoken = false)
+        public bool RewardHonor(Unit victim, uint groupsize, int honor = -1, HonorGainSource source = HonorGainSource.Kill)
         {
             // do not reward honor in arenas, but enable onkill spellproc
             if (InArena())
@@ -146,6 +146,7 @@ namespace Game.Entities
                     honor_f /= groupsize;
 
                 // apply honor multiplier from aura (not stacking-get highest)
+                MathFunctions.AddPct(ref honor_f, GetMaxPositiveAuraModifierByMiscMask(AuraType.ModHonorGainPctFromSource, 1u << (int)source));
                 MathFunctions.AddPct(ref honor_f, GetMaxPositiveAuraModifier(AuraType.ModHonorGainPct));
                 honor_f += _restMgr.GetRestBonusFor(RestTypes.Honor, (uint)honor_f);
             }
@@ -162,7 +163,7 @@ namespace Game.Entities
             data.Honor = honor;
             data.OriginalHonor = honor;
             data.Target = victim_guid;
-            data.Rank = victim_rank;
+            data.Rank = (sbyte)victim_rank;
 
             SendPacket(data);
 
@@ -173,11 +174,11 @@ namespace Game.Entities
                 Battleground bg = GetBattleground();
                 if (bg != null)
                 {
-                    bg.UpdatePlayerScore(this, ScoreType.BonusHonor, (uint)honor, false); //false: prevent looping
+                    bg.UpdatePlayerScore(this, ScoreType.BonusHonor, (uint)honor, false, source); //false: prevent looping
                 }
             }
 
-            if (WorldConfig.GetBoolValue(WorldCfg.PvpTokenEnable) && pvptoken)
+            if (WorldConfig.GetBoolValue(WorldCfg.PvpTokenEnable) && source == HonorGainSource.Kill)
             {
                 if (victim == null || victim == this || victim.HasAuraType(AuraType.NoPvpCredit))
                     return true;

@@ -91,7 +91,7 @@ namespace Game.Entities
         {
             if (msTime != 0)
             {
-                m_Events.AddEvent(new ForcedUnsummonDelayEvent(this), m_Events.CalculateTime(TimeSpan.FromMilliseconds(msTime)));
+                m_Events.AddEventAtOffset(new ForcedDespawnDelayEvent(this), TimeSpan.FromMilliseconds(msTime));
                 return;
             }
 
@@ -123,10 +123,10 @@ namespace Game.Entities
                 Group group = owner.GetGroup();
                 if (group != null)
                 {
-                    for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
+                    foreach (GroupReference groupRef in group.GetMembers())
                     {
-                        Player target = refe.GetSource();
-                        if (target != null && target.IsInMap(owner) && group.SameSubGroup(owner, target))
+                        Player target = groupRef.GetSource();
+                        if (target.IsInMap(owner) && group.SameSubGroup(owner, target))
                             target.RemoveAurasDueToSpell(GetSpell(), GetGUID());
                     }
                 }

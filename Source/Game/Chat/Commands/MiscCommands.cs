@@ -212,91 +212,8 @@ namespace Game.Chat
             return true;
         }
 
-        [CommandNonGroup("damage", RBACPermissions.CommandDamage)]
-        static bool HandleDamageCommand(CommandHandler handler, uint damage, SpellSchools? school, [OptionalArg] SpellInfo spellInfo)
-        {
-            Unit target = handler.GetSelectedUnit();
-            if (target == null || handler.GetSession().GetPlayer().GetTarget().IsEmpty())
-            {
-                handler.SendSysMessage(CypherStrings.SelectCharOrCreature);
-                return false;
-            }
-            Player player = target.ToPlayer();
-            if (player != null)
-                if (handler.HasLowerSecurity(player, ObjectGuid.Empty, false))
-                    return false;
-
-            if (!target.IsAlive())
-                return true;
-
-            Player attacker = handler.GetSession().GetPlayer();
-
-            // flat melee damage without resistence/etc reduction
-            if (!school.HasValue)
-            {
-                Unit.DealDamage(attacker, target, damage, null, DamageEffectType.Direct, SpellSchoolMask.Normal, null, false);
-                if (target != attacker)
-                    attacker.SendAttackStateUpdate(HitInfo.AffectsVictim, target, SpellSchoolMask.Normal, damage, 0, 0, VictimState.Hit, 0);
-                return true;
-            }
-
-            SpellSchoolMask schoolmask = (SpellSchoolMask)(1 << (int)school.Value);
-
-            if (Unit.IsDamageReducedByArmor(schoolmask))
-                damage = Unit.CalcArmorReducedDamage(handler.GetPlayer(), target, damage, null, WeaponAttackType.BaseAttack);
-
-            // melee damage by specific school
-            if (spellInfo == null)
-            {
-                DamageInfo dmgInfo = new(attacker, target, damage, null, schoolmask, DamageEffectType.SpellDirect, WeaponAttackType.BaseAttack);
-                Unit.CalcAbsorbResist(dmgInfo);
-
-                if (dmgInfo.GetDamage() == 0)
-                    return true;
-
-                damage = dmgInfo.GetDamage();
-
-                uint absorb = dmgInfo.GetAbsorb();
-                uint resist = dmgInfo.GetResist();
-                Unit.DealDamageMods(attacker, target, ref damage, ref absorb);
-                Unit.DealDamage(attacker, target, damage, null, DamageEffectType.Direct, schoolmask, null, false);
-                attacker.SendAttackStateUpdate(HitInfo.AffectsVictim, target, schoolmask, damage, absorb, resist, VictimState.Hit, 0);
-                return true;
-            }
-
-            // non-melee damage
-
-            SpellNonMeleeDamage damageInfo = new(attacker, target, spellInfo, new SpellCastVisual(spellInfo.GetSpellXSpellVisualId(attacker), 0), spellInfo.SchoolMask);
-            damageInfo.damage = damage;
-            Unit.DealDamageMods(damageInfo.attacker, damageInfo.target, ref damageInfo.damage, ref damageInfo.absorb);
-            target.DealSpellDamage(damageInfo, true);
-            target.SendSpellNonMeleeDamageLog(damageInfo);
-            return true;
-        }
-
-        [CommandNonGroup("damage go", RBACPermissions.CommandDamage)]
-        static bool HandleDamageGoCommand(CommandHandler handler, ulong spawnId, int damage)
-        {
-            GameObject go = handler.GetObjectFromPlayerMapByDbGuid(spawnId);
-            if (go == null)
-            {
-                handler.SendSysMessage(CypherStrings.CommandObjnotfound, spawnId);
-                return false;
-            }
-
-            if (!go.IsDestructibleBuilding())
-            {
-                handler.SendSysMessage(CypherStrings.InvalidGameobjectType);
-                return false;
-            }
-
-            go.ModifyHealth(-damage, handler.GetSession().GetPlayer());
-            handler.SendSysMessage(CypherStrings.GameobjectDamaged, go.GetName(), spawnId, -damage, go.GetGoValue().Building.Health);
-            return true;
-        }
-
         [CommandNonGroup("dev", RBACPermissions.CommandDev)]
-        static bool HandleDevCommand(CommandHandler handler, bool? enableArg)
+        static bool HandleDevCommand(CommandHandler handler, OptionalArg<bool> enableArg)
         {
             Player player = handler.GetSession().GetPlayer();
 
@@ -755,14 +672,14 @@ namespace Game.Chat
         }
 
         [CommandNonGroup("linkgrave", RBACPermissions.CommandLinkgrave)]
-        static bool HandleLinkGraveCommand(CommandHandler handler, uint graveyardId, [OptionalArg] string teamArg)
+        static bool HandleLinkGraveCommand(CommandHandler handler, uint graveyardId, OptionalArg<string> teamArg)
         {
             Team team;
-            if (teamArg.IsEmpty())
+            if (!teamArg.HasValue)
                 team = 0;
-            else if (teamArg.Equals("horde", StringComparison.OrdinalIgnoreCase))
+            else if (teamArg.Value.Equals("horde", StringComparison.OrdinalIgnoreCase))
                 team = Team.Horde;
-            else if (teamArg.Equals("alliance", StringComparison.OrdinalIgnoreCase))
+            else if (teamArg.Value.Equals("alliance", StringComparison.OrdinalIgnoreCase))
                 team = Team.Alliance;
             else
                 return false;
@@ -925,22 +842,22 @@ namespace Game.Chat
 
         // mute player for the specified duration
         [CommandNonGroup("mute", RBACPermissions.CommandMute, true)]
-        static bool HandleMuteCommand(CommandHandler handler, PlayerIdentifier player, uint muteTime, Tail muteReason)
+        static bool HandleMuteCommand(CommandHandler handler, OptionalArg<PlayerIdentifier> player, uint muteTime, Tail muteReason)
         {
             string muteReasonStr = muteReason;
             if (muteReason.IsEmpty())
                 muteReasonStr = handler.GetCypherString(CypherStrings.NoReason);
 
-            if (player == null)
+            if (!player.HasValue)
                 player = PlayerIdentifier.FromTarget(handler);
-            if (player == null)
+            if (player.Value == null)
             {
                 handler.SendSysMessage(CypherStrings.PlayerNotFound);
                 return false;
             }
 
-            Player target = player.GetConnectedPlayer();
-            uint accountId = target != null ? target.GetSession().GetAccountId() : Global.CharacterCacheStorage.GetCharacterAccountIdByGuid(player.GetGUID());
+            Player target = player.Value.GetConnectedPlayer();
+            uint accountId = target != null ? target.GetSession().GetAccountId() : Global.CharacterCacheStorage.GetCharacterAccountIdByGuid(player.Value.GetGUID());
 
             // find only player from same account if any
             if (target == null)
@@ -951,7 +868,7 @@ namespace Game.Chat
             }
 
             // must have strong lesser security level
-            if (handler.HasLowerSecurity(target, player.GetGUID(), true))
+            if (handler.HasLowerSecurity(target, player.Value.GetGUID(), true))
                 return false;
 
             PreparedStatement stmt = LoginDatabase.GetPreparedStatement(LoginStatements.UPD_MUTE_TIME);
@@ -986,7 +903,7 @@ namespace Game.Chat
             stmt.AddValue(3, muteReasonStr);
             DB.Login.Execute(stmt);
 
-            string nameLink = handler.PlayerLink(player.GetName());
+            string nameLink = handler.PlayerLink(player.Value.GetName());
 
             if (WorldConfig.GetBoolValue(WorldCfg.ShowMuteInWorld))
                 Global.WorldMgr.SendWorldText(CypherStrings.CommandMutemessageWorld, muteBy, nameLink, muteTime, muteReasonStr);
@@ -1040,14 +957,14 @@ namespace Game.Chat
         }
 
         [CommandNonGroup("neargrave", RBACPermissions.CommandNeargrave)]
-        static bool HandleNearGraveCommand(CommandHandler handler, [OptionalArg] string teamArg)
+        static bool HandleNearGraveCommand(CommandHandler handler, OptionalArg<string> teamArg)
         {
             Team team;
-            if (teamArg.IsEmpty())
+            if (!teamArg.HasValue)
                 team = 0;
-            else if (teamArg.Equals("horde", StringComparison.OrdinalIgnoreCase))
+            else if (teamArg.Value.Equals("horde", StringComparison.OrdinalIgnoreCase))
                 team = Team.Horde;
-            else if (teamArg.Equals("alliance", StringComparison.OrdinalIgnoreCase))
+            else if (teamArg.Value.Equals("alliance", StringComparison.OrdinalIgnoreCase))
                 team = Team.Alliance;
             else
                 return false;
@@ -1097,18 +1014,17 @@ namespace Game.Chat
         }
 
         [CommandNonGroup("pinfo", RBACPermissions.CommandPinfo, true)]
-        static bool HandlePInfoCommand(CommandHandler handler, [OptionalArg] PlayerIdentifier arg)
+        static bool HandlePInfoCommand(CommandHandler handler, OptionalArg<PlayerIdentifier> arg)
         {
-            if (arg == null)
+            if (!arg.HasValue)
                 arg = PlayerIdentifier.FromTargetOrSelf(handler);
-
-            if (arg == null)
+            if (arg.Value == null)
                 return false;
 
             // Define ALL the player variables!
-            Player target = arg.GetConnectedPlayer();
-            ObjectGuid targetGuid = arg.GetGUID();
-            string targetName = arg.GetName();
+            Player target = arg.Value.GetConnectedPlayer();
+            ObjectGuid targetGuid = arg.Value.GetGUID();
+            string targetName = arg.Value.GetName();
             PreparedStatement stmt;
 
             /* The variables we extract for the command. They are
@@ -1450,7 +1366,7 @@ namespace Game.Chat
         }
 
         [CommandNonGroup("playall", RBACPermissions.CommandPlayall)]
-        static bool HandlePlayAllCommand(CommandHandler handler, uint soundId, uint? broadcastTextId)
+        static bool HandlePlayAllCommand(CommandHandler handler, uint soundId, OptionalArg<uint> broadcastTextId)
         {
             if (!CliDB.SoundKitStorage.ContainsKey(soundId))
             {
@@ -1571,7 +1487,8 @@ namespace Game.Chat
             }
 
             // First handle any creatures that still have a corpse around
-            var worker = new WorldObjectWorker(player, new RespawnDo());
+            RespawnDo u_do = new();
+            WorldObjectWorker<Creature> worker = new(player, u_do);
             Cell.VisitGridObjects(player, worker, player.GetGridActivationRange());
 
             // Now handle any that had despawned, but had respawn time logged.
@@ -1800,12 +1717,12 @@ namespace Game.Chat
         }
 
         [CommandNonGroup("unfreeze", RBACPermissions.CommandUnfreeze)]
-        static bool HandleUnFreezeCommand(CommandHandler handler, [OptionalArg] string targetNameArg)
+        static bool HandleUnFreezeCommand(CommandHandler handler, OptionalArg<string> targetNameArg)
         {
             string name = "";
             Player player;
 
-            if (!targetNameArg.IsEmpty())
+            if (targetNameArg.HasValue)
             {
                 name = targetNameArg;
                 ObjectManager.NormalizePlayerName(ref name);
@@ -1829,7 +1746,7 @@ namespace Game.Chat
             }
             else
             {
-                if (!targetNameArg.IsEmpty())
+                if (!targetNameArg.HasValue)
                 {
                     // Check for offline players
                     ObjectGuid guid = Global.CharacterCacheStorage.GetCharacterGuidByName(name);
@@ -1972,10 +1889,7 @@ namespace Game.Chat
 
                 Player caster = handler.GetSession().GetPlayer();
                 if (caster != null)
-                {
-                    ObjectGuid castId = ObjectGuid.Create(HighGuid.Cast, SpellCastSource.Normal, player.GetMapId(), SPELL_UNSTUCK_ID, player.GetMap().GenerateLowGuid(HighGuid.Cast));
-                    Spell.SendCastResult(caster, spellInfo, new Networking.Packets.SpellCastVisual(SPELL_UNSTUCK_VISUAL, 0), castId, SpellCastResult.CantDoThatRightNow);
-                }
+                    caster.SendPacket(new DisplayGameError(GameError.ClientLockedOut));
 
                 return false;
             }
@@ -2024,82 +1938,70 @@ namespace Game.Chat
     [CommandGroup("additem")]
     class MiscAddItemCommands
     {
-        [Command("", RBACPermissions.CommandAdditem)]
-        static bool HandleAddItemCommand(CommandHandler handler, StringArguments args)
+        static bool HandleAddItemCommandHelper(CommandHandler handler, Player player, Player playerTarget, VariantArg<ItemLinkData, uint, string> itemArg, OptionalArg<int> countArg, OptionalArg<string> bonusListIdString, OptionalArg<byte> itemContextArg)
         {
-            if (args.Empty())
-                return false;
-
             uint itemId = 0;
-
-            if (args[0] == '[')                                        // [name] manual form
+            List<uint> bonusListIDs = new();
+            ItemContext itemContext = ItemContext.None;
+            if (itemArg.Is<ItemLinkData>())
             {
-                string itemName = args.NextString("]").Substring(1);
+                ItemLinkData itemLinkData = itemArg.GetValue();
+                itemId = itemLinkData.Item.GetId();
+                bonusListIDs = itemLinkData.ItemBonusListIDs;
+                itemContext = (ItemContext)itemLinkData.Context;
+            }
+            else if (itemArg.Is<uint>())
+                itemId = itemArg;
+            else if (itemArg.Is<string>())
+            {
+                string itemName = itemArg;
+                if (itemName.StartsWith('['))
+                    itemName.Remove(0, 1);
+                if (itemName.EndsWith(']'))
+                    itemName.Remove(itemName.Length - 1, 1);
 
-                if (!string.IsNullOrEmpty(itemName))
+                var record = CliDB.ItemSparseStorage.Values.FirstOrDefault(sparse =>
                 {
-                    var record = CliDB.ItemSparseStorage.Values.FirstOrDefault(itemSparse =>
-                    {
-                        for (Locale i = 0; i < Locale.Total; ++i)
-                            if (itemName == itemSparse.Display[i])
-                                return true;
-                        return false;
-                    });
+                    for (Locale i = Locale.enUS; i < Locale.Total; i += 1)
+                        if (itemName == sparse.Display[i])
+                            return true;
+                    return false;
+                });
 
-                    if (record == null)
-                    {
-                        handler.SendSysMessage(CypherStrings.CommandCouldnotfind, itemName);
-                        return false;
-                    }
-                    itemId = record.Id;
+                if (record == null)
+                {
+                    handler.SendSysMessage(CypherStrings.CommandCouldnotfind, itemName);
+                    return false;
                 }
-                else
-                    return false;
-            }
-            else                                                    // item_id or [name] Shift-click form |color|Hitem:item_id:0:0:0|h[name]|h|r
-            {
-                string idStr = handler.ExtractKeyFromLink(args, "Hitem");
-                if (string.IsNullOrEmpty(idStr))
-                    return false;
 
-                if (!uint.TryParse(idStr, out itemId))
-                    return false;
+                itemId = record.Id;
             }
 
-            int count = args.NextInt32();
+            int count = countArg.GetValueOrDefault(1);
             if (count == 0)
                 count = 1;
 
-            List<uint> bonusListIDs = new();
-            var bonuses = args.NextString();
-            var context = args.NextString();
-
             // semicolon separated bonuslist ids (parse them after all arguments are extracted by strtok!)
-            if (!bonuses.IsEmpty())
+            if (bonusListIdString.HasValue)
             {
-                var tokens = new StringArray(bonuses, ';');
-                for (var i = 0; i < tokens.Length; ++i)
+                var tokens = new StringArray(bonusListIdString.Value, ';');
+                foreach (string token in tokens)
                 {
-                    if (uint.TryParse(tokens[i], out uint id))
-                        bonusListIDs.Add(id);
+                    if (uint.TryParse(token, out uint bonusListId))
+                        bonusListIDs.Add(bonusListId);
                 }
             }
 
-            ItemContext itemContext = ItemContext.None;
-            if (!context.IsEmpty())
+            if (itemContextArg.HasValue)
             {
-                itemContext = context.ToEnum<ItemContext>();
+                itemContext = (ItemContext)itemContextArg.Value;
                 if (itemContext < ItemContext.Max)
                 {
                     var contextBonuses = ItemBonusMgr.GetBonusListsForItem(itemId, new(itemContext));
                     bonusListIDs.AddRange(contextBonuses);
+                    bonusListIDs.Sort();
                 }
             }
-
-            Player player = handler.GetSession().GetPlayer();
-            Player playerTarget = handler.GetSelectedPlayer();
-            if (playerTarget == null)
-                playerTarget = player;
 
             ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(itemId);
             if (itemTemplate == null)
@@ -2131,15 +2033,14 @@ namespace Game.Chat
                     // failed to destroy items of the amount requested
                     handler.SendSysMessage(CypherStrings.RemoveitemFailure, itemId, -count, handler.GetNameLink(playerTarget));
                 }
+
                 return true;
             }
 
             // Adding items
-            uint noSpaceForCount = 0;
-
             // check space and find places
             List<ItemPosCount> dest = new();
-            InventoryResult msg = playerTarget.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, itemId, (uint)count, out noSpaceForCount);
+            InventoryResult msg = playerTarget.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, itemId, (uint)count, out uint noSpaceForCount);
             if (msg != InventoryResult.Ok)                               // convert to possible store amount
                 count -= (int)noSpaceForCount;
 
@@ -2149,14 +2050,15 @@ namespace Game.Chat
                 return false;
             }
 
-            Item item = playerTarget.StoreNewItem(dest, itemId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(itemId), null, itemContext, bonusListIDs.Empty() ? null : bonusListIDs);
+            Item item = playerTarget.StoreNewItem(dest, itemId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(itemId), null, itemContext,
+                bonusListIDs.Empty() ? null : bonusListIDs);
 
             // remove binding (let GM give it to another player later)
             if (player == playerTarget)
             {
-                foreach (var posCount in dest)
+                foreach (var itemPosCount in dest)
                 {
-                    Item item1 = player.GetItemByPos(posCount.pos);
+                    Item item1 = player.GetItemByPos(itemPosCount.pos);
                     if (item1 != null)
                         item1.SetBinding(false);
                 }
@@ -2174,10 +2076,21 @@ namespace Game.Chat
                 handler.SendSysMessage(CypherStrings.ItemCannotCreate, itemId, noSpaceForCount);
 
             return true;
+
+
+        }
+
+        [Command("", RBACPermissions.CommandAdditem)]
+        static bool HandleAddItemCommand(CommandHandler handler, VariantArg<ItemLinkData, uint, string> item, OptionalArg<int> countArg, OptionalArg<string> bonusListIdString, OptionalArg<byte> itemContextArg)
+        {
+            Player player = handler.GetSession().GetPlayer();
+            Player playerTarget = handler.GetSelectedPlayerOrSelf();
+
+            return HandleAddItemCommandHelper(handler, player, playerTarget, item, countArg, bonusListIdString, itemContextArg);
         }
 
         [Command("set", RBACPermissions.CommandAdditemset)]
-        static bool HandleAddItemSetCommand(CommandHandler handler, uint itemSetId, [OptionalArg] string bonuses, byte? context)
+        static bool HandleAddItemSetCommand(CommandHandler handler, VariantArg<ItemLinkData, uint> itemSetId, OptionalArg<string> bonuses, OptionalArg<byte> context)
         {
             // prevent generation all items with itemset field value '0'
             if (itemSetId == 0)
@@ -2189,7 +2102,7 @@ namespace Game.Chat
             List<uint> bonusListIDs = new();
 
             // semicolon separated bonuslist ids (parse them after all arguments are extracted by strtok!)
-            if (!bonuses.IsEmpty())
+            if (bonuses.HasValue)
             {
                 var tokens = new StringArray(bonuses, ';');
                 for (var i = 0; i < tokens.Length; ++i)
@@ -2257,163 +2170,102 @@ namespace Game.Chat
         }
 
         [Command("to", RBACPermissions.CommandAdditemset)]
-        static bool HandleAddItemToCommand(CommandHandler handler, StringArguments args)
+        static bool HandleAddItemToCommand(CommandHandler handler, PlayerIdentifier target, VariantArg<ItemLinkData, uint, string> item, OptionalArg<int> countArg, OptionalArg<string> bonusListIdString, OptionalArg<byte> itemContextArg)
         {
-            if (args.Empty())
-                return false;
-
             Player player = handler.GetSession().GetPlayer();
-            Player playerTarget = null;
-            if (!handler.ExtractPlayerTarget(args, out playerTarget))
-                return false;
-
-            StringArguments tailArgs = new StringArguments(args.NextString(""));
-            if (tailArgs.Empty())
-                return false;
-
-            uint itemId = 0;
-
-            if (tailArgs[0] == '[')                                        // [name] manual form
+            if (!target.IsConnected())
             {
-                string itemNameStr = tailArgs.NextString("]");
+                handler.SendSysMessage(CypherStrings.PlayerNotFound);
+                return false;
+            }
 
-                if (!itemNameStr.IsEmpty())
-                {
-                    string itemName = itemNameStr.Substring(1);
-                    var itr = CliDB.ItemSparseStorage.Values.FirstOrDefault(sparse =>
-                    {
-                        for (Locale i = Locale.enUS; i < Locale.Total; ++i)
-                            if (itemName == sparse.Display[i])
-                                return true;
-                        return false;
-                    });
+            return HandleAddItemCommandHelper(handler, player, target.GetConnectedPlayer(), item, countArg, bonusListIdString, itemContextArg);
+        }
+    }
 
-                    if (itr == null)
-                    {
-                        handler.SendSysMessage(CypherStrings.CommandCouldnotfind, itemName);
-                        return false;
-                    }
-
-                    itemId = itr.Id;
-                }
-                else
+    [CommandGroup("damage")]
+    class MiscDamageCommands
+    {
+        [Command("", RBACPermissions.CommandDamage)]
+        static bool HandleDamageCommand(CommandHandler handler, uint damage, OptionalArg<SpellSchools> school, OptionalArg<SpellInfo> spellInfo)
+        {
+            Unit target = handler.GetSelectedUnit();
+            if (target == null || handler.GetSession().GetPlayer().GetTarget().IsEmpty())
+            {
+                handler.SendSysMessage(CypherStrings.SelectCharOrCreature);
+                return false;
+            }
+            Player player = target.ToPlayer();
+            if (player != null)
+                if (handler.HasLowerSecurity(player, ObjectGuid.Empty, false))
                     return false;
-            }
-            else                                                    // item_id or [name] Shift-click form |color|Hitem:item_id:0:0:0|h[name]|h|r
+
+            if (!target.IsAlive())
+                return true;
+
+            Player attacker = handler.GetSession().GetPlayer();
+
+            // flat melee damage without resistence/etc reduction
+            if (!school.HasValue)
             {
-                string id = handler.ExtractKeyFromLink(tailArgs, "Hitem");
-                if (id.IsEmpty())
-                    return false;
-                itemId = uint.Parse(id);
-            }
-
-            string ccount = tailArgs.NextString();
-
-            int count = 1;
-            if (!ccount.IsEmpty())
-                count = int.Parse(ccount);
-
-            if (count == 0)
-                count = 1;
-
-            List<uint> bonusListIDs = new();
-            string bonuses = tailArgs.NextString();
-
-            string context = tailArgs.NextString();
-
-            ItemContext itemContext = ItemContext.None;
-            if (!context.IsEmpty())
-            {
-                itemContext = context.ToEnum<ItemContext>();
-                if (itemContext < ItemContext.Max)
-                {
-                    var contextBonuses = ItemBonusMgr.GetBonusListsForItem(itemId, new(itemContext));
-                    bonusListIDs.AddRange(contextBonuses);
-                }
-            }
-
-            // semicolon separated bonuslist ids
-            if (!bonuses.IsEmpty())
-            {
-                foreach (var token in bonuses.Split(';', StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (uint.TryParse(token, out uint bonusListId))
-                        bonusListIDs.Add(bonusListId);
-                }
-            }
-
-            ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(itemId);
-            if (itemTemplate == null)
-            {
-                handler.SendSysMessage(CypherStrings.CommandItemidinvalid, itemId);
-                return false;
-            }
-
-            // Subtract
-            if (count < 0)
-            {
-                uint destroyedItemCount = playerTarget.DestroyItemCount(itemId, (uint)-count, true, false);
-
-                if (destroyedItemCount > 0)
-                {
-                    // output the amount of items successfully destroyed
-                    handler.SendSysMessage(CypherStrings.Removeitem, itemId, destroyedItemCount, handler.GetNameLink(playerTarget));
-
-                    // check to see if we were unable to destroy all of the amount requested.
-                    uint unableToDestroyItemCount = (uint)(-count - destroyedItemCount);
-                    if (unableToDestroyItemCount > 0)
-                    {
-                        // output message for the amount of items we couldn't destroy
-                        handler.SendSysMessage(CypherStrings.RemoveitemFailure, itemId, unableToDestroyItemCount, handler.GetNameLink(playerTarget));
-                    }
-                }
-                else
-                {
-                    // failed to destroy items of the amount requested
-                    handler.SendSysMessage(CypherStrings.RemoveitemFailure, itemId, -count, handler.GetNameLink(playerTarget));
-                }
-
+                Unit.DealDamage(attacker, target, damage, null, DamageEffectType.Direct, SpellSchoolMask.Normal, null, false);
+                if (target != attacker)
+                    attacker.SendAttackStateUpdate(HitInfo.AffectsVictim, target, SpellSchoolMask.Normal, damage, 0, 0, VictimState.Hit, 0, 0);
                 return true;
             }
 
-            // Adding items
-            uint noSpaceForCount = 0;
+            SpellSchoolMask schoolmask = (SpellSchoolMask)(1 << (int)school.Value);
 
-            // check space and find places
-            List<ItemPosCount> dest = new();
-            InventoryResult msg = playerTarget.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, itemId, (uint)count, out noSpaceForCount);
-            if (msg != InventoryResult.Ok)                               // convert to possible store amount
-                count -= (int)noSpaceForCount;
+            if (Unit.IsDamageReducedByArmor(schoolmask))
+                damage = Unit.CalcArmorReducedDamage(handler.GetPlayer(), target, damage, null, WeaponAttackType.BaseAttack);
 
-            if (count == 0 || dest.Empty())                         // can't add any
+            // melee damage by specific school
+            if (!spellInfo.HasValue)
             {
-                handler.SendSysMessage(CypherStrings.ItemCannotCreate, itemId, noSpaceForCount);
+                DamageInfo dmgInfo = new(attacker, target, damage, null, schoolmask, DamageEffectType.SpellDirect, WeaponAttackType.BaseAttack);
+                Unit.CalcAbsorbResist(dmgInfo);
+
+                if (dmgInfo.GetDamage() == 0)
+                    return true;
+
+                damage = dmgInfo.GetDamage();
+
+                uint absorb = dmgInfo.GetAbsorb();
+                uint resist = dmgInfo.GetResist();
+                Unit.DealDamageMods(attacker, target, ref damage, ref absorb);
+                Unit.DealDamage(attacker, target, damage, null, DamageEffectType.Direct, schoolmask, null, false);
+                attacker.SendAttackStateUpdate(HitInfo.AffectsVictim, target, schoolmask, damage, absorb, resist, VictimState.Hit, 0, 0);
+                return true;
+            }
+
+            // non-melee damage
+
+            SpellNonMeleeDamage damageInfo = new(attacker, target, spellInfo, new SpellCastVisual(spellInfo.Value.GetSpellXSpellVisualId(attacker), 0), spellInfo.Value.SchoolMask);
+            damageInfo.damage = damage;
+            Unit.DealDamageMods(damageInfo.attacker, damageInfo.target, ref damageInfo.damage, ref damageInfo.absorb);
+            target.DealSpellDamage(damageInfo, true);
+            target.SendSpellNonMeleeDamageLog(damageInfo);
+            return true;
+        }
+
+        [Command("go", RBACPermissions.CommandDamage)]
+        static bool HandleDamageGoCommand(CommandHandler handler, VariantArg<GameobjectLinkData, ulong> spawnId, int damage)
+        {
+            GameObject go = handler.GetObjectFromPlayerMapByDbGuid(spawnId);
+            if (go == null)
+            {
+                handler.SendSysMessage(CypherStrings.CommandObjnotfound, spawnId);
                 return false;
             }
 
-            Item item = playerTarget.StoreNewItem(dest, itemId, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(itemId), null, itemContext, bonusListIDs.Empty() ? null : bonusListIDs);
-
-            // remove binding (let GM give it to another player later)
-            if (player == playerTarget)
+            if (!go.IsDestructibleBuilding())
             {
-                foreach (var itemPostCount in dest)
-                {
-                    Item item1 = player.GetItemByPos(itemPostCount.pos);
-                    if (item1 != null)
-                        item1.SetBinding(false);
-                }
+                handler.SendSysMessage(CypherStrings.InvalidGameobjectType);
+                return false;
             }
 
-            if (count > 0 && item != null)
-            {
-                player.SendNewItem(item, (uint)count, false, true);
-                if (player != playerTarget)
-                    playerTarget.SendNewItem(item, (uint)count, true, false);
-            }
-
-            if (noSpaceForCount > 0)
-                handler.SendSysMessage(CypherStrings.ItemCannotCreate, itemId, noSpaceForCount);
-
+            go.ModifyHealth(-damage, handler.GetSession().GetPlayer());
+            handler.SendSysMessage(CypherStrings.GameobjectDamaged, go.GetName(), spawnId, -damage, go.GetGoValue().Building.Health);
             return true;
         }
     }

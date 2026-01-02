@@ -4,6 +4,7 @@
 using Framework.Collections;
 using Framework.Constants;
 using Framework.Database;
+using Game.BattleGrounds;
 using Game.DataStorage;
 using Game.Entities;
 using Game.Maps;
@@ -193,8 +194,8 @@ namespace Game
         {
             {
                 uint oldMSTime = Time.GetMSTime();
-                //                                         0           1                           2                         3          4       5        6            7            8             9
-                SQLResult result = DB.World.Query("SELECT eventEntry, UNIX_TIMESTAMP(start_time), UNIX_TIMESTAMP(end_time), occurence, length, holiday, holidayStage, description, world_event, announce FROM game_event");
+                //                                         0           1                           2                         3          4       5        6            7            8             9             10
+                SQLResult result = DB.World.Query("SELECT eventEntry, UNIX_TIMESTAMP(start_time), UNIX_TIMESTAMP(end_time), occurence, length, holiday, holidayStage, WorldStateId, description, world_event, announce FROM game_event");
                 if (result.IsEmpty())
                 {
                     mGameEvent.Clear();
@@ -222,9 +223,10 @@ namespace Game
                     pGameEvent.holiday_id = (HolidayIds)result.Read<uint>(5);
 
                     pGameEvent.holidayStage = result.Read<byte>(6);
-                    pGameEvent.description = result.Read<string>(7);
-                    pGameEvent.state = (GameEventState)result.Read<byte>(8);
-                    pGameEvent.announce = result.Read<byte>(9);
+                    pGameEvent.WorldStateId = result.Read<int>(7);
+                    pGameEvent.description = result.Read<string>(8);
+                    pGameEvent.state = (GameEventState)result.Read<byte>(9);
+                    pGameEvent.announce = result.Read<byte>(10);
                     pGameEvent.nextstart = 0;
 
                     ++count;
@@ -250,7 +252,21 @@ namespace Game
                             continue;
                         }
 
+                        var bl = CliDB.BattlemasterListStorage.LookupByKey(Global.BattlegroundMgr.WeekendHolidayIdToBGType(pGameEvent.holiday_id));
+                        if (bl != null && bl.HolidayWorldState != 0)
+                        {
+                            if (pGameEvent.WorldStateId.HasValue && pGameEvent.WorldStateId != bl.HolidayWorldState)
+                                Log.outError(LogFilter.Sql, $"`game_event` game event id ({event_id}) has world state id set, but holiday {pGameEvent.holiday_id} is linked to battleground, set to battlemaster world state id {bl.HolidayWorldState}");
+                            pGameEvent.WorldStateId = bl.HolidayWorldState;
+                        }
+
                         SetHolidayEventTime(pGameEvent);
+                    }
+
+                    if (pGameEvent.WorldStateId.HasValue && Global.WorldStateMgr.GetWorldStateTemplate(pGameEvent.WorldStateId.Value) == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"`game_event` game event id ({event_id}) has an invalid world state Id {pGameEvent.WorldStateId}, set to 0.");
+                        pGameEvent.WorldStateId = null;
                     }
 
                     mGameEvent[event_id] = pGameEvent;
@@ -1031,7 +1047,7 @@ namespace Game
 
             Log.outInfo(LogFilter.Gameevent, "GameEvent {0} \"{1}\" started.", event_id, mGameEvent[event_id].description);
 
-            // spawn positive event tagget objects
+            // spawn positive event tagged objects
             GameEventSpawn((short)event_id);
             // un-spawn negative event tagged objects
             short event_nid = (short)(-1 * event_id);
@@ -1411,18 +1427,9 @@ namespace Game
 
         void UpdateWorldStates(ushort event_id, bool Activate)
         {
-            GameEventData Event = mGameEvent[event_id];
-            if (Event.holiday_id != HolidayIds.None)
-            {
-                BattlegroundTypeId bgTypeId = Global.BattlegroundMgr.WeekendHolidayIdToBGType(Event.holiday_id);
-                if (bgTypeId != BattlegroundTypeId.None)
-                {
-                    var bl = CliDB.BattlemasterListStorage.LookupByKey(Global.BattlegroundMgr.WeekendHolidayIdToBGType(Event.holiday_id));
-                    if (bl != null)
-                        if (bl.HolidayWorldState != 0)
-                            Global.WorldStateMgr.SetValue(bl.HolidayWorldState, Activate ? 1 : 0, false, null);
-                }
-            }
+            var worldStateId = mGameEvent[event_id].WorldStateId;
+            if (worldStateId.HasValue)
+                Global.WorldStateMgr.SetValue(worldStateId.Value, Activate ? 1 : 0, false, null);
         }
 
         public void HandleQuestComplete(uint quest_id)
@@ -1551,9 +1558,9 @@ namespace Game
             byte stageIndex = (byte)(gameEvent.holidayStage - 1);
             gameEvent.length = (uint)(holiday.Duration[stageIndex] * Time.Hour / Time.Minute);
 
-            long stageOffset = 0;
+            TimeSpan stageOffset = TimeSpan.Zero;
             for (int i = 0; i < stageIndex; ++i)
-                stageOffset += holiday.Duration[i] * Time.Hour;
+                stageOffset += TimeSpan.FromHours(holiday.Duration[i]);
 
             switch (holiday.CalendarFilterType)
             {
@@ -1576,31 +1583,24 @@ namespace Game
                     gameEvent.occurence += (uint)(holiday.Duration[i] * Time.Hour / Time.Minute);
             }
 
-            bool singleDate = ((holiday.Date[0] >> 24) & 0x1F) == 31; // Events with fixed date within year have - 1
-
-            long curTime = GameTime.GetGameTime();
+            WowTime curTime = GameTime.GetWowTime();
             for (int i = 0; i < SharedConst.MaxHolidayDates && holiday.Date[i] != 0; ++i)
             {
-                uint date = holiday.Date[i];
-
-                int year;
+                WowTime date = new();
+                date.SetPackedTime(holiday.Date[i]);
+                bool singleDate = date.GetYear() == -1;
                 if (singleDate)
-                    year = Time.UnixTimeToDateTime(curTime).ToLocalTime().Year - 1; // First try last year (event active through New Year)
-                else
-                    year = (int)((date >> 24) & 0x1F) + 100 + 1900;
+                    date.SetYear(GameTime.GetWowTime().GetYear() - 1); // First try last year (event active through New Year)
 
-                var timeInfo = new DateTime(year, (int)((date >> 20) & 0xF) + 1, (int)((date >> 14) & 0x3F) + 1, (int)((date >> 6) & 0x1F), (int)(date & 0x3F), 0);
-
-                long startTime = Time.DateTimeToUnixTime(timeInfo);
-                if (curTime < startTime + gameEvent.length * Time.Minute)
+                if (curTime < date + TimeSpan.FromMinutes(gameEvent.length))
                 {
-                    gameEvent.start = startTime + stageOffset;
+                    gameEvent.start = (date + stageOffset).GetUnixTimeFromUtcTime();
                     break;
                 }
                 else if (singleDate)
                 {
-                    var tmCopy = timeInfo.AddYears(Time.UnixTimeToDateTime(curTime).ToLocalTime().Year); // This year
-                    gameEvent.start = Time.DateTimeToUnixTime(tmCopy) + stageOffset;
+                    date.SetYear(date.GetYear() + 1); // This year
+                    gameEvent.start = (date + stageOffset).GetUnixTimeFromUtcTime();
                     break;
                 }
                 else
@@ -1625,7 +1625,7 @@ namespace Game
             TimeSpan durationSinceLastStart = TimeSpan.FromTicks((now - eventInitialStart).Ticks % occurence.Ticks);
             return Time.DateTimeToUnixTime(now - durationSinceLastStart);
         }
-        
+
         public bool IsHolidayActive(HolidayIds id)
         {
             if (id == HolidayIds.None)
@@ -1698,6 +1698,7 @@ namespace Game
         public uint length;          // length of the event (Time.Minutes) after finishing all conditions
         public HolidayIds holiday_id;
         public byte holidayStage;
+        public int? WorldStateId;
         public GameEventState state;   // state of the game event, these are saved into the game_event table on change!
         public Dictionary<uint, GameEventFinishCondition> conditions = new();  // conditions to finish
         public List<ushort> prerequisite_events = new();  // events that must be completed before starting this event

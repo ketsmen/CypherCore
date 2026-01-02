@@ -450,8 +450,8 @@ namespace Framework.Constants
         PlayerWeaponHighWatermarkAboveOrEqual = 375, /*NYI*/
         PlayerHeadHighWatermarkAboveOrEqual = 376, /*NYI*/
         PlayerHasDisplayedCurrencyLessThan = 377, /*NYI*/ // Player has {CurrencyTypes} less than {#Amount} (value visible in ui is taken into account, not raw value)
-        PlayerDataFlagAccountIsSet = 378, /*NYI*/ // Player {PlayerDataFlagAccount} is set
-        PlayerDataFlagCharacterIsSet = 379, /*NYI*/ // Player {PlayerDataFlagCharacter} is set
+        PlayerDataFlagAccountIsSet = 378,  // Player {PlayerDataFlagAccount} is set
+        PlayerDataFlagCharacterIsSet = 379,  // Player {PlayerDataFlagCharacter} is set
         PlayerIsOnMapWithExpansion = 380, // Player is on map that has {ExpansionID}
 
         PlayerHasCompletedQuestOnAccount = 382, /*NYI*/ // Player has previously completed quest "{QuestV2}" on account
@@ -462,9 +462,16 @@ namespace Framework.Constants
         PlayerIsInSoloRBG = 387, /*NYI*/ // Player is in solo RBG (BG Blitz)
         PlayerHasCompletedCampaign = 388, /*NYI*/ // Player has completed campaign "{Campaign}"
         TargetCreatureClassificationEqual = 389, // Creature classification is {CreatureClassification}
-        PlayerDataElementCharacterEqual = 390, /*NYI*/ // Player {PlayerDataElementCharacter} is greater than {#Amount}
-        PlayerDataElementAccountEqual = 391, /*NYI*/ // Player {PlayerDataElementAccount} is greater than {#Amount}
+        PlayerDataElementCharacterBetween = 390, // Player {PlayerDataElementCharacter} is between {#Amount} and {#Amount2}
+        PlayerDataElementAccountBetween = 391, // Player {PlayerDataElementAccount} is between {#Amount} and {#Amount2}
         PlayerHasCompletedQuestOrIsReadyToTurnIn = 392, // Player has previously completed quest "{QuestV2}" or is ready to turn it in
+        PlayerTitle = 393, // Player is currently using "{ChrTitles}" title
+
+        PlayerWeeklyCurrencyIsRelOpFromMax = 397, /*NYI*/ // Player weekly {CurrencyTypes} is {RelOp} {#Amount} from currency weekly limit
+
+        PlayerIsInGuild = 404, // Player is in a guild
+
+        PlayerAvgItemLevelRelOp = 415, /*NYI*/ // Player average item level {AvgItemLevelCategory} is {RelOp} {#Amount}
     }
 
     public enum CriteriaFailEvent : byte
@@ -613,7 +620,7 @@ namespace Framework.Constants
         TotalFactionsEncountered = 89,  // Total factions encountered
         LootAnyItem = 90,  // Loot any item
         ObtainAnyItem = 91,  // Obtain any item
-        AnyoneTriggerGameEventScenario = 92,  /*NYI*/ // Anyone will Trigger game event "{GameEvents}" (Scenario Only)
+        AnyoneTriggerGameEventScenario = 92,  // Anyone will Trigger game event "{GameEvents}" (Scenario Only)
         RollAnyNeed = 93,  // Roll any number on need
         RollAnyGreed = 94,  // Roll any number on greed
         ReleasedSpirit = 95,  /*NYI*/ // Released Spirit
@@ -742,7 +749,7 @@ namespace Framework.Constants
         CompleteAnyReplayQuest = 218, // Complete Any Replay Quest
         BuyItemsFromVendors = 219, // Buy items from vendors
         SellItemsToVendors = 220, // Sell items to vendors
-        ReachMaxLevel = 221, /*NYI*/ // Reach Max Level
+        ReachMaxLevel = 221, // Reach Max Level
         MemorizeSpell = 222, /*NYI*/ // Memorize Spell "{Spell}"
         LearnTransmogIllusion = 223, /*NYI*/ // Learn Transmog Illusion
         LearnAnyTransmogIllusion = 224, /*NYI*/ // Learn Any Transmog Illusion
@@ -767,10 +774,10 @@ namespace Framework.Constants
 
         CompleteQuestsCountOnAccount = 257, /*NYI*/
 
-        WarbandBankTabPurchased = 260, /*NYI*/
+        BankTabPurchased = 260, // Bank Tab Purchased in {#BankType}
         ReachRenownLevel = 261,
         LearnTaxiNode = 262,
-        Count = 264
+        Count = 270
     }
 
     public enum CriteriaDataType

@@ -222,9 +222,6 @@ namespace Game.Chat
                             return player.GetGUID().GetCounter();
 
                         ObjectGuid guid = Global.CharacterCacheStorage.GetCharacterGuidByName(idS);
-                        if (guid.IsEmpty())
-                            return 0;
-
                         return guid.GetCounter();
                     }
                 case 1:
@@ -400,7 +397,7 @@ namespace Game.Chat
             NearestGameObjectCheck check = new(pl);
             GameObjectLastSearcher searcher = new(pl, check);
             Cell.VisitGridObjects(pl, searcher, MapConst.SizeofGrids);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public string PlayerLink(string name)

@@ -9,6 +9,7 @@ using Game.Accounts;
 using Game.BattleGrounds;
 using Game.BattlePets;
 using Game.Chat;
+using Game.DataStorage;
 using Game.Entities;
 using Game.Guilds;
 using Game.Maps;
@@ -18,6 +19,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 
@@ -25,6 +27,9 @@ namespace Game
 {
     public partial class WorldSession : IDisposable
     {
+        public static uint SPECIAL_INIT_ACTIVE_MOVER_TIME_SYNC_COUNTER = 0xFFFFFFFF;
+        public static uint SPECIAL_RESUME_COMMS_TIME_SYNC_COUNTER = 0xFFFFFFFE;
+
         public WorldSession(uint id, string name, uint battlenetAccountId, WorldSocket sock, AccountTypes sec, Expansion expansion, long mute_time, string os, TimeSpan timezoneOffset, uint build, Framework.ClientBuild.ClientBuildVariantId clientBuildVariant, Locale locale, uint recruiter, bool isARecruiter)
         {
             m_muteTime = mute_time;
@@ -157,6 +162,9 @@ namespace Game
                 _player.ClearWhisperWhiteList();
 
                 _player.FailQuestsWithFlag(QuestFlags.FailOnLogout);
+
+                // exit areatriggers before saving to remove auras applied by them
+                _player.ExitAllAreaTriggers();
 
                 // empty buyback items and save the player in the database
                 // some save parts only correctly work in case player present in map/player_lists (pets, etc)
@@ -370,6 +378,23 @@ namespace Game
             return true;
         }
 
+        public static void AddInstanceConnection(WorldSession session, WorldSocket socket, ConnectToKey key)
+        {
+            if (socket == null || !socket.IsOpen())
+                return;
+
+            if (session == null || session.GetConnectToInstanceKey() != key.Raw)
+            {
+                socket.SendAuthResponseError(BattlenetRpcErrorCode.TimedOut);
+                socket.CloseSocket();
+                return;
+            }
+
+            socket.SetWorldSession(session);
+            session.m_Socket[(int)ConnectionType.Instance] = socket;
+            session.HandleContinuePlayerLogin();
+        }
+
         public void QueuePacket(WorldPacket packet)
         {
             _recvQueue.Enqueue(packet);
@@ -388,7 +413,7 @@ namespace Game
             if (!packet.IsValidOpcode())
             {
                 string specialName = packet.GetOpcode() == ServerOpcodes.Unknown ? "UNKNOWN_OPCODE" : "INVALID_OPCODE";
-                Log.outError(LogFilter.Network, $"Prevented sending of {specialName} (0x{packet.GetOpcode():04X}) to {GetPlayerInfo()}");
+                Log.outError(LogFilter.Network, $"Prevented sending of {specialName} (0x{(int)packet.GetOpcode():04X}) to {GetPlayerInfo()}");
                 return;
             }
 
@@ -407,8 +432,6 @@ namespace Game
 
             m_Socket[(int)conIdx].SendPacket(packet);
         }
-
-        public void AddInstanceConnection(WorldSocket sock) { m_Socket[(int)ConnectionType.Instance] = sock; }
 
         public void KickPlayer(string reason)
         {
@@ -478,6 +501,163 @@ namespace Game
             tutorialsChanged &= ~TutorialsFlag.Changed;
         }
 
+        void LoadPlayerDataAccount(SQLResult elementsResult, SQLResult flagsResult)
+        {
+            if (!elementsResult.IsEmpty())
+            {
+                do
+                {
+                    var entry = CliDB.PlayerDataElementAccountStorage.LookupByKey(elementsResult.Read<uint>(0));
+                    if (entry == null)
+                        continue;
+
+                    PlayerDataAccount.Element element = new();
+                    element.Id = entry.Id;
+                    element.NeedSave = false;
+
+                    switch (entry.GetElementType())
+                    {
+                        case PlayerDataElementType.Int64:
+                            element.Int64Value = elementsResult.Read<long>(2);
+                            break;
+                        case PlayerDataElementType.Float:
+                            element.FloatValue = elementsResult.Read<float>(1);
+                            break;
+                        default:
+                            break;
+                    }
+
+                    _playerDataAccount.Elements.Add(element);
+                } while (elementsResult.NextRow());
+            }
+
+            if (!flagsResult.IsEmpty())
+            {
+                do
+                {
+                    _playerDataAccount.Flags.EnsureWritableListIndex(flagsResult.Read<uint>(0), new PlayerDataAccount.Flag() { Value = flagsResult.Read<ulong>(1), NeedSave = false });
+                } while (flagsResult.NextRow());
+            }
+        }
+
+        public void SavePlayerDataAccount(SQLTransaction transaction)
+        {
+            PreparedStatement stmt;
+            for (int i = 0; i < _playerDataAccount.Elements.Count; i++)
+            {
+                PlayerDataAccount.Element element = _playerDataAccount.Elements[i];
+                if (!element.NeedSave)
+                    continue;
+
+                stmt = LoginDatabase.GetPreparedStatement(LoginStatements.DEL_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT);
+                stmt.AddValue(0, GetBattlenetAccountId());
+                stmt.AddValue(1, element.Id);
+                transaction.Append(stmt);
+
+                element.NeedSave = false;
+
+                var entry = CliDB.PlayerDataElementAccountStorage.LookupByKey(element.Id);
+                if (entry == null)
+                    continue;
+
+                switch (entry.GetElementType())
+                {
+                    case PlayerDataElementType.Int64:
+                        if (element.Int64Value == 0)
+                            continue;
+                        stmt = LoginDatabase.GetPreparedStatement(LoginStatements.INS_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT);
+                        stmt.AddValue(0, GetBattlenetAccountId());
+                        stmt.AddValue(1, element.Id);
+                        stmt.AddNull(2);
+                        stmt.AddValue(3, element.Int64Value);
+                        transaction.Append(stmt);
+                        break;
+                    case PlayerDataElementType.Float:
+                        if (element.FloatValue == 0)
+                            continue;
+                        stmt = LoginDatabase.GetPreparedStatement(LoginStatements.INS_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT);
+                        stmt.AddValue(0, GetBattlenetAccountId());
+                        stmt.AddValue(1, element.Id);
+                        stmt.AddValue(2, element.FloatValue);
+                        stmt.AddNull(3);
+                        transaction.Append(stmt);
+                        break;
+                }
+            }
+
+            for (var i = 0; i < _playerDataAccount.Flags.Count; ++i)
+            {
+                var flag = _playerDataAccount.Flags[i];
+                if (!flag.NeedSave)
+                    continue;
+
+                stmt = LoginDatabase.GetPreparedStatement(LoginStatements.DEL_BNET_PLAYER_DATA_FLAGS_ACCOUNT);
+                stmt.AddValue(0, GetBattlenetAccountId());
+                stmt.AddValue(1, i);
+                transaction.Append(stmt);
+
+                flag.NeedSave = false;
+
+                if (flag.Value == 0)
+                    continue;
+
+                stmt = LoginDatabase.GetPreparedStatement(LoginStatements.INS_BNET_PLAYER_DATA_FLAGS_ACCOUNT);
+                stmt.AddValue(0, GetBattlenetAccountId());
+                stmt.AddValue(1, i);
+                stmt.AddValue(2, flag.Value);
+                transaction.Append(stmt);
+            }
+        }
+
+        public void SetPlayerDataElementAccount(uint dataElementId, float value)
+        {
+            var element = _playerDataAccount.Elements.Find(p => p.Id == dataElementId);
+            if (element == null)
+            {
+                element = new();
+                element.Id = dataElementId;
+                _playerDataAccount.Elements.Add(element);
+            }
+
+            element.NeedSave = true;
+            element.FloatValue = value;
+        }
+
+        public void SetPlayerDataElementAccount(uint dataElementId, long value)
+        {
+            var element = _playerDataAccount.Elements.Find(p => p.Id == dataElementId);
+            if (element == null)
+            {
+                element = new();
+                element.Id = dataElementId;
+                _playerDataAccount.Elements.Add(element);
+            }
+
+            element.NeedSave = true;
+            element.Int64Value = value;
+        }
+
+        public void SetPlayerDataFlagAccount(uint dataFlagId, bool on)
+        {
+            var entry = CliDB.PlayerDataFlagAccountStorage.LookupByKey(dataFlagId);
+            if (entry == null)
+                return;
+
+            int fieldOffset = entry.StorageIndex / PlayerConst.DataFlagValueBits;
+            ulong flagValue = 1UL << (entry.StorageIndex % PlayerConst.DataFlagValueBits);
+
+            _playerDataAccount.Flags.EnsureWritableListIndex((uint)fieldOffset, new PlayerDataAccount.Flag());
+            var flag = _playerDataAccount.Flags[fieldOffset];
+            if (on)
+                flag.Value |= flagValue;
+            else
+                flag.Value &= ~flagValue;
+
+            flag.NeedSave = true;
+        }
+
+        public PlayerDataAccount GetPlayerDataAccount() { return _playerDataAccount; }
+
         public void SendConnectToInstance(ConnectToSerial serial)
         {
             System.Net.IPAddress instanceAddress = null;
@@ -492,7 +672,7 @@ namespace Game
             ConnectTo connectTo = new();
             connectTo.Key = _instanceConnectKey.Raw;
             connectTo.Serial = serial;
-            connectTo.Payload.Port = (ushort)WorldConfig.GetIntValue(WorldCfg.PortInstance);
+            connectTo.Payload.Port = (ushort)WorldConfig.GetIntValue(WorldCfg.PortWorld);
             connectTo.Con = (byte)ConnectionType.Instance;
 
             if (instanceAddress != null)
@@ -805,6 +985,8 @@ namespace Game
             _collectionMgr.LoadAccountMounts(holder.GetResult(AccountInfoQueryLoad.Mounts));
             _collectionMgr.LoadAccountItemAppearances(holder.GetResult(AccountInfoQueryLoad.ItemAppearances), holder.GetResult(AccountInfoQueryLoad.ItemFavoriteAppearances));
             _collectionMgr.LoadAccountTransmogIllusions(holder.GetResult(AccountInfoQueryLoad.TransmogIllusions));
+            _collectionMgr.LoadAccountWarbandScenes(holder.GetResult(AccountInfoQueryLoad.WarbandScenes));
+            LoadPlayerDataAccount(holder.GetResult(AccountInfoQueryLoad.PlayerDataElementsAccount), holder.GetResult(AccountInfoQueryLoad.PlayerDataFlagsAccount));
 
             if (!m_inQueue)
                 SendAuthResponse(BattlenetRpcErrorCode.Ok, false);
@@ -887,11 +1069,16 @@ namespace Game
             timeSyncRequest.SequenceIndex = _timeSyncNextCounter;
             SendPacket(timeSyncRequest);
 
-            _pendingTimeSyncRequests[_timeSyncNextCounter] = Time.GetMSTime();
+            RegisterTimeSync(_timeSyncNextCounter);
 
             // Schedule next sync in 10 sec (except for the 2 first packets, which are spaced by only 5s)
             _timeSyncTimer = _timeSyncNextCounter == 0 ? 5000 : 10000u;
             _timeSyncNextCounter++;
+        }
+
+        public void RegisterTimeSync(uint counter)
+        {
+            _pendingTimeSyncRequests[counter] = Time.GetMSTime();
         }
 
         uint AdjustClientMovementTime(uint time)
@@ -983,6 +1170,7 @@ namespace Game
         Dictionary<uint, Action<Google.Protobuf.CodedInputStream>> _battlenetResponseCallbacks = new();
         uint _battlenetRequestToken;
 
+        PlayerDataAccount _playerDataAccount = new();
         List<string> _registeredAddonPrefixes = new();
         bool _filterAddonMessages;
         uint recruiterId;
@@ -997,7 +1185,7 @@ namespace Game
         CircularBuffer<Tuple<long, uint>> _timeSyncClockDeltaQueue = new(6); // first member: clockDelta. Second member: latency of the packet exchange that was used to compute that clockDelta.
         long _timeSyncClockDelta;
 
-        Dictionary<uint, uint> _pendingTimeSyncRequests = new(); // key: counter. value: server time when packet with that counter was sent.
+        Dictionary<uint, long> _pendingTimeSyncRequests = new(); // key: counter. value: server time when packet with that counter was sent.
         uint _timeSyncNextCounter;
         uint _timeSyncTimer;
 
@@ -1099,7 +1287,7 @@ namespace Game
         WorldSession Session;
         Dictionary<uint, PacketCounter> _PacketThrottlingMap = new();
 
-        enum Policy
+        public enum Policy
         {
             Log,
             Kick,
@@ -1173,6 +1361,10 @@ namespace Game
             stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_BNET_TRANSMOG_ILLUSIONS);
             stmt.AddValue(0, battlenetAccountId);
             SetQuery(AccountInfoQueryLoad.TransmogIllusions, stmt);
+
+            stmt = LoginDatabase.GetPreparedStatement(LoginStatements.SEL_BNET_WARBAND_SCENES);
+            stmt.AddValue(0, battlenetAccountId);
+            SetQuery(AccountInfoQueryLoad.WarbandScenes, stmt);
         }
     }
 
@@ -1189,5 +1381,28 @@ namespace Game
         GlobalAccountDataIndexPerRealm,
         TutorialsIndexPerRealm,
         TransmogIllusions,
+        WarbandScenes,
+        PlayerDataElementsAccount,
+        PlayerDataFlagsAccount,
+    }
+
+    public class PlayerDataAccount
+    {
+        public List<Element> Elements = new();
+        public List<Flag> Flags = new();
+
+        public class Element
+        {
+            public uint Id;
+            public bool NeedSave;
+            public float FloatValue;
+            public long Int64Value;
+        }
+
+        public class Flag
+        {
+            public ulong Value;
+            public bool NeedSave;
+        }
     }
 }

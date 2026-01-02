@@ -50,6 +50,8 @@ namespace Game.Networking.Packets
             for (int i = 0; i < PvpTalents.Count; ++i)
                 _worldPacket.WriteUInt16(PvpTalents[i]);
 
+            TalentInfo.Write(_worldPacket);
+
             _worldPacket.WriteBit(GuildData.HasValue);
             _worldPacket.WriteBit(AzeriteLevel.HasValue);
             _worldPacket.FlushBits();
@@ -63,7 +65,7 @@ namespace Game.Networking.Packets
             if (AzeriteLevel.HasValue)
                 _worldPacket.WriteUInt32(AzeriteLevel.Value);
 
-            TalentTraits.Write(_worldPacket);
+            TraitsInfo.Write(_worldPacket);
         }
 
         public PlayerModelDisplayInfo DisplayInfo;
@@ -79,7 +81,8 @@ namespace Game.Networking.Packets
         public ushort TodayHK;
         public ushort YesterdayHK;
         public byte LifetimeMaxRank;
-        public TraitInspectInfo TalentTraits = new();
+        public ClassicTalentInfoUpdate TalentInfo = new();
+        public TraitInspectInfo TraitsInfo = new();
     }
 
     public class QueryInspectAchievements : ClientPacket
@@ -288,7 +291,7 @@ namespace Game.Networking.Packets
         public int Tier;
         public int WeeklyBestTier;
         public int SeasonBestRating;
-        public int SeasonBestTierEnum;
+        public byte SeasonBestTierEnum;
         public int RoundsSeasonPlayed;
         public int RoundsSeasonWon;
         public int RoundsWeeklyPlayed;
@@ -311,7 +314,7 @@ namespace Game.Networking.Packets
             data.WriteInt32(Tier);
             data.WriteInt32(WeeklyBestTier);
             data.WriteInt32(SeasonBestRating);
-            data.WriteInt32(SeasonBestTierEnum);
+            data.WriteUInt8(SeasonBestTierEnum);
             data.WriteInt32(RoundsSeasonPlayed);
             data.WriteInt32(RoundsSeasonWon);
             data.WriteInt32(RoundsWeeklyPlayed);
@@ -323,15 +326,15 @@ namespace Game.Networking.Packets
 
     public class TraitInspectInfo
     {
-        public int Level;
-        public int ChrSpecializationID;
-        public TraitConfigPacket Config = new();
+        public int PlayerLevel;
+        public int SpecID;
+        public TraitConfigPacket ActiveCombatTraits = new();
 
         public void Write(WorldPacket data)
         {
-            data.WriteInt32(Level);
-            data.WriteInt32(ChrSpecializationID);
-            Config.Write(data);
+            data.WriteInt32(PlayerLevel);
+            data.WriteInt32(SpecID);
+            ActiveCombatTraits.Write(data);
         }
     }
 

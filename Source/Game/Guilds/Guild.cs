@@ -226,7 +226,6 @@ namespace Game.Guilds
                 memberData.RaceID = (byte)member.GetRace();
 
                 memberData.Authenticated = false;
-                memberData.SorEligible = false;
 
                 memberData.Name = member.GetName();
                 memberData.Note = member.GetPublicNote();
@@ -505,6 +504,9 @@ namespace Game.Guilds
             if (member == null)
                 return;
 
+            if (GetLeaderGUID() != player.GetGUID())
+                return;
+
             if (_GetPurchasedTabsSize() >= GuildConst.MaxBankTabs)
                 return;
 
@@ -514,18 +516,19 @@ namespace Game.Guilds
             if (tabId >= GuildConst.MaxBankTabs)
                 return;
 
-            // Do not get money for bank tabs that the GM bought, we had to buy them already.
-            // This is just a speedup check, GetGuildBankTabPrice will return 0.
-            if (tabId < GuildConst.MaxBankTabs - 2) // 7th tab is actually the 6th
-            {
-                long tabCost = (long)(GetGuildBankTabPrice(tabId) * MoneyConstants.Gold);
-                if (!player.HasEnoughMoney(tabCost))                   // Should not happen, this is checked by client
-                    return;
+            SQLTransaction trans = new SQLTransaction();
 
-                player.ModifyMoney(-tabCost);
-            }
+            // Remove money from bank
+            ulong tabCost = GetGuildBankTabPrice(tabId);
+            if (tabCost != 0 && !_ModifyBankMoney(trans, tabCost, false))                   // Should not happen, this is checked by client
+                return;
 
-            _CreateNewBankTab();
+            // Log guild bank event
+            _LogBankEvent(trans, GuildBankEventLogTypes.BuyTab, tabId, player.GetGUID().GetCounter(), (uint)tabCost);
+
+            _CreateNewBankTab(trans);
+
+            DB.Characters.CommitTransaction(trans);
 
             BroadcastPacket(new GuildEventTabAdded());
 
@@ -1813,12 +1816,10 @@ namespace Game.Guilds
         }
 
         // Private methods
-        void _CreateNewBankTab()
+        void _CreateNewBankTab(SQLTransaction trans)
         {
             byte tabId = _GetPurchasedTabsSize();                      // Next free id
             m_bankTabs.Add(new BankTab(m_id, tabId));
-
-            SQLTransaction trans = new();
 
             PreparedStatement stmt = CharacterDatabase.GetPreparedStatement(CharStatements.DEL_GUILD_BANK_TAB);
             stmt.AddValue(0, m_id);
@@ -1833,8 +1834,6 @@ namespace Game.Guilds
             ++tabId;
             foreach (var rank in m_ranks)
                 rank.CreateMissingTabsIfNeeded(tabId, trans, false);
-
-            DB.Characters.CommitTransaction(trans);
         }
 
         void _CreateDefaultGuildRanks(SQLTransaction trans, Locale loc = Locale.enUS)
@@ -2308,6 +2307,12 @@ namespace Game.Guilds
             if (member == null) // Shouldn't happen, just in case
                 return;
 
+            // HACK: client doesn't query entire tab content if it had received SMSG_GUILD_BANK_LIST in this session
+            // but we broadcast bank updates to entire guild when *ANYONE* changes anything, incorrectly initializing clients
+            // tab content with only data for that change
+            if (!fullUpdate && tabId < _GetPurchasedTabsSize())
+                fullUpdate = true;
+
             GuildBankQueryResults packet = new();
 
             packet.Money = m_bankMoney;
@@ -2342,7 +2347,7 @@ namespace Game.Guilds
                             GuildBankItemInfo itemInfo = new();
 
                             itemInfo.Slot = slotId;
-                            itemInfo.Item.ItemID = tabItem.GetEntry();
+                            itemInfo.Item = new ItemInstance(tabItem);
                             itemInfo.Count = (int)tabItem.GetCount();
                             itemInfo.Charges = Math.Abs(tabItem.GetSpellCharges());
                             itemInfo.EnchantmentID = (int)tabItem.GetEnchantmentId(EnchantmentSlot.Perm);
@@ -2467,17 +2472,6 @@ namespace Game.Guilds
             }
         }
 
-        public void BroadcastWorker(Action<Player> _do, Player except = null)
-        {
-            foreach (var member in m_members.Values)
-            {
-                Player player = member.FindPlayer();
-                if (player != null)
-                    if (player != except)
-                        _do.Invoke(player);
-            }
-        }
-
         public int GetMembersCount() { return m_members.Count; }
 
         public GuildAchievementMgr GetAchievementMgr() { return m_achievementSys; }
@@ -2532,17 +2526,11 @@ namespace Game.Guilds
 
         ulong GetGuildBankTabPrice(byte tabId)
         {
-            // these prices are in gold units, not copper
-            switch (tabId)
-            {
-                case 0: return 100;
-                case 1: return 250;
-                case 2: return 500;
-                case 3: return 1000;
-                case 4: return 2500;
-                case 5: return 5000;
-                default: return 0;
-            }
+            var bankTab = CliDB.BankTabStorage.FirstOrDefault(bankTab => bankTab.Value.BankType == (int)BankType.Guild && bankTab.Value.OrderIndex == tabId).Value;
+            if (bankTab != null)
+                return bankTab.Cost;
+
+            return 0;
         }
 
         public static void SendCommandResult(WorldSession session, GuildCommandType type, GuildCommandError errCode, string param = "")
@@ -3102,7 +3090,7 @@ namespace Game.Guilds
                 newsEvent.MemberGuid = GetPlayerGuid();
                 newsEvent.CompletedDate.SetUtcTimeFromUnixTime(GetTimestamp());
                 newsEvent.Flags = GetFlags();
-                newsEvent.Type = (int)GetNewsType();
+                newsEvent.Type = (sbyte)GetNewsType();
 
                 //for (public byte i = 0; i < 2; i++)
                 //    newsEvent.Data[i] =

@@ -539,13 +539,15 @@ namespace Game
             switch (packet.ItemType)
             {
                 case ItemVendorType.Item:
-                    Item bagItem = GetPlayer().GetItemByGuid(packet.ContainerGUID);
-
                     byte bag = ItemConst.NullBag;
-                    if (bagItem != null && bagItem.IsBag())
-                        bag = bagItem.GetSlot();
-                    else if (packet.ContainerGUID == GetPlayer().GetGUID()) // The client sends the player guid when trying to store an item in the default backpack
+                    if (packet.ContainerGUID == GetPlayer().GetGUID()) // The client sends the player guid when trying to store an item in the default backpack
                         bag = InventorySlots.Bag0;
+                    else
+                    {
+                        Item bagItem = _player.GetItemByGuid(packet.ContainerGUID);
+                        if (bagItem != null)
+                            bag = bagItem.GetSlot();
+                    }
 
                     GetPlayer().BuyItemFromVendorSlot(packet.VendorGUID, packet.Muid, packet.Item.ItemID, (byte)packet.Quantity, bag, (byte)packet.Slot);
                     break;
@@ -816,24 +818,34 @@ namespace Game
                 if (gemProperties[i] == null)
                     continue;
 
+                SocketColor acceptableGemTypeMask = ItemConst.SocketColorToGemTypeMask[(int)itemTarget.GetSocketColor(i)];
                 // tried to put gem in socket where no socket exists (take care about prismatic sockets)
-                if (itemTarget.GetSocketColor(i) == 0)
+                switch (itemTarget.GetSocketColor(i))
                 {
-                    // no prismatic socket
-                    if (itemTarget.GetEnchantmentId(EnchantmentSlot.Prismatic) == 0)
-                        return;
+                    case 0:
+                    {
+                        // no prismatic socket
+                        if (itemTarget.GetEnchantmentId(EnchantmentSlot.Prismatic) == 0)
+                            return;
 
-                    if (i != firstPrismatic)
+                        if (i != firstPrismatic)
                         return;
+                        acceptableGemTypeMask = SocketColor.Red | SocketColor.Yellow | SocketColor.Blue;
+                        break;
+                    }
+                    case 2:
+                    case 3:
+                    case 4:
+                        // red, blue and yellow sockets accept any red/blue/yellow gem
+                        acceptableGemTypeMask = SocketColor.Red | SocketColor.Yellow | SocketColor.Blue;
+                        break;
+                    default:
+                        break;
                 }
 
                 // Gem must match socket color
-                if (ItemConst.SocketColorToGemTypeMask[(int)itemTarget.GetSocketColor(i)] != gemProperties[i].Type)
-                {
-                    // unless its red, blue, yellow or prismatic
-                    if (!ItemConst.SocketColorToGemTypeMask[(int)itemTarget.GetSocketColor(i)].HasAnyFlag(SocketColor.Prismatic) || !gemProperties[i].Type.HasAnyFlag(SocketColor.Prismatic))
-                        return;
-                }
+                if ((acceptableGemTypeMask & gemProperties[i].Type) == 0)
+                    return;
             }
 
             // check unique-equipped conditions
@@ -874,9 +886,9 @@ namespace Game
 
                 // unique limit type item
                 int limit_newcount = 0;
-                if (iGemProto.GetItemLimitCategory() != 0)
+                if (gems[i].GetItemLimitCategory() != 0)
                 {
-                    ItemLimitCategoryRecord limitEntry = CliDB.ItemLimitCategoryStorage.LookupByKey(iGemProto.GetItemLimitCategory());
+                    ItemLimitCategoryRecord limitEntry = CliDB.ItemLimitCategoryStorage.LookupByKey(gems[i].GetItemLimitCategory());
                     if (limitEntry != null)
                     {
                         // NOTE: limitEntry.mode is not checked because if item has limit then it is applied in equip case
@@ -885,7 +897,7 @@ namespace Game
                             if (gems[j] != null)
                             {
                                 // new gem
-                                if (iGemProto.GetItemLimitCategory() == gems[j].GetTemplate().GetItemLimitCategory())
+                                if (gems[i].GetItemLimitCategory() == gems[j].GetTemplate().GetItemLimitCategory())
                                     ++limit_newcount;
                             }
                             else if (oldGemData[j] != null)
@@ -893,8 +905,15 @@ namespace Game
                                 // existing gem
                                 ItemTemplate jProto = Global.ObjectMgr.GetItemTemplate(oldGemData[j].ItemId);
                                 if (jProto != null)
-                                    if (iGemProto.GetItemLimitCategory() == jProto.GetItemLimitCategory())
+                                {
+                                    BonusData oldGemBonus = new(jProto);
+
+                                    foreach (ushort bonusListID in oldGemData[j].BonusListIDs)
+                                        oldGemBonus.AddBonusList(bonusListID);
+
+                                    if (gems[i].GetItemLimitCategory() == oldGemBonus.LimitCategory)
                                         ++limit_newcount;
+                                }
                             }
                         }
 
@@ -1085,14 +1104,6 @@ namespace Game
             SendPacket(new BagCleanupFinished());
         }
 
-        [WorldPacketHandler(ClientOpcodes.SortReagentBankBags, Processing = PacketProcessing.Inplace)]
-        void HandleSortReagentBankBags(SortReagentBankBags sortReagentBankBags)
-        {
-            // TODO: Implement sorting
-            // Placeholder to prevent completely locking out bags clientside
-            SendPacket(new BagCleanupFinished());
-        }
-
         [WorldPacketHandler(ClientOpcodes.RemoveNewItem, Processing = PacketProcessing.Inplace)]
         void HandleRemoveNewItem(RemoveNewItem removeNewItem)
         {
@@ -1120,18 +1131,6 @@ namespace Game
                 _player.SetBagSlotFlag(changeBagSlotFlag.BagIndex, changeBagSlotFlag.FlagToChange);
             else
                 _player.RemoveBagSlotFlag(changeBagSlotFlag.BagIndex, changeBagSlotFlag.FlagToChange);
-        }
-
-        [WorldPacketHandler(ClientOpcodes.ChangeBankBagSlotFlag, Processing = PacketProcessing.Inplace)]
-        void HandleChangeBankBagSlotFlag(ChangeBankBagSlotFlag changeBankBagSlotFlag)
-        {
-            if (changeBankBagSlotFlag.BagIndex >= _player.m_activePlayerData.BankBagSlotFlags.GetSize())
-                return;
-
-            if (changeBankBagSlotFlag.On)
-                _player.SetBankBagSlotFlag(changeBankBagSlotFlag.BagIndex, changeBankBagSlotFlag.FlagToChange);
-            else
-                _player.RemoveBankBagSlotFlag(changeBankBagSlotFlag.BagIndex, changeBankBagSlotFlag.FlagToChange);
         }
 
         [WorldPacketHandler(ClientOpcodes.SetBackpackAutosortDisabled, Processing = PacketProcessing.Inplace)]

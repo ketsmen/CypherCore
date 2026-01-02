@@ -50,6 +50,9 @@ namespace Game.DataStorage
         public byte MinCountTank;
         public byte MinCountHealer;
         public byte MinCountDamage;
+        public byte MaxPremadeCountTank;
+        public byte MaxPremadeCountHealer;
+        public byte MaxPremadeCountDamage;
         public ushort BonusReputationAmount;
         public ushort MentorItemLevel;
         public byte MentorCharLevel;
@@ -76,7 +79,7 @@ namespace Game.DataStorage
         public uint Id;
         public string Name;
         public string[] Texture = new string[6];
-        public ushort Flags;
+        public int Flags;
         public byte SoundBank;                                                // used to be "type", maybe needs fixing (works well for now)
         public uint SoundID;
         public uint SpellID;

@@ -10,7 +10,7 @@ namespace Framework.Constants
         public const Expansion CurrentExpansion = Expansion.TheWarWithin;
 
         public const int MaxTalentTiers = 7;
-        public const int MaxTalentColumns = 3;
+        public const int MaxTalentColumns = 4;
         public const int MaxTalentRank = 5;
         public const int MaxPvpTalentSlots = 4;
         public const int MinSpecializationLevel = 10;
@@ -22,6 +22,7 @@ namespace Framework.Constants
 
         public const int ExploredZonesSize = 240;
         public const int ExploredZonesBits = sizeof(ulong) * 8;
+        public const int DataFlagValueBits = sizeof(ulong) * 8;
 
         public const ulong MaxMoneyAmount = 99999999999UL;
         public const int MaxActionButtons = 180;
@@ -63,8 +64,6 @@ namespace Framework.Constants
         public const uint WarmodeEnlistedSpellOutside = 269083;
 
         public const uint SpellExperienceEliminated = 206662;
-        public const uint SpellApprenticeRiding = 33389;
-        public const uint SpellJourneymanRiding = 33391;
 
         public const uint CurrencyMaxCapAncientMana = 2000;
 
@@ -387,41 +386,134 @@ namespace Framework.Constants
         UnlockedAoeLoot = 0x0200
     }
 
-    public enum CharacterFlags : uint
+    public enum CharacterFlags
     {
         None = 0x00000000,
-        Unk1 = 0x00000001,
-        Resting = 0x00000002,
-        CharacterLockedForTransfer = 0x00000004,
-        Unk4 = 0x00000008,
-        Unk5 = 0x00000010,
-        Unk6 = 0x00000020,
-        Unk7 = 0x00000040,
-        Unk8 = 0x00000080,
-        Unk9 = 0x00000100,
-        Unk10 = 0x00000200,
-        HideHelm = 0x00000400,
-        HideCloak = 0x00000800,
-        Unk13 = 0x00001000,
-        Ghost = 0x00002000,
-        Rename = 0x00004000,
-        Unk16 = 0x00008000,
-        Unk17 = 0x00010000,
-        Unk18 = 0x00020000,
-        Unk19 = 0x00040000,
-        Unk20 = 0x00080000,
-        Unk21 = 0x00100000,
-        Unk22 = 0x00200000,
-        Unk23 = 0x00400000,
-        Unk24 = 0x00800000,
-        LockedByBilling = 0x01000000,
-        Declined = 0x02000000,
-        Unk27 = 0x04000000,
-        Unk28 = 0x08000000,
-        Unk29 = 0x10000000,
-        Unk30 = 0x20000000,
-        Unk31 = 0x40000000,
-        Unk32 = 0x80000000
+        InvisGod = 0x00000001, // Player Has God Invis Enabled
+        Resting = 0x00000002, // Player Is Currently Earning Rest Experience
+        LockedForTransfer = 0x00000004, // Player Is Locked - For Paid Character Transfer
+        Silenced = 0x00000008, // Player's Chat Is Silenced (Can Talk To Gms)
+        UberinvisGod = 0x00000010, // Player Has God Uberinvis Enabled
+        Beastmaster = 0x00000020, // Beastmaster Is On
+        PvpEnabled = 0x00000040, // Pvp Enabled
+        PortAfterResurrect = 0x00000080, // World Port After Resurrect
+        ResetTalentsOnLogin = 0x00000100, // Clear Talents On Login
+        HasPvpRank = 0x00000200, // Player Has A Pvp Rank
+        HideHelm = 0x00000400, // Hide Helm
+        HideCloak = 0x00000800, // Hide Cloak
+        Skinnable = 0x00001000, // Player Is Skinnable
+        Ghost = 0x00002000, // Player Is A Ghost
+        Rename = 0x00004000, // Set To Force A Rename
+        RenameNeedsGmReview = 0x00008000, // Flag Is Set After Rename For Gm Review
+        PvpDesired = 0x00010000, // Pvp Desired Flag
+        GmMode = 0x00020000, // Gm Mode Enabled
+        DeletedByTransfer = 0x00040000, // Deleted By A Character Transfer
+        OnUnsafeTransport = 0x00080000, // On Unsafe Transport (Port To Safe Loc On Log In)
+        RenameFailed = 0x00100000, // Player Unable To Rename Character
+        MountUpgraded = 0x00200000, // Mount Has Been Upgraded
+        FriendsListNeedsRepair = 0x00400000, // Friends List Requires A Repair
+        ExplorationDataFixed = 0x00800000, // Character Had Their Exploration Data Fixed
+        LockedByBilling = 0x01000000, // Locked Due To Billing
+        Declined = 0x02000000, // Player Has Russian Declined Name Forms
+        Commentator = 0x04000000, // Commentator Mode Enabled
+        UberCommentator = 0x08000000, // Uber Commentator Mode Enabled
+        XpFixed = 0x10000000, // Player's Xp Has Been Fixed (2.2.X->2.3.0)
+        LogPackets = 0x20000000, // Log Player Packets
+        CompensateForSpells = 0x40000000  // Compensate For Spells
+    }
+
+    public enum CharacterFlags2
+    {
+        None = 0x00000000,
+        Customize = 0x00000001, // Player Has Paid For A Character Re-Customization
+        GmSupporterProxy = 0x00000002, // Gmsupportserver Proxy, Not For Gmtool Use
+        CanLoadOnNonShipTranport = 0x00000004, // Character Has Been Saved At Least Once Since Saving On Non-Ship Transports Was Added
+        BattleMasterMiscIsTaxiId = 0x00000008, // Battle Master Misc Field Is A Taxi Id
+        TempPetAutocastSpell1 = 0x00000010, // Temp Pet Autocast Spell 1
+        TempPetAutocastSpell2 = 0x00000020, // Temp Pet Autocast Spell 2
+        TempPetAutocastSpell3 = 0x00000040, // Temp Pet Autocast Spell 3
+        TempPetAutocastSpell4 = 0x00000080, // Temp Pet Autocast Spell 4
+        TempPetAggressive = 0x00000100, // Temp Pet Aggressive
+        TempPetPassive = 0x00000200, // Temp Pet Passive
+        CanInteractWithOtherRealmsInSite = 0x00000400, // Characters Can Interact With Other Realms In The Site
+        CanInteractWithOtherRealmsInRegion = 0x00000800, // Characters Can Interact With Other Realms In The Region
+        BattleMasterMiscIsAreaId = 0x00001000, // Battle Master Misc Field Is An Area Id
+        ReevaluateAccountItemLicenses = 0x00002000, // Account Item Licenses Must Be Reevaluated On Next Login
+        BattleMasterMiscIsTransport = 0x00004000, // Battle Master Misc Field Is A Transport
+        TalentsResetUsingTalentGroupData = 0x00008000, // Players Talents Have Been Reset Using Talent Group Data
+        FactionChange = 0x00010000, // This Character Is Eligible To Change His Faction
+        HasChangedRaceOrFaction = 0x00020000, // This Character Has Changed His Race/Faction And Now Requires The World Server To Repair Him
+        NoXpGain = 0x00040000, // This Character Has Chosen To Not Gain Xp By Any Means
+        RecastOnResummon = 0x00080000, // Recast On Resummon
+        RaceChange = 0x00100000, // This Character Is Eligible To Change His Race
+        ChangedTempPetAutocastSpell1 = 0x00200000, // Player Has Changed Temp Pet Autocast Spell 1
+        ChangedTempPetAutocastSpell2 = 0x00400000, // Player Has Changed Temp Pet Autocast Spell 2
+        ChangedTempPetAutocastSpell3 = 0x00800000, // Player Has Changed Temp Pet Autocast Spell 3
+        ChangedTempPetAutocastSpell4 = 0x01000000, // Player Has Changed Temp Pet Autocast Spell 4
+        ChangedGuildDuringCharacterTransfer = 0x02000000, // Player Has Transferred Guilds During A Pct
+        CanUseVoidStorageFeature = 0x04000000, // Player Is Allowed To Use The Void Storage Feature
+        BattlePetsConverted = 0x08000000, // Battle Pets Converted
+        QuestsFixed = 0x10000000, // Player Has Had His Quests Fixed
+        LowLevelRaidEnabled = 0x20000000, // The Player Can Join Raids Even If He's Below The Min Raid Level
+        AutoDeclineGuild = 0x40000000  // The Player Will Automatically Decline Guild Invites
+    }
+
+    public enum CharacterFlags3
+    {
+        None = 0x00000000,
+        IsBattlePetTraier = 0x00000001, // Player Is A Battle Pet Trainer
+        HideAccountAchievements = 0x00000002, // Player Has Opted To Hide His Account And Merged Achievements
+        BattlePetsConvertedAndLocked = 0x00000004, // Battle Pet Conversion Complete But Pets Still Locked
+        TransferredBetweenBnetAccounts = 0x00000008, // Player Has Performed A Pct Between Two Bnet Accounts
+        UpgradeInProgress = 0x00000010, // Character Upgrade In Progress
+        BattleMasterMiscIsLfgDungeon = 0x00000020, // Battle Master Misc Field Is A Lfgdungeons Rec Id
+        NewPlayerGuide = 0x00000040, // New Player Guide
+        LockedByRevokedCharacterUpgrade = 0x00000080, // Character Locked Due To Revoked Upgrade
+        NeedsFirstTimeFixup = 0x00000100, // Character Needs First Time Fix Up
+        WasBoostedAndHasLimitedSpells = 0x00000200, // Character Was Upgraded And Has Limited Access To Spells
+        DidQuestItemCleanup = 0x00000400, // Did Quest Item Cleanup
+        ReagentBankUnlocked = 0x00000800, // Reagent Bank Unlocked
+        PetBeastmaster = 0x00001000, // Pet Beastmaster Is On
+        RechargeOnLogin = 0x00002000, // Recharge On Login
+        FixupWodFactionChangeBug = 0x00004000, // Fixup Wod Faction Change Bug
+        FixupWodXp = 0x00008000, // Fixup Wod Xp To Set To 0 For Level 90
+        CheckForRestorableData = 0x00010000, // Check For Restorable Data
+        HasBnetToken = 0x00020000, // Has A Battle.Net Token
+        BnetTokenTransactionInProgress = 0x00040000, // Battle.Net Token Transaction In Progress
+        LevelWasScaled = 0x00080000, // Player's Level Was Scaled At Last Save
+        LockedByRevokedVasTransaction = 0x00100000, // Character Locked Due To Revoked Vas Purchase
+        VasProductApplicationInProgress = 0x00200000, // Character Vas Product Application In Progress
+        WasRecentlyBoosted = 0x00400000, // Character Was Recently Boosted
+        CurrentlyProcessingVasPurchase = 0x00800000, // Character Is Currently Processing A Vas Purchase (Disables Web Purchases)
+        LegionSpecWeaponFixedUp = 0x01000000, // Legion Spec Weapon Fixed Up
+        SentAchievementHistoryToBi = 0x02000000, // Sent Achievement History To Bi
+        GrantedLevelsFromRaf = 0x04000000, // Character Has Been Granted At Least One Single Level Boost From Recruit A Friend System
+        WarModeDesired = 0x08000000, // Character Has Opted-In To Warmode
+        HonorConvertedToAccountWide = 0x10000000, // Honor Has Been Converted To Account Wide
+        KeystoneFixedUpForLegionRollover = 0x20000000, // Keystone Has Been Fixed-Up For Legion Rollover
+        MythicPlusSeason1AchievementFixedUp = 0x40000000, // Mythic+ Season 1 Achievement Has Been Fixed-Up
+    }
+
+    public enum CharacterFlags4
+    {
+        None = 0x00000000,
+        UsedRpeReset = 0x00000001, // Character Has Used A Rpe Reset Recently
+        OnlyRpeResetOrTimerunningEndBoost = 0x00000002, // Character Has Only Ever Used An Rpe Reset Boost Or Timerunning-Season-End Boost
+        SelfFound = 0x00000004, // Character Is Self-Found, And Cannot Trade, Use The Auction House, Or Use Most Mail Functions
+        TimerunningConversionDone = 0x00000008, // Character Has Been Updated To Normal Characters From A Timerunning Season
+        LoggedInByCrawlerOverridingLocks = 0x00000010, // Character Is Being Logged In By Crawler Overriding Locks.
+        ProcessedForWarbands = 0x00000020, // Character Has Had Their Information Added To Account-Wide Warband Tracking
+        LoggedOutWhileLorewalking = 0x00000040, // Character Last Logged Out While Actively Lorewalking
+        NoNeighborhoodInvites = 0x00000080, // Character Does Not Accept Neighborhood Invites
+        CheckedFor2ndWaveAccountWideFactions = 0x00000100, // Character Has Been Checked For 2nd Wave Of Account Wide Factions
+        WillBeResurrectedInHardcore = 0x00000200, // Character Will Be Resurrected Overriding Hardcore Game Rule
+    }
+
+    public enum CharacterRestrictionFlags
+    {
+        CharacterRestrictionFlagTrialBoost = 0x00000080,
+        CharacterRestrictionFlagTrialBoostLocked = 0x00040000,
+        CharacterRestrictionFlagExpansionTrial = 0x00080000,
     }
 
     public enum PlayerLocalFlags
@@ -440,7 +532,10 @@ namespace Framework.Constants
         AccountSecured = 0x1000, // Script_IsAccountSecured
         OverrideTransportServerTime = 0x8000,
         MentorRestricted = 0x20000,
-        WeeklyRewardAvailable = 0x40000
+        HasAccountBankLock = 0x40000,
+        CharacterBankDisabled = 0x80000,
+        CharacterBankConversionFailed = 0x100000,
+        AccountBankDisabled = 0x200000,
     }
 
     public enum PlayerFieldByte2Flags
@@ -472,26 +567,6 @@ namespace Framework.Constants
         RAFLinked = 6
     }
 
-    public enum CharacterCustomizeFlags
-    {
-        None = 0x00,
-        Customize = 0x01,       // Name, Gender, Etc...
-        Faction = 0x10000,       // Name, Gender, Faction, Etc...
-        Race = 0x100000        // Name, Gender, Race, Etc...
-    }
-
-    public enum CharacterFlags3 : uint
-    {
-        LockedByRevokedVasTransaction = 0x100000,
-        LockedByRevokedCharacterUpgrade = 0x80000000,
-    }
-
-    public enum CharacterFlags4
-    {
-        TrialBoost = 0x80,
-        TrialBoostLocked = 0x40000,
-    }
-
     public enum TextureSection // TODO: Find a better name. Used in CharSections.dbc
     {
         BaseSkin = 0,
@@ -520,14 +595,8 @@ namespace Framework.Constants
         // first slot for item stored (in any way in player items data)
         Start = 0,
         // last+1 slot for item stored (in any way in player items data)
-        End = 232,
+        End = 105,
         Count = (End - Start)
-    }
-
-    enum AccountBankBagSlots
-    {
-        Start = 227,
-        End = 232
     }
 
     public enum PlayerTitle : ulong
@@ -740,6 +809,7 @@ namespace Framework.Constants
         Inventory = 0x02,
         Bank = 0x04,
         ReagentBank = 0x08,
+        AccountBank = 0x10, // NYI
 
         Default = Equipment | Inventory,
         Everywhere = Equipment | Inventory | Bank | ReagentBank
@@ -926,7 +996,29 @@ namespace Framework.Constants
     public enum PlayerDataFlag
     {
         ExploredZonesIndex = 1,
-        CharacterIndex = 2,
-        AccountIndex = 3
+        CharacterDataIndex = 2,
+        AccountDataIndex = 3,
+        CharacterTaxiNodesIndex = 4,
+        AccountTaxiNodesIndex = 5,
+        AccountCombinedQuestsIndex = 6,
+        AccountCombinedQuestRewardsIndex = 7,
+        CharacterContentpushIndex = 8,
+        CharacterQuestCompletedIndex = 9,
+    }
+
+    public enum HonorGainSource
+    {
+        Kill = 0,
+        Quest = 1,
+        ArenaCompletion = 2,
+        BGCompletion = 3,
+        LFG = 4,
+        TeamContribution = 5,
+        RankedBGCompletion = 6,
+        RatedArenaCompletion = 7,
+        ArenaSkirmishCompletion = 8,
+        RandomBGCompletion = 9,
+        HolidayBGCompletion = 10,
+        Spell = 11,
     }
 }

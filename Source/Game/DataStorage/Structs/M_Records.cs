@@ -87,6 +87,7 @@ namespace Game.DataStorage
                 case 1643:
                 case 2222:
                 case 2444:
+                case 2601:
                     return true;
                 default:
                     return false;
@@ -114,16 +115,18 @@ namespace Game.DataStorage
         public LocalizedString Name;
         public uint Id;
         public ushort MapID;
-        public byte Flags;
+        public int Flags;
         public uint ExpansionLevel;
         public int RequiredWorldStateID; // maybe?
         public short[] CriteriaCount = new short[3];
+        public int[] FirstRewardQuestID = new int[6];
+        public int[] RewardQuestID = new int[6];
     }
 
     public sealed class MapDifficultyRecord
     {
-        public uint Id;
         public LocalizedString Message;                               // m_message_lang (text showed when transfer to map failed)
+        public uint Id;
         public uint DifficultyID;
         public int LockID;
         public MapDifficultyResetInterval ResetInterval;
@@ -197,7 +200,6 @@ namespace Game.DataStorage
         public int MountSpecialSpellVisualKitID;
 
         public bool HasFlag(MountFlags mountFlags) { return (Flags & (int)mountFlags) != 0; }
-        public bool IsSelfMount() { return HasFlag(MountFlags.SelfMount); }
     }
 
     public sealed class MountCapabilityRecord
@@ -212,8 +214,18 @@ namespace Game.DataStorage
         public short ReqMapID;
         public int PlayerConditionID;
         public int FlightCapabilityID;
+        public int DriveCapabilityID;
 
         public bool HasFlag(MountCapabilityFlags mountCapabilityFlags) { return (Flags & (int)mountCapabilityFlags) != 0; }
+    }
+
+    public sealed class MountEquipmentRecord
+    {
+        public uint Id;
+        public int Item;
+        public int BuffSpell;
+        public int Unknown820;
+        public uint LearnedBySpell;
     }
 
     public sealed class MountTypeXCapabilityRecord

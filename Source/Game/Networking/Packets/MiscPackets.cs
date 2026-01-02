@@ -189,10 +189,8 @@ namespace Game.Networking.Packets
         public ObjectGuid Selection; // Target
     }
 
-    public class SetupCurrency : ServerPacket
+    public class SetupCurrency() : ServerPacket(ServerOpcodes.SetupCurrency, ConnectionType.Instance)
     {
-        public SetupCurrency() : base(ServerOpcodes.SetupCurrency, ConnectionType.Instance) { }
-
         public override void Write()
         {
             _worldPacket.WriteInt32(Data.Count);
@@ -201,6 +199,7 @@ namespace Game.Networking.Packets
             {
                 _worldPacket.WriteUInt32(data.Type);
                 _worldPacket.WriteUInt32(data.Quantity);
+                _worldPacket.WriteUInt8(data.Flags);
 
                 _worldPacket.WriteBit(data.WeeklyQuantity.HasValue);
                 _worldPacket.WriteBit(data.MaxWeeklyQuantity.HasValue);
@@ -209,7 +208,6 @@ namespace Game.Networking.Packets
                 _worldPacket.WriteBit(data.TotalEarned.HasValue);
                 _worldPacket.WriteBit(data.NextRechargeTime.HasValue);
                 _worldPacket.WriteBit(data.RechargeCycleStartTime.HasValue);
-                _worldPacket.WriteBits(data.Flags, 5);
                 _worldPacket.FlushBits();
 
                 if (data.WeeklyQuantity.HasValue)
@@ -414,16 +412,16 @@ namespace Game.Networking.Packets
 
     public class SetRaidDifficulty : ClientPacket
     {
+        public int DifficultyID;
+        public int Legacy;
+
         public SetRaidDifficulty(WorldPacket packet) : base(packet) { }
 
         public override void Read()
         {
+            Legacy = _worldPacket.ReadInt32();
             DifficultyID = _worldPacket.ReadInt32();
-            Legacy = _worldPacket.ReadUInt8();
         }
-
-        public int DifficultyID;
-        public byte Legacy;
     }
 
     public class DungeonDifficultySet : ServerPacket
@@ -440,16 +438,16 @@ namespace Game.Networking.Packets
 
     public class RaidDifficultySet : ServerPacket
     {
+        public int DifficultyID;
+        public int Legacy;
+
         public RaidDifficultySet() : base(ServerOpcodes.RaidDifficultySet) { }
 
         public override void Write()
         {
+            _worldPacket.WriteInt32(Legacy);
             _worldPacket.WriteInt32(DifficultyID);
-            _worldPacket.WriteUInt8((byte)(Legacy ? 1 : 0));
         }
-
-        public int DifficultyID;
-        public bool Legacy;
     }
 
     public class CorpseReclaimDelay : ServerPacket
@@ -585,18 +583,21 @@ namespace Game.Networking.Packets
 
     public class StandStateChange : ClientPacket
     {
+        public UnitStandStateType StandState;
+
         public StandStateChange(WorldPacket packet) : base(packet) { }
 
         public override void Read()
         {
-            StandState = (UnitStandStateType)_worldPacket.ReadUInt32();
+            StandState = (UnitStandStateType)_worldPacket.ReadUInt8();
         }
-
-        public UnitStandStateType StandState;
     }
 
     public class StandStateUpdate : ServerPacket
     {
+        uint AnimKitID;
+        UnitStandStateType State;
+
         public StandStateUpdate(UnitStandStateType state, uint animKitId) : base(ServerOpcodes.StandStateUpdate)
         {
             State = state;
@@ -605,12 +606,9 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt32(AnimKitID);
             _worldPacket.WriteUInt8((byte)State);
+            _worldPacket.WriteUInt32(AnimKitID);
         }
-
-        uint AnimKitID;
-        UnitStandStateType State;
     }
 
     public class SetAnimTier : ServerPacket
@@ -620,16 +618,22 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WritePackedGuid(Unit);
-            _worldPacket.WriteBits(Tier, 3);
-            _worldPacket.FlushBits();
+            _worldPacket.WriteUInt8(Tier);
         }
 
         public ObjectGuid Unit;
-        public int Tier;
+        public byte Tier;
     }
 
     public class StartMirrorTimer : ServerPacket
     {
+        public MirrorTimerType Timer;
+        public int Scale;
+        public int MaxValue;
+        public int SpellID;
+        public int Value;
+        public bool Paused;
+
         public StartMirrorTimer(MirrorTimerType timer, int value, int maxValue, int scale, int spellID, bool paused) : base(ServerOpcodes.StartMirrorTimer)
         {
             Timer = timer;
@@ -642,7 +646,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteInt32((int)Timer);
+            _worldPacket.WriteUInt8((byte)Timer);
             _worldPacket.WriteInt32(Value);
             _worldPacket.WriteInt32(MaxValue);
             _worldPacket.WriteInt32(Scale);
@@ -650,17 +654,13 @@ namespace Game.Networking.Packets
             _worldPacket.WriteBit(Paused);
             _worldPacket.FlushBits();
         }
-
-        public int Scale;
-        public int MaxValue;
-        public MirrorTimerType Timer;
-        public int SpellID;
-        public int Value;
-        public bool Paused;
     }
 
     public class PauseMirrorTimer : ServerPacket
     {
+        public MirrorTimerType Timer;
+        public bool Paused = true;
+
         public PauseMirrorTimer(MirrorTimerType timer, bool paused) : base(ServerOpcodes.PauseMirrorTimer)
         {
             Timer = timer;
@@ -669,17 +669,16 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteInt32((int)Timer);
+            _worldPacket.WriteUInt8((byte)Timer);
             _worldPacket.WriteBit(Paused);
             _worldPacket.FlushBits();
         }
-
-        public bool Paused = true;
-        public MirrorTimerType Timer;
     }
 
     public class StopMirrorTimer : ServerPacket
     {
+        public MirrorTimerType Timer;
+
         public StopMirrorTimer(MirrorTimerType timer) : base(ServerOpcodes.StopMirrorTimer)
         {
             Timer = timer;
@@ -687,10 +686,8 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteInt32((int)Timer);
+            _worldPacket.WriteUInt8((byte)Timer);
         }
-
-        public MirrorTimerType Timer;
     }
 
     public class ExplorationExperience : ServerPacket
@@ -793,13 +790,13 @@ namespace Game.Networking.Packets
 
     public class EnableBarberShop : ServerPacket
     {
-        public byte CustomizationScope;
+        public uint CustomizationFeatureMask;
 
         public EnableBarberShop() : base(ServerOpcodes.EnableBarberShop) { }
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8(CustomizationScope);
+            _worldPacket.WriteUInt32(CustomizationFeatureMask);
         }
     }
 
@@ -1358,15 +1355,16 @@ namespace Game.Networking.Packets
     class DisplayToast : ServerPacket
     {
         public ulong Quantity;
+        public uint QuestID;
         public DisplayToastMethod DisplayToastMethod;
         public bool Mailed;
         public DisplayToastType Type = DisplayToastType.Money;
-        public uint QuestID;
         public bool IsSecondaryResult;
         public ItemInstance Item;
-        public bool BonusRoll;
         public int LootSpec;
         public Gender Gender = Gender.None;
+        public bool BonusRoll;
+        public bool ForceToast;    // Ignores ITEM_FLAG3_DO_NOT_TOAST
         public uint CurrencyID;
 
         public DisplayToast() : base(ServerOpcodes.DisplayToast, ConnectionType.Instance) { }
@@ -1385,6 +1383,7 @@ namespace Game.Networking.Packets
             {
                 case DisplayToastType.NewItem:
                     _worldPacket.WriteBit(BonusRoll);
+                    _worldPacket.WriteBit(ForceToast);
                     Item.Write(_worldPacket);
                     _worldPacket.WriteInt32(LootSpec);
                     _worldPacket.WriteInt8((sbyte)Gender);
@@ -1482,6 +1481,33 @@ namespace Game.Networking.Packets
         }
 
         public ObjectGuid SourceGuid;
+    }
+
+    class AccountWarbandSceneUpdate : ServerPacket
+    {
+        public bool IsFullUpdate;
+        public Dictionary<uint, WarbandSceneCollectionItem> WarbandScenes;
+
+        public AccountWarbandSceneUpdate() : base(ServerOpcodes.AccountWarbandSceneUpdate) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteBit(IsFullUpdate);
+            _worldPacket.WriteInt32(WarbandScenes.Count);
+            _worldPacket.WriteInt32(WarbandScenes.Count);
+            _worldPacket.WriteInt32(WarbandScenes.Count);
+
+            foreach (var (warbandSceneId, _) in WarbandScenes)
+                _worldPacket.WriteUInt32(warbandSceneId);
+
+            foreach (var (_, data) in WarbandScenes)
+                _worldPacket.WriteBit(data.Flags.HasFlag(WarbandSceneCollectionFlags.Favorite));
+
+            foreach (var (_, data) in WarbandScenes)
+                _worldPacket.WriteBit(data.Flags.HasFlag(WarbandSceneCollectionFlags.HasFanfare));
+
+            _worldPacket.FlushBits();
+        }
     }
 
     //Structs

@@ -167,16 +167,16 @@ namespace Game.Chat
         }
 
         [Command("info", RBACPermissions.CommandGuildInfo, true)]
-        static bool HandleGuildInfoCommand(CommandHandler handler, [OptionalArg][VariantArg<ulong, string>] dynamic guildIdentifier)
+        static bool HandleGuildInfoCommand(CommandHandler handler, OptionalArg<VariantArg<ulong, string>> guildIdentifier)
         {
             Guild guild = null;
 
-            if (guildIdentifier != null)
+            if (guildIdentifier.HasValue)
             {
-                if (guildIdentifier is ulong)
-                    guild = Global.GuildMgr.GetGuildById(guildIdentifier);
+                if (guildIdentifier.Value.Is<ulong>())
+                    guild = Global.GuildMgr.GetGuildById(guildIdentifier.Value);
                 else
-                    guild = Global.GuildMgr.GetGuildByName(guildIdentifier);
+                    guild = Global.GuildMgr.GetGuildByName(guildIdentifier.Value);
             }
             else
             {
@@ -204,6 +204,37 @@ namespace Game.Chat
             handler.SendSysMessage(CypherStrings.GuildInfoLevel, guild.GetLevel()); // Level
             handler.SendSysMessage(CypherStrings.GuildInfoMotd, guild.GetMOTD()); // Message of the Day
             handler.SendSysMessage(CypherStrings.GuildInfoExtraInfo, guild.GetInfo()); // Extra Information
+            return true;
+        }
+
+        [Command("list", RBACPermissions.CommandGuildInfo, true)]
+        static bool HandleGuildListCommand(CommandHandler handler)
+        {
+            string titleAndSummaryColor = handler.IsConsole() ? "" : "|cff00ff00";
+            string tableHeaderColor = handler.IsConsole() ? "" : "|cff00ffff";
+            string resetColor = handler.IsConsole() ? "" : "|r";
+
+            handler.SendSysMessage(CypherStrings.GuildListTitle, titleAndSummaryColor, resetColor);
+            handler.SendSysMessage(CypherStrings.GuildListHeader, tableHeaderColor, resetColor);
+
+            var guildStore = Global.GuildMgr.GetGuildStore();
+
+            foreach (var (id, g) in guildStore)
+            {
+                if (!Global.CharacterCacheStorage.GetCharacterNameByGuid(g.GetLeaderGUID(), out string gmName))
+                    gmName = "---";
+
+                handler.SendSysMessage(CypherStrings.GuildListRow,
+                    id,
+                    g.GetName(),
+                    gmName,
+                    Time.GetTimeString(g.GetCreatedDate()),
+                    g.GetMembersCount(),
+                    g.GetBankMoney() / MoneyConstants.Gold
+                );
+            }
+
+            handler.SendSysMessage(CypherStrings.GuildListTotal, titleAndSummaryColor, guildStore.Count, resetColor);
             return true;
         }
     }

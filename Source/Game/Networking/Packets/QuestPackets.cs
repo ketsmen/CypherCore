@@ -125,6 +125,7 @@ namespace Game.Networking.Packets
                 _worldPacket.WriteUInt32(Info.Flags);
                 _worldPacket.WriteUInt32(Info.FlagsEx);
                 _worldPacket.WriteUInt32(Info.FlagsEx2);
+                _worldPacket.WriteUInt32(Info.FlagsEx3);
 
                 for (uint i = 0; i < SharedConst.QuestRewardItemCount; ++i)
                 {
@@ -269,7 +270,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteInt32(ObjectID);
             _worldPacket.WriteUInt16(Count);
             _worldPacket.WriteUInt16(Required);
-            _worldPacket.WriteUInt8(ObjectiveType);
+            _worldPacket.WriteUInt32(ObjectiveType);
         }
 
         public ObjectGuid VictimGUID;
@@ -277,7 +278,7 @@ namespace Game.Networking.Packets
         public uint QuestID;
         public ushort Count;
         public ushort Required;
-        public byte ObjectiveType;
+        public uint ObjectiveType;
     }
 
     class QuestUpdateAddCreditSimple : ServerPacket
@@ -288,7 +289,7 @@ namespace Game.Networking.Packets
         {
             _worldPacket.WriteUInt32(QuestID);
             _worldPacket.WriteInt32(ObjectID);
-            _worldPacket.WriteUInt8((byte)ObjectiveType);
+            _worldPacket.WriteUInt32((uint)ObjectiveType);
         }
 
         public uint QuestID;
@@ -452,7 +453,8 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt32(PortraitTurnIn);
             _worldPacket.WriteUInt32(QuestFlags[0]); // Flags
             _worldPacket.WriteUInt32(QuestFlags[1]); // FlagsEx
-            _worldPacket.WriteUInt32(QuestFlags[2]); // FlagsEx
+            _worldPacket.WriteUInt32(QuestFlags[2]); // FlagsEx2
+            _worldPacket.WriteUInt32(QuestFlags[3]); // FlagsEx3
             _worldPacket.WriteUInt32(SuggestedPartyMembers);
             _worldPacket.WriteInt32(LearnSpells.Count);
             _worldPacket.WriteInt32(DescEmotes.Count);
@@ -475,7 +477,7 @@ namespace Game.Networking.Packets
             foreach (QuestObjectiveSimple obj in Objectives)
             {
                 _worldPacket.WriteUInt32(obj.Id);
-                _worldPacket.WriteUInt8(obj.Type);
+                _worldPacket.WriteUInt32(obj.Type);
                 _worldPacket.WriteInt32(obj.ObjectID);
                 _worldPacket.WriteInt32(obj.Amount);
             }
@@ -513,7 +515,7 @@ namespace Game.Networking.Packets
         public ObjectGuid InformUnit;
         public uint QuestID;
         public int QuestPackageID;
-        public uint[] QuestFlags = new uint[3];
+        public uint[] QuestFlags = new uint[4];
         public uint SuggestedPartyMembers;
         public QuestRewards Rewards = new();
         public List<QuestObjectiveSimple> Objectives = new();
@@ -554,6 +556,7 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt32(QuestFlags[0]);
             _worldPacket.WriteUInt32(QuestFlags[1]);
             _worldPacket.WriteUInt32(QuestFlags[2]);
+            _worldPacket.WriteUInt32(QuestFlags[3]);
             _worldPacket.WriteInt32(StatusFlags);
             _worldPacket.WriteUInt32(QuestGiverCreatureID);
             _worldPacket.WriteUInt32(QuestID);
@@ -606,7 +609,7 @@ namespace Game.Networking.Packets
         public List<QuestCurrency> Currency = new();
         public int StatusFlags;
         public int QuestInfoID;
-        public uint[] QuestFlags = new uint[3];
+        public uint[] QuestFlags = new uint[4];
         public string QuestTitle = "";
         public string CompletionText = "";
         public List<ConditionalQuestText> ConditionalCompletionText = new();
@@ -745,7 +748,7 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WritePackedGuid(SenderGUID);
-            _worldPacket.WriteUInt8((byte)Result);
+            _worldPacket.WriteUInt32((uint)Result);
 
             _worldPacket.WriteBits(QuestTitle.GetByteCount(), 9);
             _worldPacket.FlushBits();
@@ -766,7 +769,7 @@ namespace Game.Networking.Packets
         {
             SenderGUID = _worldPacket.ReadPackedGuid();
             QuestID = _worldPacket.ReadUInt32();
-            Result = (QuestPushReason)_worldPacket.ReadUInt8();
+            Result = (QuestPushReason)_worldPacket.ReadUInt32();
         }
 
         public ObjectGuid SenderGUID;
@@ -909,12 +912,14 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt32(SoundKitID);
             _worldPacket.WriteUInt32(CloseUISoundKitID);
             _worldPacket.WriteUInt8(NumRerolls);
-            _worldPacket.WriteInt64(Duration);
+            _worldPacket.WriteInt64(ExpireTime);
             _worldPacket.WriteBits(Question.GetByteCount(), 8);
             _worldPacket.WriteBits(PendingChoiceText.GetByteCount(), 8);
-            _worldPacket.WriteBit(CloseChoiceFrame);
+            _worldPacket.WriteBit(InfiniteRange);
             _worldPacket.WriteBit(HideWarboardHeader);
             _worldPacket.WriteBit(KeepOpenAfterChoice);
+            _worldPacket.WriteBit(ShowChoicesAsList);
+            _worldPacket.WriteBit(ForceDontShowChoicesAsList);
             _worldPacket.FlushBits();
 
             foreach (PlayerChoiceResponse response in Responses)
@@ -930,13 +935,15 @@ namespace Game.Networking.Packets
         public uint SoundKitID;
         public uint CloseUISoundKitID;
         public byte NumRerolls;
-        public long Duration;
+        public long ExpireTime;
         public string Question;
         public string PendingChoiceText;
         public List<PlayerChoiceResponse> Responses = new();
-        public bool CloseChoiceFrame;
+        public bool InfiniteRange;
         public bool HideWarboardHeader;
         public bool KeepOpenAfterChoice;
+        public bool ShowChoicesAsList;
+        public bool ForceDontShowChoicesAsList;
     }
 
     class ChoiceResponse : ClientPacket
@@ -991,6 +998,52 @@ namespace Game.Networking.Packets
         public override void Read()
         {
             UiMapID = _worldPacket.ReadInt32();
+        }
+    }
+
+    class SpawnTrackingUpdate : ClientPacket
+    {
+        public List<SpawnTrackingRequestInfo> SpawnTrackingRequests = new();
+
+        public SpawnTrackingUpdate(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
+        {
+            var spawnTrackingRequestCount = _worldPacket.ReadUInt32();
+            for (var i = 0; i < spawnTrackingRequestCount; i++)
+            {
+                var spawnTrackingRequestInfo = new SpawnTrackingRequestInfo();
+                spawnTrackingRequestInfo.Read(_worldPacket);
+                SpawnTrackingRequests.Add(spawnTrackingRequestInfo);
+            }
+        }
+
+    }
+
+    class QuestPOIUpdateResponse : ServerPacket
+    {
+        public List<SpawnTrackingResponseInfo> SpawnTrackingResponses = new();
+
+        public QuestPOIUpdateResponse() : base(ServerOpcodes.QuestPoiUpdateResponse, ConnectionType.Instance) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteInt32(SpawnTrackingResponses.Count);
+
+            foreach (SpawnTrackingResponseInfo spawnTrackingResponseInfo in SpawnTrackingResponses)
+                spawnTrackingResponseInfo.Write(_worldPacket);
+        }
+    }
+
+    class ForceSpawnTrackingUpdate : ServerPacket
+    {
+        public uint QuestID;
+
+        public ForceSpawnTrackingUpdate() : base(ServerOpcodes.ForceSpawnTrackingUpdate, ConnectionType.Instance) { }
+
+        public override void Write()
+        {
+            _worldPacket.WriteUInt32(QuestID);
         }
     }
 
@@ -1093,6 +1146,7 @@ namespace Game.Networking.Packets
         public uint Flags;
         public uint FlagsEx;
         public uint FlagsEx2;
+        public uint FlagsEx3;
         public uint POIContinent;
         public float POIx;
         public float POIy;
@@ -1302,6 +1356,7 @@ namespace Game.Networking.Packets
             data.WriteUInt32(QuestFlags[0]); // Flags
             data.WriteUInt32(QuestFlags[1]); // FlagsEx
             data.WriteUInt32(QuestFlags[2]); // FlagsEx2
+            data.WriteUInt32(QuestFlags[3]); // FlagsEx3
             data.WriteUInt32(QuestGiverCreatureID);
             data.WriteUInt32(QuestID);
             data.WriteUInt32(SuggestedPartyMembers);
@@ -1327,7 +1382,7 @@ namespace Game.Networking.Packets
         public uint SuggestedPartyMembers;
         public QuestRewards Rewards = new();
         public List<QuestDescEmote> Emotes = new();
-        public uint[] QuestFlags = new uint[3]; // Flags and FlagsEx
+        public uint[] QuestFlags = new uint[4]; // Flags and FlagsEx
         public int QuestInfoID;
     }
 
@@ -1447,8 +1502,7 @@ namespace Game.Networking.Packets
         public int Unused901_1;
         public int TypeArtFileID;
         public int? Rarity;
-        public uint? RarityColor;
-        public int Unused901_2;
+        public int BorderUiTextureAtlasMemberID;
         public int SpellID;
         public int MaxStacks;
 
@@ -1456,18 +1510,14 @@ namespace Game.Networking.Packets
         {
             data.WriteInt32(Unused901_1);
             data.WriteInt32(TypeArtFileID);
-            data.WriteInt32(Unused901_2);
+            data.WriteInt32(BorderUiTextureAtlasMemberID);
             data.WriteInt32(SpellID);
             data.WriteInt32(MaxStacks);
             data.WriteBit(Rarity.HasValue);
-            data.WriteBit(RarityColor.HasValue);
             data.FlushBits();
 
             if (Rarity.HasValue)
                 data.WriteInt32(Rarity.Value);
-
-            if (RarityColor.HasValue)
-                data.WriteUInt32(RarityColor.Value);
         }
     }
 
@@ -1531,6 +1581,42 @@ namespace Game.Networking.Packets
 
             if (MawPower.HasValue)
                 MawPower.Value.Write(data);
+        }
+    }
+
+    struct SpawnTrackingRequestInfo
+    {
+        public int ObjectTypeMask;
+        public int ObjectID;
+        public uint SpawnTrackingID;
+
+        public void Read(WorldPacket data)
+        {
+            ObjectTypeMask = data.ReadInt32();
+            ObjectID = data.ReadInt32();
+            SpawnTrackingID = data.ReadUInt32();
+        }
+    }
+
+    class SpawnTrackingResponseInfo
+    {
+        public uint SpawnTrackingID;
+        public int ObjectID;
+        public int PhaseID;
+        public int PhaseGroupID;
+        public int PhaseUseFlags;
+        public bool Visible = true;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteUInt32(SpawnTrackingID);
+            data.WriteInt32(ObjectID);
+            data.WriteInt32(PhaseID);
+            data.WriteInt32(PhaseGroupID);
+            data.WriteInt32(PhaseUseFlags);
+
+            data.WriteBit(Visible);
+            data.FlushBits();
         }
     }
 }

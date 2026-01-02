@@ -22,7 +22,7 @@ namespace Game.DataStorage
         public byte Green;
         public byte Blue;
         public byte Alpha;
-        public byte Flags;
+        public int Flags;
     }
 
     public sealed class PathNodeRecord
@@ -41,6 +41,17 @@ namespace Game.DataStorage
         public int Value;
 
         public PathPropertyIndex GetPropertyIndex() { return (PathPropertyIndex)PropertyIndex; }
+    }
+
+    public sealed class PerksActivityRecord
+    {
+        public LocalizedString ActivityName;
+        public LocalizedString Description;
+        public uint Id;
+        public int CriteriaTreeID;
+        public int ThresholdContributionAmount;
+        public int Supersedes;
+        public int Priority;
     }
 
     public sealed class PhaseRecord
@@ -63,6 +74,8 @@ namespace Game.DataStorage
         public uint Id;
         public long RaceMask;
         public string FailureDescription;
+        public ushort MinLevel;
+        public ushort MaxLevel;
         public int ClassMask;
         public uint SkillLogic;
         public int LanguageID;
@@ -78,12 +91,12 @@ namespace Game.DataStorage
         public uint CurrentCompletedQuestLogic;
         public uint SpellLogic;
         public uint ItemLogic;
-        public byte ItemFlags;
+        public int ItemFlags;
         public uint AuraSpellLogic;
         public ushort WorldStateExpressionID;
         public int WeatherID;
         public byte PartyStatus;
-        public byte LifetimeMaxPVPRank;
+        public sbyte LifetimeMaxPVPRank;
         public uint AchievementLogic;
         public sbyte Gender;
         public sbyte NativeGender;
@@ -113,8 +126,8 @@ namespace Game.DataStorage
         public byte MinGuildLevel;
         public sbyte MaxExpansionTier;
         public sbyte MinExpansionTier;
-        public byte MinPVPRank;
-        public byte MaxPVPRank;
+        public sbyte MinPVPRank;
+        public sbyte MaxPVPRank;
         public uint ContentTuningID;
         public int CovenantID;
         public uint TraitNodeEntryLogic;
@@ -133,7 +146,7 @@ namespace Game.DataStorage
         public uint[] Time = new uint[2];
         public uint[] AuraSpellID = new uint[4];
         public byte[] AuraStacks = new byte[4];
-        public ushort[] Achievement = new ushort[4];
+        public uint[] Achievement = new uint[4];
         public ushort[] AreaID = new ushort[4];
         public byte[] LfgStatus = new byte[4];
         public byte[] LfgCompare = new byte[4];
@@ -145,6 +158,42 @@ namespace Game.DataStorage
         public int[] TraitNodeEntryID = new int[4];
         public ushort[] TraitNodeEntryMinRank = new ushort[4];
         public ushort[] TraitNodeEntryMaxRank = new ushort[4];
+    }
+
+    public sealed class PlayerDataElementAccountRecord
+    {
+        public uint Id;
+        public int StorageIndex;
+        public int Type;
+        public int Unknown1125;
+
+        public PlayerDataElementType GetElementType() { return (PlayerDataElementType)Type; }
+    }
+
+    public sealed class PlayerDataElementCharacterRecord
+    {
+        public uint Id;
+        public int StorageIndex;
+        public int Type;
+        public int Unknown1125;
+
+        public PlayerDataElementType GetElementType() { return (PlayerDataElementType)Type; }
+    }
+
+    public sealed class PlayerDataFlagAccountRecord
+    {
+        public uint Id;
+        public int StorageIndex;
+        public int Unknown1107;
+        public int Unknown1125;
+    }
+
+    public sealed class PlayerDataFlagCharacterRecord
+    {
+        public uint Id;
+        public int StorageIndex;
+        public int Unknown1107;
+        public int Unknown1125;
     }
 
     public sealed class PowerDisplayRecord

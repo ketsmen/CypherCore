@@ -43,8 +43,8 @@ namespace Game.DataStorage
     public sealed class SceneScriptRecord
     {
         public uint Id;
-        public ushort FirstSceneScriptID;
-        public ushort NextSceneScriptID;
+        public uint FirstSceneScriptID;
+        public uint NextSceneScriptID;
         public int Unknown915;
     }
 
@@ -107,7 +107,7 @@ namespace Game.DataStorage
         public short MinSkillLineRank;
         public int ClassMask;
         public uint SupercedesSpell;
-        public AbilityLearnType AcquireMethod;
+        public SkillLineAbilityAcquireMethod AcquireMethod;
         public ushort TrivialSkillLineRankHigh;
         public ushort TrivialSkillLineRankLow;
         public int Flags;
@@ -231,7 +231,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public uint SpellID;
-        public byte FacingCasterFlags;
+        public int FacingCasterFlags;
         public ushort MinFactionID;
         public int MinReputation;
         public ushort RequiredAreasID;
@@ -244,10 +244,10 @@ namespace Game.DataStorage
         public uint Id;
         public byte DifficultyID;
         public ushort Category;
-        public sbyte DefenseType;
+        public int DefenseType;
         public sbyte DispelType;
         public sbyte Mechanic;
-        public sbyte PreventionType;
+        public int PreventionType;
         public ushort StartRecoveryCategory;
         public ushort ChargeCategory;
         public uint SpellID;
@@ -258,8 +258,8 @@ namespace Game.DataStorage
         public uint Id;
         public string Name;
         public int Flags;
-        public byte UsesPerWeek;
-        public byte MaxCharges;
+        public int UsesPerWeek;
+        public int MaxCharges;
         public int ChargeRecoveryTime;
         public int TypeMask;
 
@@ -346,7 +346,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public uint SpellID;
-        public sbyte EquippedItemClass;
+        public int EquippedItemClass;
         public int EquippedItemInvTypes;
         public int EquippedItemSubclass;
     }
@@ -361,7 +361,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public byte DifficultyID;
-        public short InterruptFlags;
+        public int InterruptFlags;
         public int[] AuraInterruptFlags = new int[2];
         public int[] ChannelInterruptFlags = new int[2];
         public uint SpellID;
@@ -576,7 +576,7 @@ namespace Game.DataStorage
         public uint Id;
         public string Name;
         public uint CreatureDisplayID;
-        public sbyte CreatureType;
+        public byte CreatureType;
         public int Flags;
         public int AttackIconFileID;
         public sbyte BonusActionBar;
@@ -658,6 +658,10 @@ namespace Game.DataStorage
         public int FallbackSpellVisualKitId;
         public ushort DelayMin;
         public ushort DelayMax;
+        public int MinimumSpellVisualDensityFilterType;
+        public int MinimumSpellVisualDensityFilterParam;
+        public int ReducedSpellVisualDensityFilterType;
+        public int ReducedSpellVisualDensityFilterParam;
         public int[] Flags = new int[2];
     }
 

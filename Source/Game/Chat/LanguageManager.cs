@@ -100,7 +100,7 @@ namespace Game.Chat
                 if (!wordGroup.Empty())
                 {
                     uint wordHash = SStrHash(str, true);
-                    byte idxInsideGroup = (byte)(wordHash % wordGroup.Count());
+                    byte idxInsideGroup = (byte)(language * wordHash % wordGroup.Count());
 
                     string replacementWord = wordGroup[idxInsideGroup];
 
@@ -125,7 +125,7 @@ namespace Game.Chat
                                 int length = Math.Min(str.Length, replacementWord.Length);
                                 for (int i = 0; i < length; ++i)
                                 {
-                                    if (char.IsUpper(str[i]))
+                                    if (str[i] != '\'' && char.IsUpper(str[i]))
                                         result += char.ToUpper(replacementWord[i]);
                                     else
                                         result += char.ToLower(replacementWord[i]);
@@ -187,7 +187,13 @@ namespace Game.Chat
                     case 'c':
                     case 'C':
                         // skip color
-                        i += 9;
+                        if (i + 2 >= source.Length)
+                            break;
+
+                        if (source[i + 2] == 'n')
+                            i = source.IndexOf(':', i); // numeric color id
+                        else
+                            i += 9;
                         break;
                     case 'r':
                         ++i;
@@ -222,8 +228,8 @@ namespace Game.Chat
             var chars = text.ToCharArray();
             for (var i = 0; i < text.Length; ++i)
             {
-                var w = chars[i];
-                if (!Extensions.isExtendedLatinCharacter(w) && !char.IsNumber(w) && w <= 0xFF && w != '\\')
+                var w = text[i];
+                if (!Extensions.isLatin1Character(w) && !char.IsNumber(w) && w <= 0xFF && w != '\\')
                     chars[i] = ' ';
             }
 
@@ -232,7 +238,12 @@ namespace Game.Chat
 
         static char upper_backslash(char c)
         {
-            return c == '/' ? '\\' : char.ToUpper(c);
+            if (c == '/')
+                return '\\';
+            if (c >= 'a' && c <= 'z')
+                return (char)('A' + (char)(c - 'a'));
+            else
+                return c;
         }
 
         static uint[] s_hashtable =

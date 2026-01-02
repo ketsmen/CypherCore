@@ -89,18 +89,18 @@ namespace Game
 
                             charInfo.Customizations.Clear();
 
-                            if (!charInfo.Flags2.HasAnyFlag(CharacterCustomizeFlags.Customize | CharacterCustomizeFlags.Faction | CharacterCustomizeFlags.Race))
+                            if (!charInfo.Flags2.HasAnyFlag(CharacterFlags2.Customize | CharacterFlags2.FactionChange | CharacterFlags2.RaceChange))
                             {
                                 PreparedStatement stmt = CharacterDatabase.GetPreparedStatement(CharStatements.UPD_ADD_AT_LOGIN_FLAG);
                                 stmt.AddValue(0, (ushort)AtLoginFlags.Customize);
                                 stmt.AddValue(1, charInfo.Guid.GetCounter());
                                 DB.Characters.Execute(stmt);
-                                charInfo.Flags2 = CharacterCustomizeFlags.Customize;
+                                charInfo.Flags2 = CharacterFlags2.Customize;
                             }
                         }
 
                         // Do not allow locked characters to login
-                        if (!charInfo.Flags.HasAnyFlag(CharacterFlags.CharacterLockedForTransfer | CharacterFlags.LockedByBilling))
+                        if (!charInfo.Flags.HasAnyFlag(CharacterFlags.LockedForTransfer | CharacterFlags.LockedByBilling))
                             _legitCharacters.Add(charInfo.Guid);
                     }
 
@@ -109,13 +109,13 @@ namespace Game
 
                     charResult.MaxCharacterLevel = Math.Max(charResult.MaxCharacterLevel, charInfo.ExperienceLevel);
                 }
-                while (result.NextRow() && charResult.Characters.Count < 200);
+                while (result.NextRow() && charResult.Characters.Count < SharedConst.MaxCharactersPerRealm);
             }
 
             foreach (var requirement in Global.ObjectMgr.GetRaceUnlockRequirements())
             {
                 EnumCharactersResult.RaceUnlock raceUnlock = new();
-                raceUnlock.RaceID = requirement.Key;
+                raceUnlock.RaceID = (sbyte)requirement.Key;
                 raceUnlock.HasUnlockedLicense = (byte)GetAccountExpansion() >= requirement.Value.Expansion;
                 raceUnlock.HasUnlockedAchievement = requirement.Value.AchievementId != 0 && (WorldConfig.GetBoolValue(WorldCfg.CharacterCreatingDisableAlliedRaceAchievementRequirement)
                     /* || HasAccountAchievement(requirement.second.AchievementId)*/);
@@ -123,6 +123,9 @@ namespace Game
             }
 
             SendPacket(charResult);
+
+            if (!charResult.IsDeletedCharacters)
+                _collectionMgr.SendWarbandSceneCollectionData();
         }
 
         [WorldPacketHandler(ClientOpcodes.EnumCharactersDeletedByClient, Status = SessionStatus.Authed)]
@@ -780,6 +783,9 @@ namespace Game
 
             SendPacket(new ResumeComms(ConnectionType.Instance));
 
+            // client will respond to SMSG_RESUME_COMMS with CMSG_QUEUED_MESSAGES_END
+            RegisterTimeSync(SPECIAL_RESUME_COMMS_TIME_SYNC_COUNTER);
+
             AddQueryHolderCallback(DB.Characters.DelayQueryHolder(holder)).AfterComplete(holder => HandlePlayerLogin((LoginQueryHolder)holder));
         }
 
@@ -794,6 +800,12 @@ namespace Game
                 KickPlayer("WorldSession::HandlePlayerLogin Player::LoadFromDB failed");
                 m_playerLoading.Clear();
                 return;
+            }
+
+            if (!_timeSyncClockDeltaQueue.IsEmpty)
+            {
+                pCurrChar.SetPlayerLocalFlag(PlayerLocalFlags.OverrideTransportServerTime);
+                pCurrChar.SetTransportServerTime((int)_timeSyncClockDelta);
             }
 
             pCurrChar.SetVirtualPlayerRealm(Global.WorldMgr.GetVirtualRealmAddress());
@@ -881,6 +893,10 @@ namespace Game
                             break;
                     }
                 }
+
+                // send new char string if not empty
+                if (!Global.WorldMgr.GetNewCharString().IsEmpty())
+                    pCurrChar.SendSysMessage(Global.WorldMgr.GetNewCharString());
             }
 
             if (!pCurrChar.GetMap().AddPlayerToMap(pCurrChar))
@@ -947,6 +963,10 @@ namespace Game
                     pCurrChar.CastSpell(pCurrChar, 8326, new CastSpellExtraArgs(true));     // auras SPELL_AURA_GHOST, SPELL_AURA_INCREASE_SPEED(why?), SPELL_AURA_INCREASE_SWIM_SPEED(why?)
 
                 pCurrChar.SetWaterWalking(true);
+
+                int delay = pCurrChar.CalculateCorpseReclaimDelay(true);
+                if (delay > 0)
+                    pCurrChar.SendCorpseReclaimDelay(delay);
             }
 
             pCurrChar.ContinueTaxiFlight();
@@ -1125,10 +1145,9 @@ namespace Game
             // START OF DUMMY VALUES
             features.ComplaintStatus = (byte)ComplaintStatus.EnabledWithAutoIgnore;
             features.CfgRealmID = 2;
-            features.CfgRealmRecID = 0;
+            features.CfgRealmRecID = (int)Global.RealmMgr.GetCurrentRealmId().Index;
             features.CommercePricePollTimeSeconds = 300;
             features.VoiceEnabled = false;
-            features.BrowserEnabled = false; // Has to be false, otherwise client will crash if "Customer Support" is opened
 
             EuropaTicketConfig europaTicketSystemStatus = new();
             europaTicketSystemStatus.ThrottleState.MaxTries = 10;
@@ -1147,11 +1166,31 @@ namespace Game
             features.EuropaTicketSystemStatus = europaTicketSystemStatus;
 
             features.CharUndeleteEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemCharacterUndeleteEnabled);
-            features.BpayStoreEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemBpayStoreEnabled);
             features.WarModeEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemWarModeEnabled);
             features.IsChatMuted = !CanSpeak();
 
             features.SpeakForMeAllowed = false;
+
+            foreach (var (gameRule, value) in Global.WorldMgr.GetGameRules())
+            {
+                GameRuleValuePair rule = new();
+                rule.Rule = (int)gameRule;
+
+                if (value is float)
+                    rule.ValueF = (float)value;
+                else
+                    rule.Value = Convert.ToInt32(value);
+
+                features.GameRules.Add(rule);
+            }
+
+            features.AddonChatThrottle.MaxTries = 10;
+            features.AddonChatThrottle.TriesRestoredPerSecond = 1;
+            features.AddonChatThrottle.UsedTriesPerMessage = 1;
+            features.GuildChatThrottle.UsedTriesPerMessage = 1;
+            features.GuildChatThrottle.TriesRestoredPerSecond = 20;
+            features.GroupChatThrottle.UsedTriesPerMessage = 1;
+            features.GroupChatThrottle.TriesRestoredPerSecond = 20;
 
             SendPacket(features);
         }
@@ -1982,12 +2021,12 @@ namespace Game
                         string taximaskstream = "";
 
 
-                        var factionMask = newTeamId == BattleGroundTeamId.Horde ? CliDB.HordeTaxiNodesMask : CliDB.AllianceTaxiNodesMask;
+                        var factionMask = newTeamId == BattleGroundTeamId.Horde ? DB2Manager.HordeTaxiNodesMask : DB2Manager.AllianceTaxiNodesMask;
                         for (int i = 0; i < factionMask.Length; ++i)
                         {
                             // i = (315 - 1) / 8 = 39
                             // m = 1 << ((315 - 1) % 8) = 4
-                            int deathKnightExtraNode = playerClass != Class.Deathknight || i != 39 ? 0 : 4;
+                            int deathKnightExtraNode = playerClass != Class.DeathKnight || i != 39 ? 0 : 4;
                             taximaskstream += (uint)(factionMask[i] | deathKnightExtraNode) + ' ';
                         }
 
@@ -2732,6 +2771,10 @@ namespace Game
             stmt.AddValue(0, lowGuid);
             SetQuery(PlayerLoginQueryLoad.QuestStatusObjectivesCriteriaProgress, stmt);
 
+            stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_CHARACTER_QUESTSTATUS_OBJECTIVES_SPAWN_TRACKING);
+            stmt.AddValue(0, lowGuid);
+            SetQuery(PlayerLoginQueryLoad.QuestStatusSpawnTracking, stmt);
+
             stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_CHARACTER_QUESTSTATUS_DAILY);
             stmt.AddValue(0, lowGuid);
             SetQuery(PlayerLoginQueryLoad.DailyQuestStatus, stmt);
@@ -2775,10 +2818,6 @@ namespace Game
             stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_ITEM_INSTANCE_AZERITE_EMPOWERED);
             stmt.AddValue(0, lowGuid);
             SetQuery(PlayerLoginQueryLoad.AzeriteEmpowered, stmt);
-
-            stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_CHAR_VOID_STORAGE);
-            stmt.AddValue(0, lowGuid);
-            SetQuery(PlayerLoginQueryLoad.VoidStorage, stmt);
 
             stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_MAIL);
             stmt.AddValue(0, lowGuid);
@@ -2938,6 +2977,18 @@ namespace Game
             stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_CHAR_TRAIT_CONFIGS);
             stmt.AddValue(0, lowGuid);
             SetQuery(PlayerLoginQueryLoad.TraitConfigs, stmt);
+
+            stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_PLAYER_DATA_ELEMENTS_CHARACTER);
+            stmt.AddValue(0, lowGuid);
+            SetQuery(PlayerLoginQueryLoad.DataElements, stmt);
+
+            stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_PLAYER_DATA_FLAGS_CHARACTER);
+            stmt.AddValue(0, lowGuid);
+            SetQuery(PlayerLoginQueryLoad.DataFlags, stmt);
+
+            stmt = CharacterDatabase.GetPreparedStatement(CharStatements.SEL_CHARACTER_BANK_TAB_SETTINGS);
+            stmt.AddValue(0, lowGuid);
+            SetQuery(PlayerLoginQueryLoad.BankTabSettings, stmt);
         }
 
         public ObjectGuid GetGuid() { return m_guid; }
@@ -2992,6 +3043,7 @@ namespace Game
         QuestStatusObjectives,
         QuestStatusObjectivesCriteria,
         QuestStatusObjectivesCriteriaProgress,
+        QuestStatusSpawnTracking,
         DailyQuestStatus,
         Reputation,
         Inventory,
@@ -3031,7 +3083,6 @@ namespace Game
         InstanceLockTimes,
         SeasonalQuestStatus,
         MonthlyQuestStatus,
-        VoidStorage,
         Currency,
         CufProfiles,
         CorpseLocation,
@@ -3043,6 +3094,9 @@ namespace Game
         GarrisonFollowerAbilities,
         TraitEntries,
         TraitConfigs,
+        DataElements,
+        DataFlags,
+        BankTabSettings,
         Max
     }
 

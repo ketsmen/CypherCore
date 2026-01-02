@@ -19,6 +19,10 @@ namespace Framework.Constants
         Calendar = 11,
         Mail = 12,
         PvP = 13,
+        PvPScoreboard = 14,
+        PvPGroupMember = 15,
+        CraftingOrder = 16,
+        RecentAlly = 17
     }
 
     public enum ReportMajorCategory
@@ -46,6 +50,10 @@ namespace Framework.Constants
         GuildName = 0x1000,
         Description = 0x2000,
         Name = 0x4000,
+        ChinaHarmfulMinors = 0x8000,
+        Disruption = 0x10000,
+        TerroristAndViolentExtremistContent = 0x20000,
+        ChildSexualExploitationAndAbuse = 0x40000,
     }
 
     public enum GMTicketSystemStatus

@@ -43,7 +43,7 @@ namespace Game.DataStorage
         public byte SheatheType;
         public sbyte SoundOverrideSubclassID;
         public int IconFileDataID;
-        public byte ItemGroupSoundsID;
+        public uint ItemGroupSoundsID;
         public int ContentTuningID;
         public int ModifiedCraftingReagentItemID;
         public int CraftingQualityID;
@@ -141,6 +141,8 @@ namespace Game.DataStorage
         public uint IblGroupPointsModSetID;
         public int MinMythicPlusLevel;
         public int MaxMythicPlusLevel;
+        public int ItemCreationContextGroupID;
+        public int Flags;
         public uint ParentItemBonusTreeID;
     }
 
@@ -158,7 +160,7 @@ namespace Game.DataStorage
         public string ClassName;
         public sbyte ClassID;
         public float PriceModifier;
-        public byte Flags;
+        public int Flags;
     }
 
     public sealed class ItemContextPickerEntryRecord
@@ -171,6 +173,13 @@ namespace Game.DataStorage
         public uint Flags;
         public uint PlayerConditionID;
         public uint ItemContextPickerID;
+    }
+
+    public sealed class ItemCreationContextRecord
+    {
+        public uint Id;
+        public byte ItemContext;
+        public uint ItemCreationContextGroupID;
     }
 
     public sealed class ItemCurrencyCostRecord
@@ -225,7 +234,7 @@ namespace Game.DataStorage
         public uint Id;
         public ushort RequiredArenaRating;
         public byte ArenaBracket;                                             // arena slot restrictions (min slot value)
-        public byte Flags;
+        public int Flags;
         public byte MinFactionID;
         public int MinReputation;
         public byte RequiredAchievement;                                      // required personal arena rating
@@ -306,12 +315,28 @@ namespace Game.DataStorage
         public int Color;
     }
 
+    public sealed class ItemOffsetCurveRecord
+    {
+        public uint Id;
+        public int CurveID;
+        public int Offset;
+    }
+
     public sealed class ItemPriceBaseRecord
     {
         public uint Id;
         public ushort ItemLevel;
         public float Armor;
         public float Weapon;
+    }
+
+    public sealed class ItemScalingConfigRecord
+    {
+        public uint Id;
+        public int ItemOffsetCurveID;
+        public int ItemLevel;
+        public int RequiredLevel;
+        public int Unknown1125;
     }
 
     public sealed class ItemSearchNameRecord
@@ -349,6 +374,7 @@ namespace Game.DataStorage
         public uint Id;
         public ushort ChrSpecID;
         public uint SpellID;
+        public ushort TraitSubTreeID;
         public byte Threshold;
         public uint ItemSetID;
     }
@@ -388,6 +414,8 @@ namespace Game.DataStorage
         public int ModifiedCraftingReagentItemID;
         public uint ContentTuningID;
         public uint PlayerLevelToItemLevelCurveID;
+        public int ItemLevelOffsetCurveID;
+        public int ItemLevelOffsetItemLevel;
         public ushort ItemNameDescriptionID;
         public ushort RequiredTransmogHoliday;
         public ushort RequiredHoliday;
@@ -416,7 +444,7 @@ namespace Game.DataStorage
         public byte DamageType;
         public byte ContainerSlots;
         public byte RequiredPVPMedal;
-        public byte RequiredPVPRank;
+        public sbyte RequiredPVPRank;
         public sbyte RequiredLevel;
         public InventoryType inventoryType;
         public sbyte OverallQualityID;

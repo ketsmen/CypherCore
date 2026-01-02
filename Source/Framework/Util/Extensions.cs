@@ -25,9 +25,9 @@ namespace System
         public static string ToHexString(this byte[] byteArray, bool reverse = false)
         {
             if (reverse)
-                return byteArray.Reverse().Aggregate("", (current, b) => current + b.ToString("X2"));
-            else
-                return byteArray.Aggregate("", (current, b) => current + b.ToString("X2"));
+                byteArray.Reverse();
+            
+            return byteArray.Aggregate("", (current, b) => current + b.ToString("X2"));
         }
 
         public static byte[] ToByteArray(this string str, bool reverse = false)
@@ -40,7 +40,10 @@ namespace System
                 string temp = String.Concat(str[i * 2], str[i * 2 + 1]);
                 res[i] = Convert.ToByte(temp, 16);
             }
-            return reverse ? res.Reverse().ToArray() : res;
+            if (reverse)
+                res.Reverse();
+
+            return res;
         }
 
         public static byte[] ToByteArray(this string value, char separator)
@@ -369,6 +372,27 @@ namespace System
             if (wchar >= 0x0100 && wchar <= 0x012F)                  // LATIN CAPITAL LETTER A WITH MACRON - LATIN SMALL LETTER I WITH OGONEK
                 return true;
             if (wchar == 0x1E9E)                                     // LATIN CAPITAL LETTER SHARP S
+                return true;
+            return false;
+        }
+
+        public static bool isLatin1Character(char wchar)
+        {
+            if (isBasicLatinCharacter(wchar))
+                return true;
+            if (wchar >= 0x00C0 && wchar <= 0x00D6)                  // LATIN CAPITAL LETTER A WITH GRAVE - LATIN CAPITAL LETTER O WITH DIAERESIS
+                return true;
+            if (wchar >= 0x00D8 && wchar <= 0x00DD)                  // LATIN CAPITAL LETTER O WITH STROKE - LATIN CAPITAL LETTER Y WITH ACUTE
+                return true;
+            if (wchar == 0x00DF)                                     // LATIN SMALL LETTER SHARP S
+                return true;
+            if (wchar >= 0x00E0 && wchar <= 0x00F6)                  // LATIN SMALL LETTER A WITH GRAVE - LATIN SMALL LETTER O WITH DIAERESIS
+                return true;
+            if (wchar >= 0x00F8 && wchar <= 0x00FD)                  // LATIN SMALL LETTER O WITH STROKE - LATIN SMALL LETTER Y WITH ACUTE
+                return true;
+            if (wchar == 0x00FF)                                     // LATIN SMALL LETTER Y WITH DIAERESIS
+                return true;
+            if (wchar == 0x0178)                                     // LATIN CAPITAL LETTER Y WITH DIAERESIS
                 return true;
             return false;
         }

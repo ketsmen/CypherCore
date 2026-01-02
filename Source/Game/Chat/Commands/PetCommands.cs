@@ -39,6 +39,11 @@ namespace Game.Chat
 
             // Everything looks OK, create new pet
             Pet pet = player.CreateTamedPetFrom(creatureTarget);
+            if (pet == null)
+            {
+                handler.SendSysMessage("CreateTamedPetFrom returned null.");
+                return false;
+            }
 
             // "kill" original creature
             creatureTarget.DespawnOrUnsummon();
@@ -114,7 +119,7 @@ namespace Game.Chat
         }
 
         [Command("level", RBACPermissions.CommandPetLevel)]
-        static bool HandlePetLevelCommand(CommandHandler handler, int? level)
+        static bool HandlePetLevelCommand(CommandHandler handler, OptionalArg<int> level)
         {
             Pet pet = GetSelectedPlayerPetOrOwn(handler);
             Player owner = pet != null ? pet.GetOwner() : null;

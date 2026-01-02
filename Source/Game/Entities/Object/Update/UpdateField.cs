@@ -15,6 +15,17 @@ namespace Game.Entities
         T GetValue();
     }
 
+    public interface IsUpdateFieldStructureTag<T>
+    {
+        void WriteCreate(WorldPacket data, T owner, Player receiver);
+        void WriteUpdate(WorldPacket data, bool ignoreChangesMask, T owner, Player receiver);
+    }
+    public interface IHasChangesMask
+    {
+        void ClearChangesMask();
+        UpdateMask GetUpdateMask();
+    }
+
     public class UpdateFieldString : IUpdateField<string>
     {
         public string _value;
@@ -178,25 +189,18 @@ namespace Game.Entities
 
     public class DynamicUpdateField<T> where T : new()
     {
-        public List<T> _values;
-        public List<uint> _updateMask;
+        public List<T> _values = new();
+        public List<uint> _updateMask = new();
         public int BlockBit;
         public int Bit;
 
         public DynamicUpdateField()
         {
-            _values = new List<T>();
-            _updateMask = new List<uint>();
-
             BlockBit = -1;
             Bit = -1;
         }
-
         public DynamicUpdateField(int blockBit, int bit)
         {
-            _values = new List<T>();
-            _updateMask = new List<uint>();
-
             BlockBit = blockBit;
             Bit = bit;
         }
@@ -347,15 +351,113 @@ namespace Game.Entities
         }
     }
 
-    public interface IHasChangesMask
+    public enum MapUpdateFieldState
     {
-        void ClearChangesMask();
-        UpdateMask GetUpdateMask();
+        Unchanged = 0,
+        Changed = 1,
+        Deleted = 2
+    }
+
+    public class MapUpdateField<K, V> where V : new()
+    {
+        Dictionary<K, (V, MapUpdateFieldState)> _values = new();
+        public int BlockBit;
+        public int Bit;
+
+        public MapUpdateField(int blockBit, int bit)
+        {
+            BlockBit = blockBit;
+            Bit = bit;
+        }
+
+        public bool Empty()
+        {
+            return _values.Empty();
+        }
+
+        public int Size()
+        {
+            return _values.Count;
+        }
+
+        public void TryAdd(K key)
+        {
+            if (!_values.ContainsKey(key))
+                _values[key] = (new V(), MapUpdateFieldState.Changed);
+        }
+
+        public void Remove(K key)
+        {
+            _values.Remove(key);
+        }
+
+        public void MarkKeyForRemoval(K key)
+        {
+            var itr = _values.LookupByKey(key);
+            if (itr.Item1 != null)
+                itr.Item2 = MapUpdateFieldState.Deleted;
+        }
+
+        public (V, MapUpdateFieldState) Get(K key)
+        {
+            if (_values.TryGetValue(key, out var value))
+                return value;
+
+            return default;
+        }
+
+        public (K, V) FindIf(Predicate<V> predicate)
+        {
+            var itr = _values.First(pair => { return predicate(pair.Value.Item1); });
+            if (itr.Key != null)
+                return (itr.Key, itr.Value.Item1);
+
+            return default;
+        }
+
+        public IEnumerator<KeyValuePair<K, (V, MapUpdateFieldState)>> GetEnumerator()
+        {
+            foreach (var obj in _values)
+                yield return obj;
+        }
+
+        public List<K> GetKeys() { return _values.Keys.ToList(); }
+
+        public List<(V, MapUpdateFieldState)> GetValues() { return _values.Values.ToList(); }
+    }
+
+    public class VariantUpdateField(int blockBit, int bit)
+    {
+        public object _value;
+
+        public int BlockBit = blockBit;
+        public int Bit = bit;
+
+        public bool Is<T>() { return _value is T; }
+
+        public T Get<T>() where T : class, new()
+        {
+            if (Is<T>())
+                return _value as T;
+
+            return null;
+        }
+
+        public void Visit(Action<dynamic> visitor)
+        {
+            visitor(_value);
+        }
+
+        public void ConstructValue<T>() where T : class, new()
+        {
+            _value = new T();
+        }
     }
 
     public abstract class HasChangesMask : IHasChangesMask
     {
-        public int _changeMask;
+        public int ChangeMaskLength;
+
         public UpdateMask _changesMask;
         public int _blockBit;
         public int Bit;
@@ -364,12 +466,13 @@ namespace Game.Entities
         {
             _blockBit = blockBit;
             Bit = (int)bit;
+            ChangeMaskLength = changeMask;
             _changesMask = new UpdateMask(changeMask);
-            _changeMask = changeMask;
         }
 
         public HasChangesMask(int changeMask)
         {
+            ChangeMaskLength = changeMask;
             _changesMask = new UpdateMask(changeMask);
         }
 
@@ -405,6 +508,33 @@ namespace Game.Entities
 
         public void ClearChangesMask(UpdateFieldString updateField) { }
 
+        public void ClearChangesMask<K, V>(MapUpdateField<K, V> field) where V : new()
+        {
+            foreach (var key in field.GetKeys())
+            {
+                var value = field.Get(key);
+                switch (value.Item2)
+                {
+                    case MapUpdateFieldState.Unchanged:
+                        break;
+                    case MapUpdateFieldState.Changed:
+                        if (typeof(HasChangesMask).IsAssignableFrom(typeof(K)))
+                            ((IHasChangesMask)key).ClearChangesMask();
+
+                        if (typeof(HasChangesMask).IsAssignableFrom(typeof(V)))
+                            ((IHasChangesMask)value.Item1).ClearChangesMask();
+
+                        value.Item2 = MapUpdateFieldState.Unchanged;
+                        break;
+                    case MapUpdateFieldState.Deleted:
+                        field.Remove(key);
+                        continue;
+                    default:
+                        break;
+                }
+            }
+        }
+
         public void ClearChangesMask<U>(OptionalUpdateField<U> updateField) where U : new()
         {
             if (typeof(IHasChangesMask).IsAssignableFrom(typeof(U)) && updateField.HasValue())
@@ -433,6 +563,19 @@ namespace Game.Entities
             }
         }
 
+        public void ClearChangesMask(VariantUpdateField field)
+        {
+            if (field._value != null && typeof(IHasChangesMask).IsAssignableFrom(field._value.GetType()))
+                ((IHasChangesMask)field._value).ClearChangesMask();
+        }
+
+        public dynamic ModifyValueOld(dynamic value, int bit, int blockBit)
+        {
+            _changesMask.Set(blockBit);
+            _changesMask.Set(bit);
+            return value;
+        }
+
         public UpdateField<U> ModifyValue<U>(UpdateField<U> updateField) where U : new()
         {
             MarkChanged(updateField);
@@ -443,6 +586,19 @@ namespace Game.Entities
         {
             MarkChanged(updateField);
             return updateField;
+        }
+
+        public MapUpdateField<K, V> ModifyValue<K, V>(MapUpdateField<K, V> updateField) where V : new()
+        {
+            MarkChanged(updateField);
+            return updateField;
+        }
+
+        public V ModifyValue<K, V>(MapUpdateField<K, V> updateField, K key) where V : new()
+        {
+            MarkChanged(updateField);
+            updateField.TryAdd(key);
+            return updateField.Get(key).Item1;
         }
 
         public OptionalUpdateField<U> ModifyValue<U>(OptionalUpdateField<U> updateField) where U : new()
@@ -504,9 +660,29 @@ namespace Game.Entities
             return new DynamicUpdateFieldSetter<U>(updateField[index], dynamicIndex);
         }
 
+        public V ModifyValue<V>(VariantUpdateField field) where V : class, new()
+        {
+            if (!field.Is<V>())
+                field.ConstructValue<V>();
+
+            if (field.BlockBit >= 0)
+                _changesMask.Set(field.BlockBit);
+
+            _changesMask.Set(Bit);
+            return field.Get<V>();
+        }
+
         public void MarkChanged<U>(UpdateField<U> updateField) where U : new()
         {
             _changesMask.Set(updateField.BlockBit);
+            _changesMask.Set(updateField.Bit);
+        }
+
+        public void MarkChanged<K, V>(MapUpdateField<K, V> updateField) where V : new()
+        {
+            if (updateField.BlockBit >= 0)
+                _changesMask.Set(updateField.BlockBit);
+
             _changesMask.Set(updateField.Bit);
         }
 
@@ -558,9 +734,63 @@ namespace Game.Entities
                 data.WriteBits(0xFFFFFFFFu, size % 32);
         }
 
+        public void WriteMapFieldCreate<K, V, T>(MapUpdateField<K, V> map, WorldPacket data, T owner, Player receiver) where V : new()
+        {
+            data.WriteInt32(map.Size());
+            foreach (var (k, (v, _)) in map)
+            {
+                if (typeof(IsUpdateFieldStructureTag<T>).IsAssignableFrom(typeof(K)))
+                    ((IsUpdateFieldStructureTag<T>)k).WriteCreate(data, owner, receiver);
+                else
+                    data.Write(k);
+
+                if (typeof(IsUpdateFieldStructureTag<T>).IsAssignableFrom(typeof(V)))
+                    ((IsUpdateFieldStructureTag<T>)v).WriteCreate(data, owner, receiver);
+                else
+                    data.Write(v);
+            }
+        }
+
+        public void WriteMapFieldUpdate<K, V, T>(MapUpdateField<K, V> map, WorldPacket data, bool ignoreChangesMask, T owner, Player receiver) where V : new()
+        {
+            data.WriteUInt8((byte)(ignoreChangesMask ? 1 : 0));
+            if (ignoreChangesMask)
+                WriteMapFieldCreate(map, data, owner, receiver);
+            else
+            {
+                ushort changesCount = 0;
+                WorldPacket tempBuffer = new();
+
+                foreach (var (k, (v, state)) in map)
+                {
+                    if (state == MapUpdateFieldState.Unchanged)
+                        continue;
+
+                    ++changesCount;
+
+                    if (typeof(IsUpdateFieldStructureTag<T>).IsAssignableFrom(typeof(K)))
+                        ((IsUpdateFieldStructureTag<T>)k).WriteUpdate(tempBuffer, true /*ignoreChangesMask*/, owner, receiver);
+                    else
+                        tempBuffer.Write(k);
+
+                    tempBuffer.WriteUInt8((byte)state);
+                    if (state == MapUpdateFieldState.Deleted)
+                        continue;
+
+                    if (typeof(IsUpdateFieldStructureTag<T>).IsAssignableFrom(typeof(V)))
+                        ((IsUpdateFieldStructureTag<T>)v).WriteUpdate(tempBuffer, true /*ignoreChangesMask*/, owner, receiver); // client bug replaces unchanged values with 0/default so send everything as if it changed
+                    else
+                        tempBuffer.Write(v);
+                }
+
+                data.WriteUInt16(changesCount);
+                data.WriteBytes(tempBuffer);
+            }
+        }
+
         public UpdateMask GetStaticUpdateMask()
         {
-            return new UpdateMask(_changeMask);
+            return new UpdateMask(ChangeMaskLength);
         }
     }
 

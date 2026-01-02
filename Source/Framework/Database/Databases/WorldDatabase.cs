@@ -28,14 +28,15 @@ namespace Framework.Database
             PrepareStatement(WorldStatements.UPD_CREATURE_WANDER_DISTANCE, "UPDATE creature SET wander_distance = ?, MovementType = ? WHERE guid = ?");
             PrepareStatement(WorldStatements.UPD_CREATURE_SPAWN_TIME_SECS, "UPDATE creature SET spawntimesecs = ? WHERE guid = ?");
             PrepareStatement(WorldStatements.INS_CREATURE_FORMATION, "INSERT INTO creature_formations (leaderGUID, memberGUID, dist, angle, groupAI) VALUES (?, ?, ?, ?, ?)");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_BY_PATHID, "SELECT PathId, MoveType, Flags FROM waypoint_path WHERE PathId = ?");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH, "SELECT PathId, MoveType, Flags, Velocity FROM waypoint_path WHERE PathId = ? OR 1 = ?");
+            PrepareStatement(WorldStatements.INS_WAYPOINT_PATH, "INSERT INTO waypoint_path (PathId, MoveType, Flags, Velocity, Comment) VALUES (?, ?, ?, ?, ?)");
             PrepareStatement(WorldStatements.INS_WAYPOINT_PATH_NODE, "INSERT INTO waypoint_path_node (PathId, NodeId, PositionX, PositionY, PositionZ, Orientation) VALUES (?, ?, ?, ?, ?, ?)");
+            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE, "SELECT PathId, NodeId, PositionX, PositionY, PositionZ, Orientation, Delay FROM waypoint_path_node WHERE PathId = ? OR 1 = ? ORDER BY NodeId");
             PrepareStatement(WorldStatements.DEL_WAYPOINT_PATH_NODE, "DELETE FROM waypoint_path_node WHERE PathId = ? AND NodeId = ?");
             PrepareStatement(WorldStatements.UPD_WAYPOINT_PATH_NODE, "UPDATE waypoint_path_node SET NodeId = NodeId - 1 WHERE PathId = ? AND NodeId > ?");
             PrepareStatement(WorldStatements.UPD_WAYPOINT_PATH_NODE_POSITION, "UPDATE waypoint_path_node SET PositionX = ?, PositionY = ?, PositionZ = ?, Orientation = ? WHERE PathId = ? AND NodeId = ?");
             PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_MAX_PATHID, "SELECT MAX(PathId) FROM waypoint_path_node");
             PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_MAX_NODEID, "SELECT MAX(NodeId) FROM waypoint_path_node WHERE PathId = ?");
-            PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_BY_PATHID, "SELECT PathId, NodeId, PositionX, PositionY, PositionZ, Orientation, Delay FROM waypoint_path_node WHERE PathId = ? ORDER BY NodeId");
             PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_POS_BY_PATHID, "SELECT NodeId, PositionX, PositionY, PositionZ, Orientation FROM waypoint_path_node WHERE PathId = ?");
             PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_POS_FIRST_BY_PATHID, "SELECT PositionX, PositionY, PositionZ, Orientation FROM waypoint_path_node WHERE NodeId = 1 AND PathId = ?");
             PrepareStatement(WorldStatements.SEL_WAYPOINT_PATH_NODE_POS_LAST_BY_PATHID, "SELECT PositionX, PositionY, PositionZ, Orientation FROM waypoint_path_node WHERE PathId = ? ORDER BY NodeId DESC LIMIT 1");
@@ -50,10 +51,10 @@ namespace Framework.Database
             PrepareStatement(WorldStatements.SEL_CREATURE_BY_ID, "SELECT guid FROM creature WHERE id = ?");
             PrepareStatement(WorldStatements.SEL_GAMEOBJECT_NEAREST, "SELECT guid, id, position_x, position_y, position_z, map, (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) AS order_ FROM gameobject WHERE map = ? AND (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) <= ? ORDER BY order_");
             PrepareStatement(WorldStatements.SEL_CREATURE_NEAREST, "SELECT guid, id, position_x, position_y, position_z, map, (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) AS order_ FROM creature WHERE map = ? AND (POW(position_x - ?, 2) + POW(position_y - ?, 2) + POW(position_z - ?, 2)) <= ? ORDER BY order_");
-            PrepareStatement(WorldStatements.INS_CREATURE, "INSERT INTO creature(guid, id, map, spawnDifficulties, PhaseId, PhaseGroup, modelid, equipment_id, position_x, position_y, position_z, orientation, spawntimesecs, wander_distance, currentwaypoint, curHealthPct, MovementType, npcflag, unit_flags, unit_flags2, unit_flags3) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            PrepareStatement(WorldStatements.INS_CREATURE, "INSERT INTO creature (guid, id , map, spawnDifficulties, phaseUseFlags, PhaseId, PhaseGroup, terrainSwapMap, modelid, equipment_id, position_x, position_y, position_z, orientation, spawntimesecs, wander_distance, currentwaypoint, curHealthPct, MovementType, npcflag, unit_flags, unit_flags2, unit_flags3, ScriptName, StringId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             PrepareStatement(WorldStatements.DEL_GAME_EVENT_CREATURE, "DELETE FROM game_event_creature WHERE guid = ?");
             PrepareStatement(WorldStatements.DEL_GAME_EVENT_MODEL_EQUIP, "DELETE FROM game_event_model_equip WHERE guid = ?");
-            PrepareStatement(WorldStatements.INS_GAMEOBJECT, "INSERT INTO gameobject (guid, id, map, spawnDifficulties, PhaseId, PhaseGroup, position_x, position_y, position_z, orientation, rotation0, rotation1, rotation2, rotation3, spawntimesecs, animprogress, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            PrepareStatement(WorldStatements.INS_GAMEOBJECT, "INSERT INTO gameobject (guid, id, map, spawnDifficulties, phaseUseFlags, PhaseId, PhaseGroup, terrainSwapMap, position_x, position_y, position_z, orientation, rotation0, rotation1, rotation2, rotation3, spawntimesecs, animprogress, state, ScriptName, StringId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             PrepareStatement(WorldStatements.INS_DISABLES, "INSERT INTO disables (entry, sourceType, flags, comment) VALUES (?, ?, ?, ?)");
             PrepareStatement(WorldStatements.SEL_DISABLES, "SELECT entry FROM disables WHERE entry = ? AND sourceType = ?");
             PrepareStatement(WorldStatements.DEL_DISABLES, "DELETE FROM disables WHERE entry = ? AND sourceType = ?");
@@ -89,13 +90,14 @@ namespace Framework.Database
         UPD_CREATURE_WANDER_DISTANCE,
         UPD_CREATURE_SPAWN_TIME_SECS,
         INS_CREATURE_FORMATION,
-        SEL_WAYPOINT_PATH_BY_PATHID,
+        SEL_WAYPOINT_PATH,
+        INS_WAYPOINT_PATH,
+        SEL_WAYPOINT_PATH_NODE,
         INS_WAYPOINT_PATH_NODE,
         DEL_WAYPOINT_PATH_NODE,
         UPD_WAYPOINT_PATH_NODE,
         UPD_WAYPOINT_PATH_NODE_POSITION,
         SEL_WAYPOINT_PATH_NODE_MAX_PATHID,
-        SEL_WAYPOINT_PATH_NODE_BY_PATHID,
         SEL_WAYPOINT_PATH_NODE_POS_BY_PATHID,
         SEL_WAYPOINT_PATH_NODE_POS_FIRST_BY_PATHID,
         SEL_WAYPOINT_PATH_NODE_POS_LAST_BY_PATHID,

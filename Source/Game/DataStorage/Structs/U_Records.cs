@@ -40,6 +40,7 @@ namespace Game.DataStorage
         public int AreaID;
         public int WmoDoodadPlacementID;
         public int WmoGroupID;
+        public int Unknown1125;
     }
 
     public sealed class UiMapLinkRecord
@@ -109,7 +110,7 @@ namespace Game.DataStorage
         public float RegenerationPeace;
         public float RegenerationCombat;
         public byte BarType;
-        public ushort Flags;
+        public int Flags;
         public float StartInset;
         public float EndInset;
         public uint[] FileDataID = new uint[6];

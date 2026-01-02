@@ -90,7 +90,8 @@ namespace Game.Networking.Packets
             _worldPacket.WriteUInt16(CreatureFamily);
             _worldPacket.WriteUInt16(Specialization);
             _worldPacket.WriteUInt32(TimeLimit);
-            _worldPacket.WriteUInt16((ushort)((byte)CommandState | (Flag << 16)));
+            _worldPacket.WriteUInt8((byte)CommandState);
+            _worldPacket.WriteUInt8(Flag);
             _worldPacket.WriteUInt8((byte)ReactState);
 
             foreach (uint actionButton in ActionButtons)
@@ -142,7 +143,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8((byte)Result);
+            _worldPacket.WriteInt32((int)Result);
         }
 
         public StableResult Result;
@@ -182,7 +183,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8((byte)Result);
+            _worldPacket.WriteUInt32((uint)Result);
             _worldPacket.WritePackedGuid(RenameData.PetGUID);
             _worldPacket.WriteInt32(RenameData.PetNumber);
 
@@ -316,8 +317,8 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
+            _worldPacket.WriteInt32((int)Response);
             _worldPacket.WriteUInt32(SpellID);
-            _worldPacket.WriteUInt8((byte)Response);
         }
 
         public uint SpellID;
@@ -344,10 +345,10 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8(Result);
+            _worldPacket.WriteUInt32(Result);
         }
 
-        public byte Result;
+        public uint Result;
     }
 
     class PetMode : ServerPacket
@@ -362,7 +363,8 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WritePackedGuid(PetGUID);
-            _worldPacket.WriteUInt16((ushort)((int)CommandState | Flag << 8));
+            _worldPacket.WriteUInt8((byte)CommandState);
+            _worldPacket.WriteUInt8(Flag);
             _worldPacket.WriteUInt8((byte)ReactState);
         }
     }

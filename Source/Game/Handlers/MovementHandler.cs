@@ -293,6 +293,7 @@ namespace Game
 
             player.ResetMap();
             player.SetMap(newMap);
+            player.UpdatePositionData();
 
             ResumeToken resumeToken = new();
             resumeToken.SequenceIndex = player.m_movementCounter;
@@ -487,20 +488,22 @@ namespace Game
             uint old_zone = plMover.GetZoneId();
 
             var dest = plMover.GetTeleportDest();
+            WorldLocation destLocation = new(dest.Location);
 
-            dest.Location.GetPosition(out float x, out float y, out float z, out float o);
             if (dest.TransportGuid.HasValue)
             {
                 Transport transport = plMover.GetMap().GetTransport(dest.TransportGuid.Value);
                 if (transport != null)
                 {
                     transport.AddPassenger(plMover);
-                    plMover.m_movementInfo.transport.pos.Relocate(dest.Location.GetPosition());
+                    plMover.m_movementInfo.transport.pos.Relocate(destLocation);
+                    dest.Location.GetPosition(out float x, out float y, out float z, out float o);
                     transport.CalculatePassengerPosition(ref x, ref y, ref z, ref o);
+                    destLocation.Relocate(x, y, z, o);
                 }
             }
 
-            plMover.UpdatePosition(dest.Location, true);
+            plMover.UpdatePosition(destLocation, true);
             plMover.SetFallInformation(0, GetPlayer().GetPositionZ());
 
             uint newzone, newarea;
@@ -624,7 +627,7 @@ namespace Game
         }
 
         [WorldPacketHandler(ClientOpcodes.MoveSetAdvFlyingBankingRateAck)]
-        [WorldPacketHandler(ClientOpcodes.MoveSetAdvFlyingPitchingRateDownAck)] 
+        [WorldPacketHandler(ClientOpcodes.MoveSetAdvFlyingPitchingRateDownAck)]
         [WorldPacketHandler(ClientOpcodes.MoveSetAdvFlyingPitchingRateUpAck)]
         [WorldPacketHandler(ClientOpcodes.MoveSetAdvFlyingTurnVelocityThresholdAck)]
         void HandleSetAdvFlyingSpeedRangeAck(MovementSpeedRangeAck speedRangeAck)
@@ -854,21 +857,20 @@ namespace Game
                 GetPlayer().CastSpell(GetPlayer(), 2479, true);
         }
 
-        [WorldPacketHandler(ClientOpcodes.TimeSyncResponse, Processing = PacketProcessing.ThreadSafe)]
-        void HandleTimeSyncResponse(TimeSyncResponse timeSyncResponse)
+        void HandleTimeSync(uint counter, long clientTime, DateTime responseReceiveTime)
         {
-            if (!_pendingTimeSyncRequests.ContainsKey(timeSyncResponse.SequenceIndex))
+            var serverTimeAtSent = _pendingTimeSyncRequests.LookupByKey(counter);
+            if (serverTimeAtSent == 0)
                 return;
 
-            uint serverTimeAtSent = _pendingTimeSyncRequests.LookupByKey(timeSyncResponse.SequenceIndex);
-            _pendingTimeSyncRequests.Remove(timeSyncResponse.SequenceIndex);
+            _pendingTimeSyncRequests.Remove(counter);
 
             // time it took for the request to travel to the client, for the client to process it and reply and for response to travel back to the server.
             // we are going to make 2 assumptions:
             // 1) we assume that the request processing time equals 0.
             // 2) we assume that the packet took as much time to travel from server to client than it took to travel from client to server.
-            uint roundTripDuration = Time.GetMSTimeDiff(serverTimeAtSent, timeSyncResponse.GetReceivedTime());
-            uint lagDelay = roundTripDuration / 2;
+            uint roundTripDuration = Time.GetMSTimeDiff((uint)serverTimeAtSent, responseReceiveTime);
+            long lagDelay = roundTripDuration / 2;
 
             /*
             clockDelta = serverTime - clientTime
@@ -880,9 +882,29 @@ namespace Game
             using the following relation:
             serverTime = clockDelta + clientTime
             */
-            long clockDelta = (long)(serverTimeAtSent + lagDelay) - (long)timeSyncResponse.ClientTime;
+            long clockDelta = serverTimeAtSent + lagDelay - clientTime;
             _timeSyncClockDeltaQueue.PushFront(Tuple.Create(clockDelta, roundTripDuration));
             ComputeNewClockDelta();
+        }
+
+        [WorldPacketHandler(ClientOpcodes.TimeSyncResponse, Processing = PacketProcessing.ThreadSafe)]
+        void HandleTimeSyncResponse(TimeSyncResponse timeSyncResponse)
+        {
+            HandleTimeSync(timeSyncResponse.SequenceIndex, timeSyncResponse.ClientTime, timeSyncResponse.GetReceivedTime());
+        }
+
+        [WorldPacketHandler(ClientOpcodes.QueuedMessagesEnd, Status = SessionStatus.Authed, Processing = PacketProcessing.Inplace)]
+        void HandleQueuedMessagesEnd(QueuedMessagesEnd queuedMessagesEnd)
+        {
+            HandleTimeSync(SPECIAL_RESUME_COMMS_TIME_SYNC_COUNTER, queuedMessagesEnd.Timestamp, queuedMessagesEnd.GetWorldPacket().GetReceivedTime());
+        }
+
+        [WorldPacketHandler(ClientOpcodes.MoveInitActiveMoverComplete, Processing = PacketProcessing.ThreadSafe)]
+        void HandleMoveInitActiveMoverComplete(MoveInitActiveMoverComplete moveInitActiveMoverComplete)
+        {
+            HandleTimeSync(SPECIAL_INIT_ACTIVE_MOVER_TIME_SYNC_COUNTER, moveInitActiveMoverComplete.Ticks, moveInitActiveMoverComplete.GetWorldPacket().GetReceivedTime());
+
+            _player.UpdateObjectVisibility(false);
         }
 
         void ComputeNewClockDelta()
@@ -921,15 +943,12 @@ namespace Game
                 var back = _timeSyncClockDeltaQueue.Back();
                 _timeSyncClockDelta = back.Item1;
             }
-        }
 
-        [WorldPacketHandler(ClientOpcodes.MoveInitActiveMoverComplete, Processing = PacketProcessing.ThreadSafe)]
-        void HandleMoveInitActiveMoverComplete(MoveInitActiveMoverComplete moveInitActiveMoverComplete)
-        {
-            _player.SetPlayerLocalFlag(PlayerLocalFlags.OverrideTransportServerTime);
-            _player.SetTransportServerTime((int)(GameTime.GetGameTimeMS() - moveInitActiveMoverComplete.Ticks));
-
-            _player.UpdateObjectVisibility(false);
+            if (_player != null)
+            {
+                _player.SetPlayerLocalFlag(PlayerLocalFlags.OverrideTransportServerTime);
+                _player.SetTransportServerTime((int)_timeSyncClockDelta);
+            }
         }
     }
 }

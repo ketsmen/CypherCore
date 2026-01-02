@@ -159,7 +159,8 @@ namespace Game
                     sourceType == ConditionSourceType.AreaTrigger ||
                     sourceType == ConditionSourceType.TrainerSpell ||
                     sourceType == ConditionSourceType.ObjectIdVisibility ||
-                    sourceType == ConditionSourceType.ReferenceCondition;
+                    sourceType == ConditionSourceType.ReferenceCondition ||
+                    sourceType == ConditionSourceType.PlayerChoiceResponse;
         }
 
         public bool CanHaveSourceIdSet(ConditionSourceType sourceType)
@@ -290,6 +291,17 @@ namespace Game
             return true;
         }
 
+        public bool IsObjectMeetingPlayerChoiceResponseConditions(uint playerChoiceId, int playerChoiceResponseId, Player player)
+        {
+            var list = ConditionStorage[ConditionSourceType.PlayerChoiceResponse].LookupByKey(new ConditionId(playerChoiceId, playerChoiceResponseId, 0));
+            if (list != null)
+            {
+                Log.outDebug(LogFilter.Condition, $"GetConditionsForNpcVendor: found conditions for creature entry {playerChoiceId} item {playerChoiceResponseId}");
+                return IsObjectMeetToConditions(player, list);
+            }
+            return true;
+        }
+
         public bool IsSpellUsedInSpellClickConditions(uint spellId)
         {
             return spellsUsedInSpellClickConditions.Contains(spellId);
@@ -312,13 +324,13 @@ namespace Game
             return true;
         }
 
-        public bool IsObjectMeetingVisibilityByObjectIdConditions(uint objectType, uint entry, WorldObject seer)
+        public bool IsObjectMeetingVisibilityByObjectIdConditions(WorldObject obj, WorldObject seer)
         {
-            var conditions = ConditionStorage[ConditionSourceType.ObjectIdVisibility].LookupByKey(new ConditionId(objectType, (int)entry, 0));
+            var conditions = ConditionStorage[ConditionSourceType.ObjectIdVisibility].LookupByKey(new ConditionId((uint)obj.GetTypeId(), (int)obj.GetEntry(), 0));
             if (conditions != null)
             {
-                Log.outDebug(LogFilter.Condition, $"IsObjectMeetingVisibilityByObjectIdConditions: found conditions for objectType {objectType} entry {entry}");
-                return IsObjectMeetToConditions(seer, conditions);
+                Log.outDebug(LogFilter.Condition, $"IsObjectMeetingVisibilityByObjectIdConditions: found conditions for objectType {obj.GetTypeId()} entry {obj.GetEntry()} guid {obj.GetGUID()}");
+                return IsObjectMeetToConditions(seer, obj, conditions);
             }
             return true;
         }
@@ -1120,6 +1132,36 @@ namespace Game
                     }
                     break;
                 }
+                case ConditionSourceType.SkillLineAbility:
+                {
+                    var skillLineAbility = CliDB.SkillLineAbilityStorage.LookupByKey(cond.SourceEntry);
+                    if (skillLineAbility == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"{cond} SourceEntry in `condition` table, does not exist in SkillLineAbility.db2, ignoring.");
+                        return false;
+                    }
+                    if (skillLineAbility.AcquireMethod != SkillLineAbilityAcquireMethod.LearnedOrAutomaticCharLevel)
+                    {
+                        Log.outError(LogFilter.Sql, $"{cond} in SkillLineAbility.db2 does not have AcquireMethod = {SkillLineAbilityAcquireMethod.LearnedOrAutomaticCharLevel} (LearnedOrAutomaticCharLevel), ignoring.");
+                        return false;
+                    }
+                    break;
+                }
+                case ConditionSourceType.PlayerChoiceResponse:
+                {
+                    PlayerChoice playerChoice = Global.ObjectMgr.GetPlayerChoice((int)cond.SourceGroup);
+                    if (playerChoice == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"{cond} SourceGroup in `condition` table, does not exist in `playerchoice`, ignoring.");
+                        return false;
+                    }
+                    if (playerChoice.GetResponse(cond.SourceEntry) == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"{cond} SourceEntry in `condition` table, does not exist in `playerchoice_response`, ignoring.");
+                        return false;
+                    }
+                    break;
+                }
                 case ConditionSourceType.GossipMenu:
                 case ConditionSourceType.GossipMenuOption:
                 case ConditionSourceType.SmartEvent:
@@ -1137,6 +1179,15 @@ namespace Game
         {
             switch (cond.ConditionType)
             {
+                case ConditionTypes.None:
+                {
+                    if (cond.ScriptId == 0)
+                    {
+                        Log.outError(LogFilter.Sql, $"{cond.ToString(true)} must have a `ScriptName` in `condition` table, ignoring.");
+                        return false;
+                    }
+                    break;
+                }
                 case ConditionTypes.Aura:
                 {
                     SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(cond.ConditionValue1, Difficulty.None);
@@ -1650,6 +1701,7 @@ namespace Game
                 case ConditionTypes.Gamemaster:
                 case ConditionTypes.PrivateObject:
                 case ConditionTypes.StringId:
+                case ConditionTypes.Label:
                     break;
                 case ConditionTypes.DifficultyId:
                     if (!CliDB.DifficultyStorage.ContainsKey(cond.ConditionValue1))
@@ -1767,7 +1819,7 @@ namespace Game
 
         static bool PlayerConditionLogic(uint logic, bool[] results)
         {
-            Cypher.Assert(results.Length < 16, "Logic array size must be equal to or less than 16");
+            Cypher.Assert(results.Length < 8, "Logic array size must be equal to or less than 8");
 
             for (var i = 0; i < results.Length; ++i)
             {
@@ -2065,11 +2117,7 @@ namespace Game
                     results[i] = true;
 
                 for (var i = 0; i < condition.PrevQuestID.Length; ++i)
-                {
-                    uint questBit = Global.DB2Mgr.GetQuestUniqueBitFlag(condition.PrevQuestID[i]);
-                    if (questBit != 0)
-                        results[i] = (player.m_activePlayerData.QuestCompleted[((int)questBit - 1) >> 6] & (1ul << (((int)questBit - 1) & 63))) != 0;
-                }
+                    results[i] = player.IsQuestCompletedBitSet(condition.PrevQuestID[i]);
 
                 if (!PlayerConditionLogic(condition.PrevQuestLogic, results))
                     return false;
@@ -2133,7 +2181,29 @@ namespace Game
                 for (var i = 0; i < condition.ItemID.Length; ++i)
                 {
                     if (condition.ItemID[i] != 0)
-                        results[i] = player.GetItemCount(condition.ItemID[i], condition.ItemFlags != 0) >= condition.ItemCount[i];
+                    {
+                        ItemSearchLocation where = ItemSearchLocation.Equipment;
+                        if ((condition.ItemFlags & 1) != 0)    // include banks
+                            where |= ItemSearchLocation.Bank | ItemSearchLocation.ReagentBank | ItemSearchLocation.AccountBank;
+                        if ((condition.ItemFlags & 2) == 0)    // ignore inventory
+                            where |= ItemSearchLocation.Inventory;
+
+                        uint foundCount = 0;
+                        results[i] = !player.ForEachItem(where, item =>
+                        {
+                            if (item.GetEntry() == condition.ItemID[i])
+                            {
+                                foundCount += item.GetCount();
+                                if (foundCount >= condition.ItemCount[i])
+                                    return false;
+                            }
+
+                            return true;
+                        });
+
+                        if (!results[i] && condition.ItemCount[i] == 1 && Global.DB2Mgr.IsToyItem(condition.ItemID[i]))
+                            results[i] = player.GetSession().GetCollectionMgr().HasToy(condition.ItemID[i]);
+                    }
                 }
 
                 if (!PlayerConditionLogic(condition.ItemLogic, results))
@@ -2330,7 +2400,7 @@ namespace Game
             {
                 var getTraitNodeEntryRank = ushort? (int traitNodeEntryId) =>
                 {
-                    foreach (var traitConfig in player.m_activePlayerData.TraitConfigs)
+                    foreach (var (_, (traitConfig, _)) in player.m_activePlayerData.TraitConfigs)
                     {
                         if ((TraitConfigType)(int)traitConfig.Type == TraitConfigType.Combat)
                         {
@@ -2624,7 +2694,7 @@ namespace Game
                 case UnitConditionVariable.IsMounted:
                     return unit.GetMountDisplayId() != 0 ? 1 : 0;
                 case UnitConditionVariable.Label:
-                    break;
+                    return unit.IsCreature() && unit.ToCreature().HasLabel(value) ? value : 0;
                 case UnitConditionVariable.IsMySummon:
                     return (otherUnit != null && (otherUnit.GetCharmerGUID() == unit.GetGUID() || otherUnit.GetCreatorGUID() == unit.GetGUID())) ? 1 : 0;
                 case UnitConditionVariable.IsSummoner:
@@ -2715,8 +2785,8 @@ namespace Game
                 }
                 case WorldStateExpressionValueType.WorldState:
                 {
-                    uint worldStateId = buffer.ReadUInt32();
-                    value = Global.WorldStateMgr.GetValue((int)worldStateId, map);
+                    int worldStateId = buffer.ReadInt32();
+                    value = Global.WorldStateMgr.GetValue(worldStateId, map);
                     break;
                 }
                 case WorldStateExpressionValueType.Function:
@@ -2929,7 +2999,7 @@ namespace Game
         public ConditionTypeInfo[] StaticConditionTypeData =
         {
             new ConditionTypeInfo("None",                 false, false, false, false),
-            new ConditionTypeInfo("Aura",                 true, true,  true, false),
+            new ConditionTypeInfo("Aura",                 true, true,  false, false),
             new ConditionTypeInfo("Item Stored",          true, true,  true, false),
             new ConditionTypeInfo("Item Equipped",        true, false, false, false),
             new ConditionTypeInfo("Zone",                 true, false, false, false),
@@ -2986,7 +3056,8 @@ namespace Game
             new ConditionTypeInfo("Scene In Progress",    true, false, false, false),
             new ConditionTypeInfo("Player Condition",     true, false, false, false),
             new ConditionTypeInfo("Private Object",       false,false, false, false),
-            new ConditionTypeInfo("String ID",            true, false, false, true)
+            new ConditionTypeInfo("String ID",            true, false, false, true),
+            new ConditionTypeInfo("Label",                true, false, false, false)
         };
 
         public struct ConditionTypeInfo

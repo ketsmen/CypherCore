@@ -2,9 +2,29 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
+using System.Numerics;
 
 namespace Game.DataStorage
 {
+    public sealed class WarbandSceneRecord
+    {
+        public LocalizedString Name;
+        public LocalizedString Description;
+        public Vector3 Position;
+        public Vector3 LookAt;
+        public uint Id;
+        public uint MapID;
+        public float Fov;
+        public int TimeOfDay;
+        public int Flags;
+        public int SoundAmbienceID;
+        public sbyte Quality;
+        public int TextureKit;
+        public int DefaultScenePriority;
+
+        public WarbandSceneFlags GetFlags() { return (WarbandSceneFlags)Flags; }
+    }
+
     public sealed class WMOAreaTableRecord
     {
         public string AreaName;
@@ -21,14 +41,14 @@ namespace Game.DataStorage
         public ushort IntroSound;
         public ushort UwIntroSound;
         public ushort AreaTableID;
-        public byte Flags;
+        public int Flags;
     }
 
     public sealed class WorldEffectRecord
     {
         public uint Id;
         public uint QuestFeedbackEffectID;
-        public byte WhenToDisplay;
+        public int WhenToDisplay;
         public byte TargetType;
         public int TargetAsset;
         public uint PlayerConditionID;
@@ -48,7 +68,7 @@ namespace Game.DataStorage
         public int HitRectLeft;
         public int HitRectRight;
         public uint PlayerConditionID;
-        public uint Flags;
+        public int Flags;
         public uint[] AreaID = new uint[SharedConst.MaxWorldMapOverlayArea];
     }
 

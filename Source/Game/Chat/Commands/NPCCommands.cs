@@ -47,7 +47,7 @@ namespace Game.Chat
         }
 
         [Command("evade", RBACPermissions.CommandNpcEvade)]
-        static bool HandleNpcEvadeCommand(CommandHandler handler, EvadeReason? why, string force)
+        static bool HandleNpcEvadeCommand(CommandHandler handler, OptionalArg<EvadeReason> why, string force)
         {
             Creature creatureTarget = handler.GetSelectedCreature();
             if (creatureTarget == null || creatureTarget.IsPet())
@@ -165,7 +165,7 @@ namespace Game.Chat
         }
 
         [Command("move", RBACPermissions.CommandNpcMove)]
-        static bool HandleNpcMoveCommand(CommandHandler handler, ulong? spawnId)
+        static bool HandleNpcMoveCommand(CommandHandler handler, OptionalArg<ulong> spawnId)
         {
             Creature creature = handler.GetSelectedCreature();
             Player player = handler.GetSession().GetPlayer();
@@ -214,7 +214,7 @@ namespace Game.Chat
         }
 
         [Command("near", RBACPermissions.CommandNpcNear)]
-        static bool HandleNpcNearCommand(CommandHandler handler, float? dist)
+        static bool HandleNpcNearCommand(CommandHandler handler, OptionalArg<float> dist)
         {
             float distance = dist.GetValueOrDefault(10.0f);
             uint count = 0;
@@ -524,7 +524,7 @@ namespace Game.Chat
             if (itemTemplate != null)
                 name = itemTemplate.GetName(handler.GetSessionDbcLocale());
 
-            handler.SendSysMessage(alternateString ? CypherStrings.CommandNpcShowlootEntry2 : CypherStrings.CommandNpcShowlootEntry,
+            handler.SendSysMessage(CypherStrings.CommandNpcShowlootEntry, alternateString ? 6 : 3 /*number of bytes from following string*/, "\xE2\x94\x80\xE2\x94\x80",
                 itemCount, ItemConst.ItemQualityColors[(int)(itemTemplate != null ? itemTemplate.GetQuality() : ItemQuality.Poor)], itemId, name, itemId);
         }
 
@@ -537,6 +537,23 @@ namespace Game.Chat
 
             handler.SendSysMessage(CypherStrings.CommandNpcShowLootCurrency, alternateString ? 6 : 3 /*number of bytes from following string*/, "\u2500\u2500",
                 count, ItemConst.ItemQualityColors[currency != null ? currency.Quality : (int)ItemQuality.Poor], currencyId, count, name, currencyId);
+        }
+
+        static void _ShowLootTrackingQuestCurrencyEntry(CommandHandler handler, uint questId, bool alternateString = false)
+        {
+            Quest quest = Global.ObjectMgr.GetQuestTemplate(questId);
+            string name = "Unknown quest";
+            if (quest != null)
+            {
+                name = quest.LogTitle;
+                if (handler.GetSessionDbcLocale() != Locale.enUS)
+                {
+                    QuestTemplateLocale localeData = Global.ObjectMgr.GetQuestLocale(questId);
+                    if (localeData != null)
+                        ObjectManager.GetLocaleString(localeData.LogTitle, handler.GetSessionDbcLocale(), ref name);
+                }
+            }
+            handler.SendSysMessage(CypherStrings.CommandNpcShowlootTrackingQuest, alternateString ? 6 : 3 /*number of bytes from following string*/, "\xE2\x94\x80\xE2\x94\x80", questId, name, questId);
         }
 
         static void _IterateNotNormalLootMap(CommandHandler handler, MultiMap<ObjectGuid, NotNormalLootItem> map, List<LootItem> items)
@@ -564,6 +581,9 @@ namespace Game.Chat
                             case LootItemType.Currency:
                                 _ShowLootCurrencyEntry(handler, item.itemid, item.count, true);
                                 break;
+                            case LootItemType.TrackingQuest:
+                                _ShowLootTrackingQuestCurrencyEntry(handler, item.itemid, true);
+                                break;
                         }
                     }
                 }
@@ -589,6 +609,9 @@ namespace Game.Chat
                             case LootItemType.Currency:
                                 _ShowLootCurrencyEntry(handler, item.itemid, item.count);
                                 break;
+                            case LootItemType.TrackingQuest:
+                                _ShowLootTrackingQuestCurrencyEntry(handler, item.itemid);
+                                break;
                         }
                     }
                 }
@@ -607,6 +630,9 @@ namespace Game.Chat
                                 break;
                             case LootItemType.Currency:
                                 _ShowLootCurrencyEntry(handler, item.itemid, item.count);
+                                break;
+                            case LootItemType.TrackingQuest:
+                                _ShowLootTrackingQuestCurrencyEntry(handler, item.itemid);
                                 break;
                         }
                     }
@@ -673,7 +699,7 @@ namespace Game.Chat
             }
 
             [Command("item", RBACPermissions.CommandNpcAddItem)]
-            static bool HandleNpcAddVendorItemCommand(CommandHandler handler, uint itemId, uint? mc, uint? it, uint? ec, [OptionalArg] string bonusListIds)
+            static bool HandleNpcAddVendorItemCommand(CommandHandler handler, uint itemId, OptionalArg<uint> mc, OptionalArg<uint> it, OptionalArg<uint> ec, OptionalArg<string> bonusListIds)
             {
                 if (itemId == 0)
                 {
@@ -700,7 +726,7 @@ namespace Game.Chat
                 vItem.ExtendedCost = extendedcost;
                 vItem.Type = ItemVendorType.Item;
 
-                if (!bonusListIds.IsEmpty())
+                if (bonusListIds.HasValue)
                 {
                     var bonusListIDsTok = new StringArray(bonusListIds, ';');
                     if (!bonusListIDsTok.IsEmpty())
@@ -747,7 +773,7 @@ namespace Game.Chat
             }
 
             [Command("formation", RBACPermissions.CommandNpcAddFormation)]
-            static bool HandleNpcAddFormationCommand(CommandHandler handler, ulong leaderGUID)
+            static bool HandleNpcAddFormationCommand(CommandHandler handler, ulong leaderGUID, OptionalArg<bool> linkedAggro, OptionalArg<bool> formationMovement)
             {
                 Creature creature = handler.GetSelectedCreature();
                 if (creature == null || creature.GetSpawnId() == 0)
@@ -767,18 +793,23 @@ namespace Game.Chat
                     return false;
 
                 Player chr = handler.GetSession().GetPlayer();
-                float followAngle = (creature.GetAbsoluteAngle(chr) - chr.GetOrientation()) * 180.0f / MathF.PI;
-                float followDist = MathF.Sqrt(MathF.Pow(chr.GetPositionX() - creature.GetPositionX(), 2f) + MathF.Pow(chr.GetPositionY() - creature.GetPositionY(), 2f));
-                uint groupAI = 0;
-                FormationMgr.AddFormationMember(lowguid, followAngle, followDist, leaderGUID, groupAI);
+                float followAngle = creature.GetRelativeAngle(chr) * 180.0f / MathF.PI;
+                float followDist = chr.GetExactDist2d(creature);
+                GroupAIFlags groupAI = 0;
+                if (linkedAggro == true)
+                    groupAI |= GroupAIFlags.MembersAssistMember;
+                if (formationMovement == true)
+                    groupAI |= GroupAIFlags.IdleInFormation;
+
+                FormationMgr.AddFormationMember(lowguid, followAngle, followDist, leaderGUID, (uint)groupAI);
                 creature.SearchFormation();
 
                 PreparedStatement stmt = WorldDatabase.GetPreparedStatement(WorldStatements.INS_CREATURE_FORMATION);
                 stmt.AddValue(0, leaderGUID);
                 stmt.AddValue(1, lowguid);
-                stmt.AddValue(2, followAngle);
-                stmt.AddValue(3, followDist);
-                stmt.AddValue(4, groupAI);
+                stmt.AddValue(2, followDist);
+                stmt.AddValue(3, followAngle);
+                stmt.AddValue(4, (uint)groupAI);
 
                 DB.World.Execute(stmt);
 
@@ -788,14 +819,14 @@ namespace Game.Chat
             }
 
             [Command("temp", RBACPermissions.CommandNpcAddTemp)]
-            static bool HandleNpcAddTempSpawnCommand(CommandHandler handler, [OptionalArg] string lootStr, uint id)
+            static bool HandleNpcAddTempSpawnCommand(CommandHandler handler, OptionalArg<string> lootStr, uint id)
             {
                 bool loot = false;
-                if (!lootStr.IsEmpty())
+                if (lootStr.HasValue)
                 {
-                    if (lootStr.Equals("loot", StringComparison.OrdinalIgnoreCase))
+                    if (lootStr.Value.Equals("loot", StringComparison.OrdinalIgnoreCase))
                         loot = true;
-                    else if (lootStr.Equals("noloot", StringComparison.OrdinalIgnoreCase))
+                    else if (lootStr.Value.Equals("noloot", StringComparison.OrdinalIgnoreCase))
                         loot = false;
                     else
                         return false;
@@ -815,7 +846,7 @@ namespace Game.Chat
         class DeleteCommands
         {
             [Command("", RBACPermissions.CommandNpcDelete)]
-            static bool HandleNpcDeleteCommand(CommandHandler handler, ulong? spawnIdArg)
+            static bool HandleNpcDeleteCommand(CommandHandler handler, OptionalArg<ulong> spawnIdArg)
             {
                 ulong spawnId;
                 if (spawnIdArg.HasValue)
@@ -1120,7 +1151,7 @@ namespace Game.Chat
             }
 
             [Command("movetype", RBACPermissions.CommandNpcSetMovetype)]
-            static bool HandleNpcSetMoveTypeCommand(CommandHandler handler, ulong? lowGuid, string type, string nodel)
+            static bool HandleNpcSetMoveTypeCommand(CommandHandler handler, OptionalArg<ulong> lowGuid, string type, string nodel)
             {
                 // 3 arguments:
                 // GUID (optional - you can also select the creature)

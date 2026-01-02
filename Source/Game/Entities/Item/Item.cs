@@ -54,9 +54,9 @@ namespace Game.Entities
             SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.MaxDurability), itemProto.MaxDurability);
             SetDurability(itemProto.MaxDurability);
 
-            for (int i = 0; i < itemProto.Effects.Count; ++i)
-                if (itemProto.Effects[i].LegacySlotIndex < 5)
-                    SetSpellCharges(itemProto.Effects[i].LegacySlotIndex, itemProto.Effects[i].Charges);
+            foreach (var effect in GetEffects())
+                if (effect != null)
+                    SetSpellCharges(effect, effect.Charges);
 
             SetExpiration(itemProto.GetDuration());
             SetCreatePlayedTime(0);
@@ -126,6 +126,42 @@ namespace Game.Entities
             SetState(ItemUpdateState.Changed, owner);                          // save new time in database
         }
 
+        int FindSpellChargesSlot(BonusData bonusData, ItemEffectRecord effect)
+        {
+            int MaxSpellChargesSlot = m_itemData.SpellCharges.GetSize();
+
+            if (effect == null)
+            {
+                // return fist effect that has charges
+                for (int i = 0; i < bonusData.EffectCount && i < MaxSpellChargesSlot; ++i)
+                    if (bonusData.Effects[i] != null && bonusData.Effects[i].Charges != 0)
+                        return i;
+
+                return MaxSpellChargesSlot;
+            }
+
+            for (int i = 0; i < bonusData.EffectCount && i < MaxSpellChargesSlot; ++i)
+                if (bonusData.Effects[i] == effect)
+                    return i;
+
+            return MaxSpellChargesSlot;
+        }
+
+        public int GetSpellCharges(ItemEffectRecord effect = null)
+        {
+            int slot = FindSpellChargesSlot(_bonusData, effect);
+            if (slot < m_itemData.SpellCharges.GetSize())
+                return m_itemData.SpellCharges[slot];
+
+            return 0;
+        }
+        public void SetSpellCharges(ItemEffectRecord effect, int value)
+        {
+            int slot = FindSpellChargesSlot(_bonusData, effect);
+            if (slot < m_itemData.SpellCharges.GetSize())
+                SetUpdateFieldValue(ref m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.SpellCharges, slot), value);
+        }
+
         public virtual void SaveToDB(SQLTransaction trans)
         {
             PreparedStatement stmt;
@@ -145,7 +181,7 @@ namespace Game.Entities
 
                     StringBuilder ss = new();
                     for (byte i = 0; i < m_itemData.SpellCharges.GetSize() && i < _bonusData.EffectCount; ++i)
-                        ss.AppendFormat("{0} ", GetSpellCharges(i));
+                        ss.AppendFormat("{0} ", m_itemData.SpellCharges[i]);
 
                     stmt.AddValue(++index, ss.ToString());
                     stmt.AddValue(++index, (uint)m_itemData.DynamicFlags);
@@ -466,10 +502,7 @@ namespace Game.Entities
             // load charges after bonuses, they can add more item effects
             var tokens = new StringArray(fields.Read<string>(6), ' ');
             for (byte i = 0; i < m_itemData.SpellCharges.GetSize() && i < _bonusData.EffectCount && i < tokens.Length; ++i)
-            {
-                if (int.TryParse(tokens[i], out int value))
-                    SetSpellCharges(i, value);
-            }
+                SetUpdateFieldValue(ref m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.SpellCharges, i), int.TryParse(tokens[i], out int value) ? value : 0);
 
             SetModifier(ItemModifier.TransmogAppearanceAllSpecs, fields.Read<uint>(20));
             SetModifier(ItemModifier.TransmogAppearanceSpec1, fields.Read<uint>(21));
@@ -550,6 +583,27 @@ namespace Game.Entities
                 DB.Characters.Execute(stmt);
             }
             return true;
+        }
+
+        public void LoadAdditionalDataFromDB(Player owner, ItemAdditionalLoadInfo addionalData)
+        {
+            if (GetTemplate().GetArtifactID() != 0 && addionalData.Artifact != null)
+                LoadArtifactData(owner, addionalData.Artifact.Xp, addionalData.Artifact.ArtifactAppearanceId,
+                    addionalData.Artifact.ArtifactTierId, addionalData.Artifact.ArtifactPowers);
+
+            if (addionalData.AzeriteItem != null)
+            {
+                AzeriteItem azeriteItem = ToAzeriteItem();
+                if (azeriteItem != null)
+                    azeriteItem.LoadAzeriteItemData(owner, addionalData.AzeriteItem);
+            }
+
+            if (addionalData.AzeriteEmpoweredItem != null)
+            {
+                AzeriteEmpoweredItem azeriteEmpoweredItem = ToAzeriteEmpoweredItem();
+                if (azeriteEmpoweredItem != null)
+                    azeriteEmpoweredItem.LoadAzeriteEmpoweredItemData(owner, addionalData.AzeriteEmpoweredItem);
+            }
         }
 
         public void LoadArtifactData(Player owner, ulong xp, uint artifactAppearanceId, uint artifactTier, List<ArtifactPowerData> powers)
@@ -1068,7 +1122,7 @@ namespace Game.Entities
                         foreach (var bonusListId in gem.BonusListIDs)
                             gemBonus.AddBonusList(bonusListId);
 
-                        uint gemBaseItemLevel = gemTemplate.GetBaseItemLevel();
+                        uint gemBaseItemLevel = gemBonus.ItemLevel;
                         if (gemBonus.PlayerLevelToItemLevelCurveId != 0)
                         {
                             uint scaledIlvl = (uint)Global.DB2Mgr.GetCurveValueAt(gemBonus.PlayerLevelToItemLevelCurveId, gemScalingLevel);
@@ -1161,7 +1215,12 @@ namespace Game.Entities
                 if (gemProto == null)
                     return false;
 
-                return gemProto.GetItemLimitCategory() == limitCategory;
+                BonusData gemBonus = new(gemProto);
+
+                foreach (ushort bonusListID in gemData.BonusListIDs)
+                    gemBonus.AddBonusList(bonusListID);
+
+                return gemBonus.LimitCategory == limitCategory;
             });
         }
 
@@ -1459,34 +1518,7 @@ namespace Game.Entities
             if (proto.HasFlag(ItemFlags2.NoAlterItemVisual))
                 return false;
 
-            if (!HasStats())
-                return false;
-
             return true;
-        }
-
-        bool HasStats()
-        {
-            ItemTemplate proto = GetTemplate();
-            Player owner = GetOwner();
-            for (byte i = 0; i < ItemConst.MaxStats; ++i)
-            {
-                if ((owner != null ? GetItemStatValue(i, owner) : proto.GetStatPercentEditor(i)) != 0)
-                    return true;
-            }
-
-            return false;
-        }
-
-        static bool HasStats(ItemInstance itemInstance, BonusData bonus)
-        {
-            for (byte i = 0; i < ItemConst.MaxStats; ++i)
-            {
-                if (bonus.StatPercentEditor[i] != 0)
-                    return true;
-            }
-
-            return false;
         }
 
         static ItemTransmogrificationWeaponCategory GetTransmogrificationWeaponCategory(ItemTemplate proto)
@@ -1509,11 +1541,10 @@ namespace Game.Entities
                     case ItemSubClassWeapon.Mace:
                     case ItemSubClassWeapon.Sword:
                     case ItemSubClassWeapon.Warglaives:
+                    case ItemSubClassWeapon.Fist:
                         return ItemTransmogrificationWeaponCategory.AxeMaceSword1H;
                     case ItemSubClassWeapon.Dagger:
                         return ItemTransmogrificationWeaponCategory.Dagger;
-                    case ItemSubClassWeapon.Fist:
-                        return ItemTransmogrificationWeaponCategory.Fist;
                     default:
                         break;
                 }
@@ -1793,7 +1824,7 @@ namespace Game.Entities
             if (itemTemplate == null)
                 return 1;
 
-            uint itemLevel = itemTemplate.GetBaseItemLevel();
+            uint itemLevel = bonusData.ItemLevel;
             AzeriteLevelInfoRecord azeriteLevelInfo = CliDB.AzeriteLevelInfoStorage.LookupByKey(azeriteLevel);
             if (azeriteLevelInfo != null)
                 itemLevel = azeriteLevelInfo.ItemLevel;
@@ -1820,7 +1851,13 @@ namespace Game.Entities
             uint itemLevelBeforeUpgrades = itemLevel;
 
             if (pvpBonus)
+            {
+                if (bonusData.PvpItemLevel != 0)
+                    itemLevel = bonusData.PvpItemLevel;
+
+                itemLevel += (uint)bonusData.PvpItemLevelBonus;
                 itemLevel += Global.DB2Mgr.GetPvpItemLevelBonus(itemTemplate.GetId());
+            }
 
             if (itemTemplate.GetInventoryType() != InventoryType.NonEquip)
             {
@@ -2123,10 +2160,15 @@ namespace Game.Entities
             return true;
         }
 
+        int GetArtifactPowerIndex(uint artifactPowerId)
+        {
+            return m_itemData.ArtifactPowers.FindIndexIf(artifactPower => artifactPower.ArtifactPowerId == artifactPowerId);
+        }
+
         public ArtifactPower GetArtifactPower(uint artifactPowerId)
         {
-            var index = m_artifactPowerIdToIndex.LookupByKey(artifactPowerId);
-            if (index != 0)
+            int index = GetArtifactPowerIndex(artifactPowerId);
+            if (index >= 0)
                 return m_itemData.ArtifactPowers[index];
 
             return null;
@@ -2134,9 +2176,6 @@ namespace Game.Entities
 
         void AddArtifactPower(ArtifactPowerData artifactPower)
         {
-            int index = m_artifactPowerIdToIndex.Count;
-            m_artifactPowerIdToIndex[artifactPower.ArtifactPowerId] = (ushort)index;
-
             ArtifactPower powerField = new();
             powerField.ArtifactPowerId = (ushort)artifactPower.ArtifactPowerId;
             powerField.PurchasedRank = artifactPower.PurchasedRank;
@@ -2147,10 +2186,10 @@ namespace Game.Entities
 
         public void SetArtifactPower(ushort artifactPowerId, byte purchasedRank, byte currentRankWithBonus)
         {
-            var foundIndex = m_artifactPowerIdToIndex.LookupByKey(artifactPowerId);
-            if (foundIndex != 0)
+            int index = GetArtifactPowerIndex(artifactPowerId);
+            if (index >= 0)
             {
-                ArtifactPower artifactPower = m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.ArtifactPowers, foundIndex);
+                ArtifactPower artifactPower = m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.ArtifactPowers, index);
                 SetUpdateFieldValue(ref artifactPower.PurchasedRank, purchasedRank);
                 SetUpdateFieldValue(ref artifactPower.CurrentRankWithBonus, currentRankWithBonus);
             }
@@ -2158,12 +2197,16 @@ namespace Game.Entities
 
         public void InitArtifactPowers(byte artifactId, byte artifactTier)
         {
+            List<uint> knownPowers = new();
+            foreach (var power in m_itemData.ArtifactPowers)
+                knownPowers.Add(power.ArtifactPowerId);
+
             foreach (ArtifactPowerRecord artifactPower in Global.DB2Mgr.GetArtifactPowers(artifactId))
             {
                 if (artifactPower.Tier != artifactTier)
                     continue;
 
-                if (m_artifactPowerIdToIndex.ContainsKey(artifactPower.Id))
+                if (knownPowers.Contains(artifactPower.Id))
                     continue;
 
                 ArtifactPowerData powerData = new();
@@ -2244,8 +2287,8 @@ namespace Game.Entities
                         break;
                         case ItemEnchantmentType.ArtifactPowerBonusRankByID:
                         {
-                            ushort artifactPowerIndex = m_artifactPowerIdToIndex.LookupByKey(enchant.EffectArg[i]);
-                            if (artifactPowerIndex != 0)
+                            int artifactPowerIndex = GetArtifactPowerIndex(enchant.EffectArg[i]);
+                            if (artifactPowerIndex >= 0)
                             {
                                 byte newRank = m_itemData.ArtifactPowers[artifactPowerIndex].CurrentRankWithBonus;
                                 if (apply)
@@ -2491,9 +2534,15 @@ namespace Game.Entities
                 }
 
                 eff.SetBonuses.Add(itemSetSpell);
+
                 // spell cast only if fit form requirement, in other case will cast at form change
-                if (itemSetSpell.ChrSpecID == 0 || (ChrSpecialization)itemSetSpell.ChrSpecID == player.GetPrimarySpecialization())
-                    player.ApplyEquipSpell(spellInfo, null, true);
+                if (itemSetSpell.ChrSpecID != 0 && (ChrSpecialization)itemSetSpell.ChrSpecID != player.GetPrimarySpecialization())
+                    continue;
+
+                if (itemSetSpell.TraitSubTreeID != 0 && itemSetSpell.TraitSubTreeID != player.m_playerData.CurrentCombatTraitConfigSubTreeID)
+                    continue;
+
+                player.ApplyEquipSpell(spellInfo, null, true);
             }
         }
 
@@ -2532,17 +2581,40 @@ namespace Game.Entities
                 if (itemSetSpell.Threshold <= eff.EquippedItems.Count)
                     continue;
 
-                if (!eff.SetBonuses.Contains(itemSetSpell))
+                if (!eff.SetBonuses.Remove(itemSetSpell))
                     continue;
 
                 player.ApplyEquipSpell(Global.SpellMgr.GetSpellInfo(itemSetSpell.SpellID, Difficulty.None), null, false);
-                eff.SetBonuses.Remove(itemSetSpell);
             }
 
             if (eff.EquippedItems.Empty())                                    //all items of a set were removed
             {
                 Cypher.Assert(eff == player.ItemSetEff[setindex]);
                 player.ItemSetEff[setindex] = null;
+            }
+        }
+
+        public static void UpdateItemSetAuras(Player player, bool formChange)
+        {
+            // item set bonuses not dependent from item broken state
+            foreach (var eff in player.ItemSetEff)
+            {
+                if (eff == null)
+                    continue;
+
+                foreach (var itemSetSpell in eff.SetBonuses)
+                {
+                    SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(itemSetSpell.SpellID, Difficulty.None);
+
+                    if ((itemSetSpell.ChrSpecID != 0 && itemSetSpell.ChrSpecID != (ushort)player.GetPrimarySpecialization())
+                        || (itemSetSpell.TraitSubTreeID != 0 && itemSetSpell.TraitSubTreeID != player.m_playerData.CurrentCombatTraitConfigSubTreeID))
+                        player.ApplyEquipSpell(spellInfo, null, false, false);  // item set aura is not for current spec
+                    else
+                    {
+                        player.ApplyEquipSpell(spellInfo, null, false, formChange); // remove spells that not fit to form - removal is skipped if shapeshift condition is satisfied
+                        player.ApplyEquipSpell(spellInfo, null, true, formChange);  // add spells that fit form but not active
+                    }
+                }
             }
         }
 
@@ -2576,10 +2648,10 @@ namespace Game.Entities
         public void SetItemFlag(ItemFieldFlags flags) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.DynamicFlags), (uint)flags); }
         public void RemoveItemFlag(ItemFieldFlags flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.DynamicFlags), (uint)flags); }
         public void ReplaceAllItemFlags(ItemFieldFlags flags) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.DynamicFlags), (uint)flags); }
-        public bool HasItemFlag2(ItemFieldFlags2 flag) { return (m_itemData.DynamicFlags2 & (uint)flag) != 0; }
-        public void SetItemFlag2(ItemFieldFlags2 flags) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.DynamicFlags2), (uint)flags); }
-        public void RemoveItemFlag2(ItemFieldFlags2 flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.DynamicFlags2), (uint)flags); }
-        public void ReplaceAllItemFlags2(ItemFieldFlags2 flags) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.DynamicFlags2), (uint)flags); }
+        public bool HasItemZoneFlag(ItemZoneFlags flag) { return (m_itemData.ZoneFlags & (uint)flag) != 0; }
+        public void SetItemZoneFlag(ItemZoneFlags flags) { SetUpdateFieldFlagValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.ZoneFlags), (uint)flags); }
+        public void RemoveItemZoneFlag(ItemZoneFlags flags) { RemoveUpdateFieldFlagValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.ZoneFlags), (uint)flags); }
+        public void ReplaceAllItemZoneFlags(ItemZoneFlags flags) { SetUpdateFieldValue(m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.ZoneFlags), (uint)flags); }
 
         public Bag ToBag() { return IsBag() ? this as Bag : null; }
         public AzeriteItem ToAzeriteItem() { return IsAzeriteItem() ? this as AzeriteItem : null; }
@@ -2621,9 +2693,6 @@ namespace Game.Entities
         public string GetText() { return m_text; }
         public void SetText(string text) { m_text = text; }
 
-        public int GetSpellCharges(int index = 0) { return m_itemData.SpellCharges[index]; }
-        public void SetSpellCharges(int index, int value) { SetUpdateFieldValue(ref m_values.ModifyValue(m_itemData).ModifyValue(m_itemData.SpellCharges, index), value); }
-
         public ItemUpdateState GetState() { return uState; }
 
         public bool IsInUpdateQueue() { return uQueuePos != -1; }
@@ -2638,14 +2707,13 @@ namespace Game.Entities
         public bool IsPotion() { return GetTemplate().IsPotion(); }
         public bool IsVellum() { return GetTemplate().IsVellum(); }
         public bool IsConjuredConsumable() { return GetTemplate().IsConjuredConsumable(); }
-        public bool IsRangedWeapon() { return GetTemplate().IsRangedWeapon(); }
         public ItemQuality GetQuality() { return _bonusData.Quality; }
         public int GetItemStatType(uint index)
         {
             Cypher.Assert(index < ItemConst.MaxStats);
             return _bonusData.ItemStatType[index];
         }
-        public SocketColor GetSocketColor(uint index)
+        public uint GetSocketColor(uint index)
         {
             Cypher.Assert(index < ItemConst.MaxGemSockets);
             return _bonusData.socketColor[index];
@@ -2669,6 +2737,7 @@ namespace Game.Entities
         public void SetChildItem(ObjectGuid childItem) { m_childItem = childItem; }
 
         public ItemEffectRecord[] GetEffects() { return _bonusData.Effects[0.._bonusData.EffectCount]; }
+        public uint GetItemLimitCategory() { return _bonusData.LimitCategory; }
 
         public override Loot GetLootForPlayer(Player player) { return loot; }
 
@@ -2778,11 +2847,10 @@ namespace Game.Entities
         List<ObjectGuid> allowedGUIDs = new();
         uint m_randomBonusListId;        // store separately to easily find which bonus list is the one randomly given for stat rerolling
         ObjectGuid m_childItem;
-        Dictionary<uint, ushort> m_artifactPowerIdToIndex = new();
         Array<uint> m_gemScalingLevels = new(ItemConst.MaxGemSockets);
         #endregion
 
-        class ValuesUpdateForPlayerWithMaskSender : IDoWork<Player>
+        class ValuesUpdateForPlayerWithMaskSender
         {
             Item Owner;
             ObjectFieldData ObjectMask = new();
@@ -2802,6 +2870,8 @@ namespace Game.Entities
                 udata.BuildPacket(out UpdateObject packet);
                 player.SendPacket(packet);
             }
+
+            public static implicit operator IDoWork<Player>(ValuesUpdateForPlayerWithMaskSender obj) => obj.Invoke;
         }
     }
 
@@ -2834,12 +2904,48 @@ namespace Game.Entities
 
     public class BonusData
     {
+        public ItemQuality Quality;
+        public uint ItemLevel;
+        public int ItemLevelBonus;
+        public int RequiredLevel;
+        public int[] ItemStatType = new int[ItemConst.MaxStats];
+        public int[] StatPercentEditor = new int[ItemConst.MaxStats];
+        public float[] ItemStatSocketCostMultiplier = new float[ItemConst.MaxStats];
+        public uint[] socketColor = new uint[ItemConst.MaxGemSockets];
+        public ItemBondingType Bonding;
+        public uint AppearanceModID;
+        public float RepairCostMultiplier;
+        public uint ContentTuningId;
+        public uint PlayerLevelToItemLevelCurveId;
+        public uint DisenchantLootId;
+        public uint[] GemItemLevelBonus = new uint[ItemConst.MaxGemSockets];
+        public int[] GemRelicType = new int[ItemConst.MaxGemSockets];
+        public ushort[] GemRelicRankBonus = new ushort[ItemConst.MaxGemSockets];
+        public int RelicType;
+        public int RequiredLevelOverride;
+        public uint AzeriteTierUnlockSetId;
+        public uint Suffix;
+        public uint RequiredLevelCurve;
+        public ushort PvpItemLevel;
+        public short PvpItemLevelBonus;
+        public ItemEffectRecord[] Effects = new ItemEffectRecord[13];
+        public int EffectCount;
+        public uint LimitCategory;
+        public bool CanDisenchant;
+        public bool CanScrap;
+        public bool CanSalvage;
+        public bool CanRecraft;
+        public bool HasFixedLevel;
+        public bool CannotTradeBindOnPickup;
+        State _state;
+
         public BonusData(ItemTemplate proto)
         {
             if (proto == null)
                 return;
 
             Quality = proto.GetQuality();
+            ItemLevel = proto.GetBaseItemLevel();
             ItemLevelBonus = 0;
             RequiredLevel = proto.GetBaseRequiredLevel();
             for (uint i = 0; i < ItemConst.MaxStats; ++i)
@@ -2851,7 +2957,7 @@ namespace Game.Entities
 
             for (uint i = 0; i < ItemConst.MaxGemSockets; ++i)
             {
-                socketColor[i] = proto.GetSocketColor(i);
+                socketColor[i] = (uint)proto.GetSocketColor(i);
                 GemItemLevelBonus[i] = 0;
                 GemRelicType[i] = -1;
                 GemRelicRankBonus[i] = 0;
@@ -2879,8 +2985,13 @@ namespace Game.Entities
             for (int i = EffectCount; i < Effects.Length; ++i)
                 Effects[i] = null;
 
+            LimitCategory = proto.GetItemLimitCategory();
+
             CanDisenchant = !proto.HasFlag(ItemFlags.NoDisenchant);
             CanScrap = proto.HasFlag(ItemFlags4.Scrapable);
+            CanSalvage = !proto.HasFlag(ItemFlags4.NoSalvage);
+            CanRecraft = proto.HasFlag(ItemFlags4.Recraftable);
+            CannotTradeBindOnPickup = proto.HasFlag(ItemFlags2.NoTradeBindOnAcquire);
 
             _state.SuffixPriority = int.MaxValue;
             _state.AppearanceModPriority = int.MaxValue;
@@ -2888,7 +2999,9 @@ namespace Game.Entities
             _state.ScalingStatDistributionPriority = int.MaxValue;
             _state.AzeriteTierUnlockSetPriority = int.MaxValue;
             _state.RequiredLevelCurvePriority = int.MaxValue;
-            _state.HasQualityBonus = false;
+            _state.ItemLevelPriority = int.MaxValue;
+            _state.PvpItemLevelPriority = int.MaxValue;
+            _state.BondingPriority = int.MaxValue;
         }
 
         public BonusData(ItemInstance itemInstance) : this(Global.ObjectMgr.GetItemTemplate(itemInstance.ItemID))
@@ -2950,7 +3063,7 @@ namespace Game.Entities
                     {
                         if (socketColor[i] == 0)
                         {
-                            socketColor[i] = (SocketColor)values[1];
+                            socketColor[i] = (uint)values[1];
                             --socketCount;
                         }
                     }
@@ -3022,36 +3135,48 @@ namespace Game.Entities
                             ContentTuningId = (uint)values[1];
                     }
                     break;
+                case ItemBonusType.ItemLimitCategory:
+                    if (!_state.HasItemLimitCategory)
+                    {
+                        LimitCategory = (uint)values[0];
+                        _state.HasItemLimitCategory = true;
+                    }
+                    break;
+                case ItemBonusType.PvpItemLevelIncrement:
+                    PvpItemLevelBonus += (short)values[0];
+                    break;
+                case ItemBonusType.OverrideCanSalvage:
+                    CanSalvage = values[0] != 0;
+                    break;
+                case ItemBonusType.OverrideCanRecraft:
+                    CanRecraft = values[0] != 0;
+                    break;
+                case ItemBonusType.ItemLevelBase:
+                    if (values[1] < _state.ItemLevelPriority)
+                    {
+                        ItemLevel = (uint)values[0];
+                        _state.ItemLevelPriority = values[1];
+                    }
+                    break;
+                case ItemBonusType.PvpItemLevelBase:
+                    if (values[1] < _state.PvpItemLevelPriority)
+                    {
+                        PvpItemLevel = (ushort)values[0];
+                        _state.PvpItemLevelPriority = values[1];
+                    }
+                    break;
+                case ItemBonusType.OverrideCannotTradeBop:
+                    CannotTradeBindOnPickup = values[0] != 0;
+                    break;
+                case ItemBonusType.BondingWithPriority:
+                    if (values[1] < _state.BondingPriority)
+                    {
+                        Bonding = (ItemBondingType)values[0];
+                        _state.BondingPriority = values[1];
+                    }
+                    break;
             }
         }
-
-        public ItemQuality Quality;
-        public int ItemLevelBonus;
-        public int RequiredLevel;
-        public int[] ItemStatType = new int[ItemConst.MaxStats];
-        public int[] StatPercentEditor = new int[ItemConst.MaxStats];
-        public float[] ItemStatSocketCostMultiplier = new float[ItemConst.MaxStats];
-        public SocketColor[] socketColor = new SocketColor[ItemConst.MaxGemSockets];
-        public ItemBondingType Bonding;
-        public uint AppearanceModID;
-        public float RepairCostMultiplier;
-        public uint ContentTuningId;
-        public uint PlayerLevelToItemLevelCurveId;
-        public uint DisenchantLootId;
-        public uint[] GemItemLevelBonus = new uint[ItemConst.MaxGemSockets];
-        public int[] GemRelicType = new int[ItemConst.MaxGemSockets];
-        public ushort[] GemRelicRankBonus = new ushort[ItemConst.MaxGemSockets];
-        public int RelicType;
-        public int RequiredLevelOverride;
-        public uint AzeriteTierUnlockSetId;
-        public uint Suffix;
-        public uint RequiredLevelCurve;
-        public ItemEffectRecord[] Effects = new ItemEffectRecord[13];
-        public int EffectCount;
-        public bool CanDisenchant;
-        public bool CanScrap;
-        public bool HasFixedLevel;
-        State _state;
 
         struct State
         {
@@ -3061,7 +3186,11 @@ namespace Game.Entities
             public int ScalingStatDistributionPriority;
             public int AzeriteTierUnlockSetPriority;
             public int RequiredLevelCurvePriority;
+            public int ItemLevelPriority;
+            public int PvpItemLevelPriority;
+            public int BondingPriority;
             public bool HasQualityBonus;
+            public bool HasItemLimitCategory;
         }
     }
 
@@ -3072,7 +3201,7 @@ namespace Game.Entities
         public byte CurrentRankWithBonus;
     }
 
-    class ArtifactData
+    public class ArtifactData
     {
         public ulong Xp;
         public uint ArtifactAppearanceId;
@@ -3085,7 +3214,7 @@ namespace Game.Entities
         public int[] SelectedAzeritePowers = new int[SharedConst.MaxAzeriteEmpoweredTier];
     }
 
-    class ItemAdditionalLoadInfo
+    public class ItemAdditionalLoadInfo
     {
         public ArtifactData Artifact;
         public AzeriteData AzeriteItem;

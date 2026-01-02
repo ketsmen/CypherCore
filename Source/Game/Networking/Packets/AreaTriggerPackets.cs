@@ -4,6 +4,7 @@
 using Framework.Constants;
 using Framework.Dynamic;
 using Game.Entities;
+using Game.Movement;
 using System.Collections.Generic;
 using System.Numerics;
 
@@ -47,37 +48,6 @@ namespace Game.Networking.Packets
         public override void Write() { }
     }
 
-    class AreaTriggerRePath : ServerPacket
-    {
-        public AreaTriggerRePath() : base(ServerOpcodes.AreaTriggerRePath) { }
-
-        public override void Write()
-        {
-            _worldPacket.WritePackedGuid(TriggerGUID);
-            _worldPacket.WritePackedGuid(Unused_1100);
-
-            _worldPacket.WriteBit(AreaTriggerSpline != null);
-            _worldPacket.WriteBit(AreaTriggerOrbit != null);
-            _worldPacket.WriteBit(AreaTriggerMovementScript.HasValue);
-            _worldPacket.FlushBits();
-
-            if (AreaTriggerSpline != null)
-                AreaTriggerSpline.Write(_worldPacket);
-
-            if (AreaTriggerMovementScript.HasValue)
-                AreaTriggerMovementScript.Value.Write(_worldPacket);
-
-            if (AreaTriggerOrbit != null)
-                AreaTriggerOrbit.Write(_worldPacket);
-        }
-
-        public AreaTriggerSplineInfo AreaTriggerSpline;
-        public AreaTriggerOrbitInfo AreaTriggerOrbit;
-        public AreaTriggerMovementScriptInfo? AreaTriggerMovementScript;
-        public ObjectGuid TriggerGUID;
-        public ObjectGuid Unused_1100;
-    }
-
     class AreaTriggerPlaySpellVisual : ServerPacket
     {
         public ObjectGuid AreaTriggerGUID;
@@ -92,23 +62,19 @@ namespace Game.Networking.Packets
         }
     }
 
-    //Structs
-    class AreaTriggerSplineInfo
+    class UpdateAreaTriggerVisual : ClientPacket
     {
-        public void Write(WorldPacket data)
+        public int SpellID;
+        public SpellCastVisual Visual;
+        public ObjectGuid TargetGUID;
+
+        public UpdateAreaTriggerVisual(WorldPacket packet) : base(packet) { }
+
+        public override void Read()
         {
-            data.WriteUInt32(TimeToTarget);
-            data.WriteUInt32(ElapsedTimeForMovement);
-
-            data.WriteBits(Points.Length, 16);
-            data.FlushBits();
-
-            foreach (Vector3 point in Points)
-                data.WriteVector3(point);
+            SpellID = _worldPacket.ReadInt32();
+            Visual.Read(_worldPacket);
+            TargetGUID = _worldPacket.ReadPackedGuid();
         }
-
-        public uint TimeToTarget;
-        public uint ElapsedTimeForMovement;
-        public Vector3[] Points = new Vector3[0];
     }
 }

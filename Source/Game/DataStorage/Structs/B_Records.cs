@@ -5,10 +5,18 @@ using Framework.Constants;
 
 namespace Game.DataStorage
 {
-    public sealed class BankBagSlotPricesRecord
+    public sealed class BankTabRecord
     {
         public uint Id;
-        public uint Cost;
+        public ulong Cost;
+        public byte BankType;
+        public sbyte OrderIndex;
+        public int PlayerConditionID;
+        public int PurchasePromptTitle;
+        public int PurchasePromptBody;
+        public int PurchasePromptConfirmation;
+        public int TabCleanupConfirmation;
+        public int TabNameEditBoxHeader;
     }
 
     public sealed class BannedAddonsRecord
@@ -16,7 +24,7 @@ namespace Game.DataStorage
         public uint Id;
         public string Name;
         public string Version;
-        public byte Flags;
+        public int Flags;
     }
 
     public sealed class BarberShopStyleRecord
@@ -26,9 +34,21 @@ namespace Game.DataStorage
         public string Description;
         public byte Type;                                                     // value 0 . hair, value 2 . facialhair
         public float CostModifier;
-        public byte Race;
-        public byte Sex;
+        public sbyte Race;
+        public sbyte Sex;
         public byte Data;                                                     // real ID to hair/facial hair
+    }
+
+    public sealed class BattlePetAbilityRecord
+    {
+        public uint Id;
+        public LocalizedString Name;
+        public LocalizedString Description;
+        public int IconFileDataID;
+        public sbyte PetTypeEnum;
+        public uint Cooldown;
+        public ushort BattlePetVisualID;
+        public byte Flags;
     }
 
     public sealed class BattlePetBreedQualityRecord
@@ -63,7 +83,7 @@ namespace Game.DataStorage
         public int CovenantID;
 
         public bool HasFlag(BattlePetSpeciesFlags battlePetSpeciesFlags) { return (Flags & (int)battlePetSpeciesFlags) != 0; }
-}
+    }
 
     public sealed class BattlePetSpeciesStateRecord
     {
@@ -80,7 +100,7 @@ namespace Game.DataStorage
         public string GameType;
         public string ShortDescription;
         public string LongDescription;
-        public sbyte InstanceType;
+        public int PvpType;
         public byte MinLevel;
         public byte MaxLevel;
         public sbyte RatedPlayers;
@@ -93,6 +113,7 @@ namespace Game.DataStorage
         public int IconFileDataID;
         public int RequiredPlayerConditionID;
 
+        public BattlemasterType GetPvpType() { return (BattlemasterType)PvpType; }
         public bool HasFlag(BattlemasterListFlags battlemasterListFlags) { return (Flags & (int)battlemasterListFlags) != 0; }
     }
 
@@ -111,7 +132,7 @@ namespace Game.DataStorage
         public int LanguageID;
         public int ConditionID;
         public ushort EmotesID;
-        public byte Flags;
+        public int Flags;
         public uint ChatBubbleDurationMs;
         public int VoiceOverPriorityID;
         public uint[] SoundKitID = new uint[2];

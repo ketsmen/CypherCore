@@ -8,8 +8,10 @@ using Game.BattleGrounds;
 using Game.Networking.Packets;
 using Game.Spells;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 
 namespace Game.Entities
@@ -68,7 +70,7 @@ namespace Game.Entities
             void callDamageScript(ref int dmg, ref int flatMod, ref float pctMod)
             {
                 if (spell != null)
-                    spell.CallScriptCalcDamageHandlers(victim, ref dmg, ref flatMod, ref pctMod);
+                    spell.CallScriptCalcDamageHandlers(spellEffectInfo, victim, ref dmg, ref flatMod, ref pctMod);
                 else if (aurEff != null)
                     aurEff.GetBase().CallScriptCalcDamageAndHealingHandlers(aurEff, aurEff.GetBase().GetApplicationOfTarget(victim.GetGUID()), victim, ref dmg, ref flatMod, ref pctMod);
             }
@@ -483,7 +485,7 @@ namespace Game.Entities
             }
 
             if (spell != null)
-                spell.CallScriptCalcHealingHandlers(victim, ref healamount, ref DoneTotal, ref DoneTotalMod);
+                spell.CallScriptCalcHealingHandlers(spellEffectInfo, victim, ref healamount, ref DoneTotal, ref DoneTotalMod);
             else if (aurEff != null)
                 aurEff.GetBase().CallScriptCalcDamageAndHealingHandlers(aurEff, aurEff.GetBase().GetApplicationOfTarget(victim.GetGUID()), victim, ref healamount, ref DoneTotal, ref DoneTotalMod);
 
@@ -944,9 +946,18 @@ namespace Game.Entities
             spell.Finish(result);
         }
 
-        public virtual SpellInfo GetCastSpellInfo(SpellInfo spellInfo, TriggerCastFlags triggerFlag, GetCastSpellInfoContext context)
+        public (SpellInfo, TriggerCastFlags) GetCastSpellInfo(SpellInfo spellInfo)
         {
-            SpellInfo findMatchingAuraEffectIn(AuraType type)
+            GetCastSpellInfoContext context = new();
+            TriggerCastFlags triggerFlag = TriggerCastFlags.None;
+
+            var newSpellInfo = GetCastSpellInfo(spellInfo, ref triggerFlag, context);
+            return (newSpellInfo, triggerFlag);
+        }
+
+        public virtual SpellInfo GetCastSpellInfo(SpellInfo spellInfo, ref TriggerCastFlags triggerFlag, GetCastSpellInfoContext context)
+        {
+            SpellInfo findMatchingAuraEffectIn(AuraType type, ref TriggerCastFlags triggerFlag)
             {
                 foreach (AuraEffect auraEffect in GetAuraEffectsByType(type))
                 {
@@ -957,9 +968,9 @@ namespace Game.Entities
                         if (info != null)
                         {
                             if (auraEffect.GetSpellInfo().HasAttribute(SpellAttr8.IgnoreSpellcastOverrideCost))
-                                triggerFlag |= TriggerCastFlags.IgnorePowerAndReagentCost;
+                                triggerFlag |= TriggerCastFlags.IgnorePowerCost;
                             else
-                                triggerFlag &= ~TriggerCastFlags.IgnorePowerAndReagentCost;
+                                triggerFlag &= ~TriggerCastFlags.IgnorePowerCost;
 
                             if (auraEffect.GetSpellInfo().HasAttribute(SpellAttr11.IgnoreSpellcastOverrideShapeshiftRequirements))
                                 triggerFlag |= TriggerCastFlags.IgnoreShapeshift;
@@ -967,7 +978,6 @@ namespace Game.Entities
                                 triggerFlag &= ~TriggerCastFlags.IgnoreShapeshift;
 
                             return info;
-
                         }
                     }
                 }
@@ -975,18 +985,18 @@ namespace Game.Entities
                 return null;
             }
 
-            SpellInfo newInfo = findMatchingAuraEffectIn(AuraType.OverrideActionbarSpells);
+            SpellInfo newInfo = findMatchingAuraEffectIn(AuraType.OverrideActionbarSpells, ref triggerFlag);
             if (newInfo != null)
             {
                 triggerFlag &= ~TriggerCastFlags.IgnoreCastTime;
-                return GetCastSpellInfo(newInfo, triggerFlag, context);
+                return GetCastSpellInfo(newInfo, ref triggerFlag, context);
             }
 
-            newInfo = findMatchingAuraEffectIn(AuraType.OverrideActionbarSpellsTriggered);
+            newInfo = findMatchingAuraEffectIn(AuraType.OverrideActionbarSpellsTriggered, ref triggerFlag);
             if (newInfo != null)
             {
                 triggerFlag |= TriggerCastFlags.IgnoreCastTime;
-                return GetCastSpellInfo(newInfo, triggerFlag, context);
+                return GetCastSpellInfo(newInfo, ref triggerFlag, context);
             }
 
             return spellInfo;
@@ -1105,12 +1115,9 @@ namespace Game.Entities
         public Spell FindCurrentSpellBySpellId(uint spell_id)
         {
             foreach (var spell in m_currentSpells.Values)
-            {
-                if (spell == null)
-                    continue;
-                if (spell.m_spellInfo.Id == spell_id)
+                if (spell != null && spell.m_spellInfo.Id == spell_id)
                     return spell;
-            }
+
             return null;
         }
 
@@ -1393,7 +1400,7 @@ namespace Game.Entities
                         if (immuneSpellInfo == null || !immuneSpellInfo.HasAttribute(SpellAttr1.ImmunityPurgesEffect))
                             continue;
 
-                    if (immuneSpellInfo != null && !immuneSpellInfo.HasAttribute(SpellAttr1.ImmunityToHostileAndFriendlyEffects) && caster != null && !caster.IsFriendlyTo(this))
+                    if (!(immuneSpellInfo != null && immuneSpellInfo.HasAttribute(SpellAttr1.ImmunityToHostileAndFriendlyEffects)) && caster != null && caster.IsFriendlyTo(this))
                         continue;
 
                     if (spellInfo.CanPierceImmuneAura(immuneSpellInfo))
@@ -1497,7 +1504,7 @@ namespace Game.Entities
 
                     // // We need to be immune to all types
                     return (schoolImmunityMask & schoolMask) == schoolMask;
-                };
+                }
 
                 // If m_immuneToSchool type contain this school type, IMMUNE damage.
                 if (hasImmunity(m_spellImmune[(int)SpellImmunity.School]))
@@ -1569,7 +1576,7 @@ namespace Game.Entities
                         if ((immuneAuraApply.GetMiscValue() & (int)spellInfo.GetSchoolMask()) == 0)               // Check school
                             continue;
 
-                        if (spellInfo.HasAttribute(SpellAttr1.ImmunityToHostileAndFriendlyEffects) || (caster != null && !IsFriendlyTo(caster))) // Harmful
+                        if (immuneAuraApply.GetSpellInfo().HasAttribute(SpellAttr1.ImmunityToHostileAndFriendlyEffects) || (caster != null && !IsFriendlyTo(caster))) // Harmful
                             return true;
                     }
                 }
@@ -1928,7 +1935,7 @@ namespace Game.Entities
 
             // generic spells are cast when they are not finished and not delayed
             var currentSpell = GetCurrentSpell(CurrentSpellTypes.Generic);
-            if (currentSpell != null && (currentSpell.GetState() != SpellState.Finished) && (withDelayed || currentSpell.GetState() != SpellState.Delayed))
+            if (currentSpell != null && (currentSpell.GetState() != SpellState.Finished) && (withDelayed || currentSpell.GetState() != SpellState.Launched))
             {
                 if (!skipInstant || currentSpell.GetCastTime() != 0)
                 {
@@ -2622,8 +2629,8 @@ namespace Game.Entities
             Log.outDebug(LogFilter.Unit, "Interrupt spell for unit {0}", GetEntry());
             Spell spell = m_currentSpells.LookupByKey(spellType);
             if (spell != null
-                && (withDelayed || spell.GetState() != SpellState.Delayed)
-                && (withInstant || spell.GetCastTime() > 0 || spell.GetState() == SpellState.Casting))
+                && (withDelayed || spell.GetState() != SpellState.Launched)
+                && (withInstant || spell.GetCastTime() > 0 || spell.GetState() == SpellState.Channeling))
             {
                 // for example, do not let self-stun aura interrupt itself
                 if (!spell.IsInterruptable())
@@ -2659,7 +2666,7 @@ namespace Game.Entities
             Spell spell = GetCurrentSpell(CurrentSpellTypes.Channeled);
             if (spell != null)
             {
-                if (spell.GetState() == SpellState.Casting)
+                if (spell.GetState() == SpellState.Channeling)
                 {
                     m_interruptMask |= spell.m_spellInfo.ChannelInterruptFlags;
                     m_interruptMask2 |= spell.m_spellInfo.ChannelInterruptFlags2;
@@ -2676,6 +2683,11 @@ namespace Game.Entities
         public List<KeyValuePair<uint, AuraApplication>> GetAppliedAuras()
         {
             return m_appliedAuras.KeyValueList;
+        }
+
+        public List<AuraApplication> GetAppliedAuras(uint key)
+        {
+            return m_appliedAuras.LookupByKey(key);
         }
 
         public Aura AddAura(uint spellId, Unit target)
@@ -2745,77 +2757,99 @@ namespace Game.Entities
                 if (!Global.ConditionMgr.IsObjectMeetingSpellClickConditions(spellClickEntry, clickInfo.spellId, clicker, this))
                     continue;
 
-                Unit caster = Convert.ToBoolean(clickInfo.castFlags & (byte)SpellClickCastFlags.CasterClicker) ? clicker : this;
-                Unit target = Convert.ToBoolean(clickInfo.castFlags & (byte)SpellClickCastFlags.TargetClicker) ? clicker : this;
-                ObjectGuid origCasterGUID = Convert.ToBoolean(clickInfo.castFlags & (byte)SpellClickCastFlags.OrigCasterOwner) ? GetOwnerGUID() : clicker.GetGUID();
-
-                SpellInfo spellEntry = Global.SpellMgr.GetSpellInfo(clickInfo.spellId, caster.GetMap().GetDifficultyID());
+                spellClickHandled = HandleSpellClick(clicker, seatId, clickInfo.spellId, flags, clickInfo);
                 // if (!spellEntry) should be checked at npc_spellclick load
-
-                SpellCastResult castResult = SpellCastResult.Success;
-                if (seatId > -1)
-                {
-                    byte i = 0;
-                    bool valid = false;
-                    foreach (var spellEffectInfo in spellEntry.GetEffects())
-                    {
-                        if (spellEffectInfo.ApplyAuraName == AuraType.ControlVehicle)
-                        {
-                            valid = true;
-                            break;
-                        }
-                        ++i;
-                    }
-
-                    if (!valid)
-                    {
-                        Log.outError(LogFilter.Sql, "Spell {0} specified in npc_spellclick_spells is not a valid vehicle enter aura!", clickInfo.spellId);
-                        continue;
-                    }
-
-                    if (IsInMap(caster))
-                    {
-                        CastSpellExtraArgs args = new(flags);
-                        args.OriginalCaster = origCasterGUID;
-                        args.AddSpellMod(SpellValueMod.BasePoint0 + i, seatId + 1);
-                        castResult = caster.CastSpell(target, clickInfo.spellId, args);
-                    }
-                    else    // This can happen during Player._LoadAuras
-                    {
-                        int[] bp = new int[SpellConst.MaxEffects];
-                        foreach (var spellEffectInfo in spellEntry.GetEffects())
-                            bp[spellEffectInfo.EffectIndex] = (int)spellEffectInfo.BasePoints;
-
-                        bp[i] = seatId;
-
-                        AuraCreateInfo createInfo = new(ObjectGuid.Create(HighGuid.Cast, SpellCastSource.Normal, GetMapId(), spellEntry.Id, GetMap().GenerateLowGuid(HighGuid.Cast)), spellEntry, GetMap().GetDifficultyID(), SpellConst.MaxEffectMask, this);
-                        createInfo.SetCaster(clicker);
-                        createInfo.SetBaseAmount(bp);
-                        createInfo.SetCasterGUID(origCasterGUID);
-
-                        Aura.TryRefreshStackOrCreate(createInfo);
-                    }
-                }
-                else
-                {
-                    if (IsInMap(caster))
-                        castResult = caster.CastSpell(target, spellEntry.Id, new CastSpellExtraArgs().SetOriginalCaster(origCasterGUID));
-                    else
-                    {
-                        AuraCreateInfo createInfo = new(ObjectGuid.Create(HighGuid.Cast, SpellCastSource.Normal, GetMapId(), spellEntry.Id, GetMap().GenerateLowGuid(HighGuid.Cast)), spellEntry, GetMap().GetDifficultyID(), SpellConst.MaxEffectMask, this);
-                        createInfo.SetCaster(clicker);
-                        createInfo.SetCasterGUID(origCasterGUID);
-
-                        Aura.TryRefreshStackOrCreate(createInfo);
-                    }
-                }
-
-                spellClickHandled = castResult == SpellCastResult.Success;
             }
 
             Creature creature = ToCreature();
             if (creature != null && creature.IsAIEnabled())
                 creature.GetAI().OnSpellClick(clicker, ref spellClickHandled);
+        }
+
+        public bool HandleSpellClick(Unit clicker, sbyte seatId, uint spellId, TriggerCastFlags flags = TriggerCastFlags.None, SpellClickInfo spellClickInfo = null)
+        {
+            Unit caster = clicker;
+            Unit target = this;
+            ObjectGuid origCasterGUID = caster.GetGUID();
+            SpellCastResult castResult = SpellCastResult.Success;
+
+            if (spellClickInfo != null)
+            {
+                caster = (spellClickInfo.castFlags & (byte)SpellClickCastFlags.CasterClicker) != 0 ? clicker : this;
+                target = (spellClickInfo.castFlags & (byte)SpellClickCastFlags.TargetClicker) != 0 ? clicker : this;
+                origCasterGUID = (spellClickInfo.castFlags & (byte)SpellClickCastFlags.OrigCasterOwner) != 0 ? GetOwnerGUID() : clicker.GetGUID();
+            }
+
+            if (spellId == 0)
+            {
+                Log.outError(LogFilter.Sql, $"No valid spell specified for clickee {target.GetGUID()} and clicker {caster.GetGUID()}!");
+                return false;
+            }
+
+            SpellInfo spellEntry = Global.SpellMgr.GetSpellInfo(spellId, caster.GetMap().GetDifficultyID());
+
+            byte effectIndex = 0;
+            bool hasControlVehicleAura = false;
+            foreach (SpellEffectInfo spellEffectInfo in spellEntry.GetEffects())
+            {
+                if (spellEffectInfo.ApplyAuraName == AuraType.ControlVehicle)
+                {
+                    hasControlVehicleAura = true;
+                    break;
+                }
+
+                ++effectIndex;
+            }
+
+            if (seatId > -1)
+            {
+                if (!hasControlVehicleAura)
+                {
+                    if (spellClickInfo == null)
+                        Log.outError(LogFilter.Sql, $"RideSpell {spellId} specified in vehicle_accessory or vehicle_template_accessory is not a valid vehicle enter aura!");
+                    else
+                        Log.outError(LogFilter.Sql, $"Spell {spellId} specified in npc_spellclick_spells is not a valid vehicle enter aura!");
+                    return false;
+                }
+
+                if (IsInMap(caster))
+                {
+                    CastSpellExtraArgs args = new(flags);
+                    args.OriginalCaster = origCasterGUID;
+                    args.AddSpellMod(SpellValueMod.BasePoint0 + effectIndex, seatId + 1);
+                    castResult = caster.CastSpell(target, spellId, args);
+                }
+                else    // This can happen during Player::_LoadAuras
+                {
+                    int[] bp = new int[SpellConst.MaxEffects];
+                    foreach (SpellEffectInfo spellEffectInfo in spellEntry.GetEffects())
+                        bp[spellEffectInfo.EffectIndex] = (int)spellEffectInfo.BasePoints;
+
+                    bp[effectIndex] = seatId;
+
+                    AuraCreateInfo createInfo = new(ObjectGuid.Create(HighGuid.Cast, SpellCastSource.Normal, GetMapId(), spellEntry.Id, GetMap().GenerateLowGuid(HighGuid.Cast)), spellEntry, GetMap().GetDifficultyID(), SpellConst.MaxEffectMask, this);
+                    createInfo.SetCaster(clicker);
+                    createInfo.SetBaseAmount(bp);
+                    createInfo.SetCasterGUID(origCasterGUID);
+
+                    Aura.TryRefreshStackOrCreate(createInfo);
+                }
+            }
+            else
+            {
+                if (IsInMap(caster))
+                    castResult = caster.CastSpell(target, spellEntry.Id, new CastSpellExtraArgs().SetOriginalCaster(origCasterGUID));
+                else
+                {
+                    AuraCreateInfo createInfo = new(ObjectGuid.Create(HighGuid.Cast, SpellCastSource.Normal, GetMapId(), spellEntry.Id, GetMap().GenerateLowGuid(HighGuid.Cast)), spellEntry, GetMap().GetDifficultyID(), SpellConst.MaxEffectMask, this);
+                    createInfo.SetCaster(clicker);
+                    createInfo.SetCasterGUID(origCasterGUID);
+
+
+                    Aura.TryRefreshStackOrCreate(createInfo);
+                }
+            }
+            return castResult == SpellCastResult.Success;
         }
 
         public bool HasAura(uint spellId, ObjectGuid casterGUID = default, ObjectGuid itemCasterGUID = default, uint reqEffMask = 0)
@@ -3087,7 +3121,7 @@ namespace Game.Entities
             Spell spell = GetCurrentSpell(CurrentSpellTypes.Channeled);
             if (spell != null)
             {
-                if (spell.GetState() == SpellState.Casting
+                if (spell.GetState() == SpellState.Channeling
                     && spell.GetSpellInfo().HasChannelInterruptFlag(flag)
                     && (source == null || spell.GetSpellInfo().Id != source.Id)
                     && !IsInterruptFlagIgnoredForSpell(flag, this, spell.GetSpellInfo(), true, source))
@@ -3120,7 +3154,7 @@ namespace Game.Entities
             Spell spell = GetCurrentSpell(CurrentSpellTypes.Channeled);
             if (spell != null)
             {
-                if (spell.GetState() == SpellState.Casting
+                if (spell.GetState() == SpellState.Channeling
                     && spell.GetSpellInfo().HasChannelInterruptFlag(flag)
                     && (source == null || spell.GetSpellInfo().Id != source.Id)
                     && !IsInterruptFlagIgnoredForSpell(flag, this, spell.GetSpellInfo(), true, source))
@@ -3170,24 +3204,20 @@ namespace Game.Entities
                 {
                     int[] damage = new int[SpellConst.MaxEffects];
                     int[] baseDamage = new int[SpellConst.MaxEffects];
-                    uint effMask = 0;
-                    uint recalculateMask = 0;
+                    BitSet effMask = new BitSet(SpellConst.MaxEffects);
+                    BitSet recalculateMask = new BitSet(SpellConst.MaxEffects);
                     Unit caster = aura.GetCaster();
-                    for (byte i = 0; i < SpellConst.MaxEffects; ++i)
+                    foreach (AuraEffect aurEff in aura.GetAuraEffects())
                     {
-                        if (aura.GetEffect(i) != null)
-                        {
-                            baseDamage[i] = aura.GetEffect(i).GetBaseAmount();
-                            damage[i] = aura.GetEffect(i).GetAmount();
-                            effMask |= 1u << i;
-                            if (aura.GetEffect(i).CanBeRecalculated())
-                                recalculateMask |= 1u << i;
-                        }
-                        else
-                        {
-                            baseDamage[i] = 0;
-                            damage[i] = 0;
-                        }
+                        if (aurEff == null)
+                            continue;
+
+                        int i = (int)aurEff.GetEffIndex();
+                        baseDamage[i] = aurEff.GetBaseAmount();
+                        damage[i] = aurEff.GetAmount();
+                        effMask[i] = true;
+                        if (aurEff.CanBeRecalculated())
+                            recalculateMask[i] = true;
                     }
 
                     bool stealCharge = aura.GetSpellInfo().HasAttribute(SpellAttr7.DispelRemovesCharges);
@@ -3212,9 +3242,10 @@ namespace Game.Entities
                             if (aura.IsSingleTarget())
                                 aura.UnregisterSingleTarget();
 
-                            AuraCreateInfo createInfo = new(aura.GetCastId(), aura.GetSpellInfo(), aura.GetCastDifficulty(), effMask, stealer);
+                            AuraCreateInfo createInfo = new(aura.GetCastId(), aura.GetSpellInfo(), aura.GetCastDifficulty(), effMask.ToUInt(), stealer);
                             createInfo.SetCasterGUID(aura.GetCasterGUID());
                             createInfo.SetBaseAmount(baseDamage);
+                            createInfo.SetStackAmount(stolenCharges);
 
                             Aura newAura = Aura.TryRefreshStackOrCreate(createInfo);
                             if (newAura != null)
@@ -3228,7 +3259,7 @@ namespace Game.Entities
                                     caster.GetSingleCastAuras().Add(aura);
                                 }
                                 // FIXME: using aura.GetMaxDuration() maybe not blizzlike but it fixes stealing of spells like Innervate
-                                newAura.SetLoadedState(aura.GetMaxDuration(), (int)dur, stealCharge ? stolenCharges : aura.GetCharges(), (byte)stolenCharges, recalculateMask, damage);
+                                newAura.SetLoadedState(aura.GetMaxDuration(), (int)dur, stealCharge ? stolenCharges : aura.GetCharges(), recalculateMask.ToUInt(), damage);
                                 newAura.ApplyForTargets();
                             }
                         }
@@ -3450,10 +3481,10 @@ namespace Game.Entities
             if (aurApp.HasRemoveMode())
             {
                 // remove remaining effects of an aura
-                for (byte effectIndex = 0; effectIndex < SpellConst.MaxEffects; ++effectIndex)
+                foreach (AuraEffect aurEff in aurApp.GetBase().GetAuraEffects())
                 {
-                    if (aurApp.HasEffect(effectIndex))
-                        aurApp._HandleEffect(effectIndex, false);
+                    if (aurEff != null && aurApp.HasEffect(aurEff.GetEffIndex()))
+                        aurApp._HandleEffect(aurEff.GetEffIndex(), false);
                 }
                 return;
             }
@@ -3875,11 +3906,9 @@ namespace Game.Entities
             aura._UnapplyForTarget(this, caster, aurApp);
 
             // remove effects of the spell - needs to be done after removing aura from lists
-            for (byte c = 0; c < SpellConst.MaxEffects; ++c)
-            {
-                if (aurApp.HasEffect(c))
-                    aurApp._HandleEffect(c, false);
-            }
+            foreach (AuraEffect aurEff in aura.GetAuraEffects())
+                if (aurEff != null && aurApp.HasEffect(aurEff.GetEffIndex()))
+                    aurApp._HandleEffect(aurEff.GetEffIndex(), false);
 
             // all effect mustn't be applied
             Cypher.Assert(aurApp.GetEffectMask() == 0);
@@ -4124,10 +4153,14 @@ namespace Game.Entities
             aura.HandleAuraSpecificMods(aurApp, caster, true, false);
 
             // apply effects of the aura
-            for (byte i = 0; i < SpellConst.MaxEffects; i++)
+            foreach (AuraEffect aurEff in aura.GetAuraEffects())
             {
-                if (Convert.ToBoolean(effMask & 1 << i) && !(aurApp.HasRemoveMode()))
-                    aurApp._HandleEffect(i, true);
+                if (aurEff != null && (effMask & 1 << (int)aurEff.GetEffIndex()) != 0)
+                {
+                    aurApp._HandleEffect(aurEff.GetEffIndex(), true);
+                    if (aurApp.GetRemoveMode() != 0)
+                        break;
+                }
             }
 
             Player player = ToPlayer();
@@ -4232,7 +4265,7 @@ namespace Game.Entities
                     }
 
                     // try to increase stack amount
-                    foundAura.ModStackAmount(1, AuraRemoveMode.Default, createInfo.ResetPeriodicTimer);
+                    foundAura.ModStackAmount(createInfo.StackAmount, AuraRemoveMode.Default, createInfo.ResetPeriodicTimer);
                     return foundAura;
                 }
             }
@@ -4308,7 +4341,10 @@ namespace Game.Entities
                     if (diff == 0)
                     {
                         for (int i = 0; i < SpellConst.MaxEffects; ++i)
-                            diff += (long)((auraEffectMask & (1 << i)) >> i) - (long)((existingAurEff.GetBase().GetEffectMask() & (1 << i)) >> i);
+                        {
+                            // treat the aura with more effects as stronger
+                            diff = BitOperations.PopCount(auraEffectMask) - BitOperations.PopCount(existingAurEff.GetBase().GetEffectMask());
+                        }
                     }
 
                     if (diff > 0)
@@ -4622,7 +4658,7 @@ namespace Game.Entities
                 return true;
             }
 
-            return false;
+            return false;// no free slots left
         }
     }
 }

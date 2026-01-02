@@ -265,6 +265,8 @@ namespace Game
                 return;
             }
 
+            GetPlayer().PlayerTalkClass.GetInteractionData().StartInteraction(packet.Banker, PlayerInteractionType.GuildBanker);
+
             guild.SendBankList(this, 0, packet.FullUpdate);
         }
 
@@ -275,10 +277,7 @@ namespace Game
             {
                 Guild guild = GetPlayer().GetGuild();
                 if (guild != null)
-                    guild.SendBankList(this, packet.Tab, true/*packet.FullUpdate*/);
-                // HACK: client doesn't query entire tab content if it had received SMSG_GUILD_BANK_LIST in this session
-                // but we broadcast bank updates to entire guild when *ANYONE* changes anything, incorrectly initializing clients
-                // tab content with only data for that change
+                    guild.SendBankList(this, packet.Tab, packet.FullUpdate);
             }
         }
 
@@ -654,9 +653,12 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.GuildSetGuildMaster)]
         void HandleGuildSetGuildMaster(GuildSetGuildMaster packet)
         {
-            Guild guild = GetPlayer().GetGuild();
-            if (guild != null)
-                guild.HandleSetNewGuildMaster(this, packet.NewMasterName, false);
+            if (ObjectManager.NormalizePlayerName(ref packet.NewMasterName))
+            {
+                Guild guild = GetPlayer().GetGuild();
+                if (guild != null)
+                    guild.HandleSetNewGuildMaster(this, packet.NewMasterName, false);
+            }
         }
 
         [WorldPacketHandler(ClientOpcodes.GuildSetAchievementTracking)]

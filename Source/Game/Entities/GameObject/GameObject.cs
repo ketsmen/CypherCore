@@ -283,8 +283,6 @@ namespace Game.Entities
             SetGoState(goState);
             SetGoArtKit(artKit);
 
-            SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.SpawnTrackingStateAnimID), Global.DB2Mgr.GetEmptyAnimStateID());
-
             switch (goInfo.type)
             {
                 case GameObjectTypes.FishingHole:
@@ -635,15 +633,15 @@ namespace Game.Entities
                                 var checker = new NearestAttackableNoTotemUnitInObjectRangeCheck(this, radius);
                                 var searcher = new UnitLastSearcher(this, checker);
                                 Cell.VisitAllObjects(this, searcher, radius);
-                                target = searcher.GetTarget();
+                                target = searcher.GetResult();
                             }
                             else
                             {
                                 // Environmental trap: Any player
-                                var check = new AnyPlayerInObjectRangeCheck(this, radius);
+                                var check = new AnyUnitInObjectRangeCheck(this, radius);
                                 var searcher = new PlayerSearcher(this, check);
                                 Cell.VisitWorldObjects(this, searcher, radius);
-                                target = searcher.GetTarget();
+                                target = searcher.GetResult();
                             }
 
                             if (target != null)
@@ -801,9 +799,7 @@ namespace Game.Entities
                             m_usetimes = 0;
                         }
 
-                        // Only goobers with a lock id or a reset time may reset their go state
-                        if (GetGoInfo().GetLockId() != 0 || GetGoInfo().GetAutoCloseTime() != 0)
-                            SetGoState(GameObjectState.Ready);
+                        SetGoState(GameObjectState.Ready);
 
                         //any return here in case Battleground traps
                         GameObjectOverride goOverride = GetGameObjectOverride();
@@ -1089,8 +1085,10 @@ namespace Game.Entities
             stmt.AddValue(index++, GetEntry());
             stmt.AddValue(index++, mapid);
             stmt.AddValue(index++, data.SpawnDifficulties.Empty() ? "" : string.Join(",", data.SpawnDifficulties));
+            stmt.AddValue(index++, (byte)data.PhaseUseFlags);
             stmt.AddValue(index++, data.PhaseId);
             stmt.AddValue(index++, data.PhaseGroup);
+            stmt.AddValue(index++, data.terrainSwapMap);
             stmt.AddValue(index++, GetPositionX());
             stmt.AddValue(index++, GetPositionY());
             stmt.AddValue(index++, GetPositionZ());
@@ -1102,6 +1100,13 @@ namespace Game.Entities
             stmt.AddValue(index++, m_respawnDelayTime);
             stmt.AddValue(index++, GetGoAnimProgress());
             stmt.AddValue(index++, (byte)GetGoState());
+            stmt.AddValue(index++, Global.ObjectMgr.GetScriptName(data.ScriptId));
+            var stringId = GetStringId(StringIdType.Spawn);
+            if (!stringId.IsEmpty())
+                stmt.AddValue(index++, stringId);
+            else
+                stmt.AddNull(index++);
+
             DB.World.Execute(stmt);
         }
 
@@ -1127,6 +1132,10 @@ namespace Game.Entities
 
             PhasingHandler.InitDbPhaseShift(GetPhaseShift(), data.PhaseUseFlags, data.PhaseId, data.PhaseGroup);
             PhasingHandler.InitDbVisibleMapId(GetPhaseShift(), data.terrainSwapMap);
+
+            // Set StateWorldEffectsQuestObjectiveID if there is only one linked objective for this gameobject
+            if (data != null && data.spawnTrackingQuestObjectives.Count == 1)
+                SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.StateWorldEffectsQuestObjectiveID), data.spawnTrackingQuestObjectives.First());
 
             if (data.spawntimesecs >= 0)
             {
@@ -1256,17 +1265,6 @@ namespace Game.Entities
                 return false;
 
             return gInfo.type == GameObjectTypes.Transport || gInfo.type == GameObjectTypes.MapObjTransport;
-        }
-
-        // is Dynamic transport = non-stop Transport
-        public bool IsDynTransport()
-        {
-            // If something is marked as a transport, don't transmit an out of range packet for it.
-            GameObjectTemplate gInfo = GetGoInfo();
-            if (gInfo == null)
-                return false;
-
-            return gInfo.type == GameObjectTypes.MapObjTransport || gInfo.type == GameObjectTypes.Transport;
         }
 
         public bool IsDestructibleBuilding()
@@ -1406,8 +1404,7 @@ namespace Game.Entities
             switch (GetGoType())
             {
                 case GameObjectTypes.QuestGiver:
-                    QuestGiverStatus questStatus = target.GetQuestDialogStatus(this);
-                    if (questStatus != QuestGiverStatus.None && questStatus != QuestGiverStatus.Future)
+                    if ((target.GetQuestDialogStatus(this) & ~QuestGiverStatus.FutureMask) != QuestGiverStatus.None)
                         return true;
                     break;
                 case GameObjectTypes.Chest:
@@ -1477,7 +1474,7 @@ namespace Game.Entities
             var checker = new GameObjectSearcher(this, u_check);
 
             Cell.VisitGridObjects(this, checker, range);
-            return checker.GetTarget();
+            return checker.GetResult();
         }
 
         public void ResetDoorOrButton()
@@ -1684,12 +1681,14 @@ namespace Game.Entities
                 SetGoState(GameObjectState.Ready);
         }
 
-        public void Use(Unit user)
+        public void Use(Unit user, bool ignoreCastInProgress = false)
         {
             // by default spell caster is user
             Unit spellCaster = user;
             uint spellId = 0;
-            bool triggered = false;
+            CastSpellExtraArgs spellArgs = new();
+            if (ignoreCastInProgress)
+                spellArgs.TriggerFlags |= TriggerCastFlags.IgnoreCastInProgress;
 
             Player playerUser = user.ToPlayer();
             if (playerUser != null)
@@ -1820,6 +1819,10 @@ namespace Game.Entities
                         uint trapEntry = info.Chest.linkedTrap;
                         if (trapEntry != 0)
                             TriggeringLinkedGameObject(trapEntry, player);
+
+                        // Cast spell before sending loot
+                        if (spellCaster != null && info.Chest.spell != 0)
+                            spellCaster.CastSpell(null, info.Chest.spell, spellArgs);
 
                         AddUniqueUse(player);
                     }
@@ -1972,12 +1975,11 @@ namespace Game.Entities
                         Group group = player.GetGroup();
                         if (group != null)
                         {
-                            for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
+                            foreach (GroupReference groupRef in group.GetMembers())
                             {
-                                Player member = refe.GetSource();
-                                if (member != null)
-                                    if (member.IsAtGroupRewardDistance(this))
-                                        member.KillCreditGO(info.entry, GetGUID());
+                                Player member = groupRef.GetSource();
+                                if (member.IsAtGroupRewardDistance(this))
+                                    member.KillCreditGO(info.entry, GetGUID());
                             }
                         }
                         else
@@ -2101,7 +2103,7 @@ namespace Game.Entities
 
                                 if (fishingPool != null)
                                 {
-                                    fishingPool.Use(player);
+                                    fishingPool.Use(player, ignoreCastInProgress);
                                     SetLootState(LootState.JustDeactivated);
                                 }
                                 else
@@ -2177,7 +2179,7 @@ namespace Game.Entities
                         player.CastSpell(player, info.Ritual.animSpell, true);
 
                         // for this case, summoningRitual.spellId is always triggered
-                        triggered = true;
+                        spellArgs.TriggerFlags = TriggerCastFlags.FullMask;
                     }
 
                     // full amount unique participants including original summoner
@@ -2193,7 +2195,7 @@ namespace Game.Entities
                             // spell have reagent and mana cost but it not expected use its
                             // it triggered spell in fact casted at currently channeled GO
                             spellId = 61993;
-                            triggered = true;
+                            spellArgs.TriggerFlags = TriggerCastFlags.FullMask;
                         }
 
                         // Cast casterTargetSpell at a random GO user
@@ -2365,7 +2367,7 @@ namespace Game.Entities
                     Player player = user.ToPlayer();
 
                     EnableBarberShop enableBarberShop = new();
-                    enableBarberShop.CustomizationScope = (byte)info.BarberChair.CustomizationScope;
+                    enableBarberShop.CustomizationFeatureMask = (byte)info.BarberChair.CustomizationFeatureMask;
                     player.SendPacket(enableBarberShop);
 
                     // fallback, will always work
@@ -2636,10 +2638,10 @@ namespace Game.Entities
                 Global.OutdoorPvPMgr.HandleCustomSpell(player1, spellId, this);
 
             if (spellCaster != null)
-                spellCaster.CastSpell(user, spellId, triggered);
+                spellCaster.CastSpell(user, spellId, spellArgs);
             else
             {
-                SpellCastResult castResult = CastSpell(user, spellId);
+                SpellCastResult castResult = CastSpell(user, spellId, spellArgs);
                 if (castResult == SpellCastResult.Success)
                 {
                     switch (GetGoType())
@@ -2739,6 +2741,24 @@ namespace Game.Entities
 
         public string GetStringId(StringIdType type) { return m_stringIds[(int)type]; }
 
+        public override SpawnTrackingStateData GetSpawnTrackingStateDataForPlayer(Player player)
+        {
+            if (player == null)
+                return null;
+
+            GameObjectData data = GetGameObjectData();
+            if (data != null)
+            {
+                if (data.spawnTrackingData != null && !data.spawnTrackingQuestObjectives.Empty())
+                {
+                    SpawnTrackingState state = player.GetSpawnTrackingStateByObjectives(data.spawnTrackingData.SpawnTrackingId, data.spawnTrackingQuestObjectives);
+                    return data.spawnTrackingStates[(int)state];
+                }
+            }
+
+            return null;
+        }
+
         public override string GetName(Locale locale = Locale.enUS)
         {
             if (locale != Locale.enUS)
@@ -2750,6 +2770,16 @@ namespace Game.Entities
             }
 
             return base.GetName(locale);
+        }
+
+        public bool HasLabel(int gameobjectLabel)
+        {
+            return GetLabels().Contains(gameobjectLabel);
+        }
+
+        public List<int> GetLabels()
+        {
+            return Global.DB2Mgr.GetGameObjectLabels(GetEntry());
         }
 
         public void UpdatePackedRotation()
@@ -3857,13 +3887,10 @@ namespace Game.Entities
         public override uint GetFaction() { return m_gameObjectData.FactionTemplate; }
         public override void SetFaction(uint faction) { SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.FactionTemplate), faction); }
 
-        public override float GetStationaryX() { return StationaryPosition.GetPositionX(); }
-        public override float GetStationaryY() { return StationaryPosition.GetPositionY(); }
-        public override float GetStationaryZ() { return StationaryPosition.GetPositionZ(); }
-        public override float GetStationaryO() { return StationaryPosition.GetOrientation(); }
-        public Position GetStationaryPosition() { return StationaryPosition; }
+        public override Position GetStationaryPosition() { return StationaryPosition; }
 
         public void RelocateStationaryPosition(float x, float y, float z, float o) { StationaryPosition.Relocate(x, y, z, o); }
+        public void RelocateStationaryPosition(Position pos) { StationaryPosition.Relocate(pos); }
 
         //! Object distance/size - overridden from Object._IsWithinDist. Needs to take in account proper GO size.
         public override bool _IsWithinDist(WorldObject obj, float dist2compare, bool is3D, bool incOwnRadius, bool incTargetRadius)
@@ -3882,6 +3909,18 @@ namespace Game.Entities
         {
             if (m_goTypeImpl != null)
                 command.Execute(m_goTypeImpl);
+        }
+
+        public int GetControllingTeam()
+        {
+            if (GetGoType() != GameObjectTypes.ControlZone)
+                return BattleGroundTeamId.Neutral;
+
+            var controlZone = (ControlZone)m_goTypeImpl;
+            if (controlZone == null)
+                return BattleGroundTeamId.Neutral;
+
+            return controlZone.GetControllingTeam();
         }
 
         public void CreateModel()
@@ -3956,7 +3995,7 @@ namespace Game.Entities
         ObjectGuid m_linkedTrap;
         #endregion
 
-        class ValuesUpdateForPlayerWithMaskSender : IDoWork<Player>
+        class ValuesUpdateForPlayerWithMaskSender
         {
             public GameObject Owner;
             public ObjectFieldData ObjectMask = new();
@@ -3976,6 +4015,8 @@ namespace Game.Entities
                 udata.BuildPacket(out UpdateObject packet);
                 player.SendPacket(packet);
             }
+
+            public static implicit operator IDoWork<Player>(ValuesUpdateForPlayerWithMaskSender obj) => obj.Invoke;
         }
     }
 
@@ -4580,7 +4621,7 @@ namespace Game.Entities
             }
         }
 
-        int GetControllingTeam()
+        public int GetControllingTeam()
         {
             if (_value < GetMaxHordeValue())
                 return BattleGroundTeamId.Horde;

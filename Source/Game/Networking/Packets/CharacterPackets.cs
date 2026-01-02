@@ -52,9 +52,6 @@ namespace Game.Networking.Packets
             foreach (RaceLimitDisableInfo raceLimitDisableInfo in RaceLimitDisables)
                 raceLimitDisableInfo.Write(_worldPacket);
 
-            foreach (WarbandGroup warbandGroup in WarbandGroups)
-                warbandGroup.Write(_worldPacket);
-
             foreach (CharacterInfo charInfo in Characters)
                 charInfo.Write(_worldPacket);
 
@@ -63,6 +60,9 @@ namespace Game.Networking.Packets
 
             foreach (RaceUnlock raceUnlock in RaceUnlockData)
                 raceUnlock.Write(_worldPacket);
+
+            foreach (WarbandGroup warbandGroup in WarbandGroups)
+                warbandGroup.Write(_worldPacket);
         }
 
         public bool Success;
@@ -106,8 +106,11 @@ namespace Game.Networking.Packets
                 PlayerFlags playerFlags = (PlayerFlags)fields.Read<uint>(12);
                 AtLoginFlags atLoginFlags = (AtLoginFlags)fields.Read<ushort>(13);
 
-                if (playerFlags.HasFlag(PlayerFlags.Resting))
+                if (playerFlags.HasAnyFlag(PlayerFlags.Resting))
                     Flags |= CharacterFlags.Resting;
+
+                if (atLoginFlags.HasAnyFlag(AtLoginFlags.ResetTalents))
+                    Flags |= CharacterFlags.ResetTalentsOnLogin;
 
                 if (atLoginFlags.HasAnyFlag(AtLoginFlags.Resurrect))
                     playerFlags &= ~PlayerFlags.Ghost;
@@ -121,20 +124,35 @@ namespace Game.Networking.Packets
                 if (fields.Read<uint>(18) != 0)
                     Flags |= CharacterFlags.LockedByBilling;
 
-                if (WorldConfig.GetBoolValue(WorldCfg.DeclinedNamesUsed) && !string.IsNullOrEmpty(fields.Read<string>(28)))
+                if (WorldConfig.GetBoolValue(WorldCfg.DeclinedNamesUsed) && !string.IsNullOrEmpty(fields.Read<string>(29)))
                     Flags |= CharacterFlags.Declined;
 
                 if (atLoginFlags.HasAnyFlag(AtLoginFlags.Customize))
-                    Flags2 = CharacterCustomizeFlags.Customize;
+                    Flags2 = CharacterFlags2.Customize;
                 else if (atLoginFlags.HasAnyFlag(AtLoginFlags.ChangeFaction))
-                    Flags2 = CharacterCustomizeFlags.Faction;
+                    Flags2 = CharacterFlags2.FactionChange;
                 else if (atLoginFlags.HasAnyFlag(AtLoginFlags.ChangeRace))
-                    Flags2 = CharacterCustomizeFlags.Race;
+                    Flags2 = CharacterFlags2.RaceChange;
+
+                if (playerFlags.HasAnyFlag(PlayerFlags.NoXPGain))
+                    Flags2 |= CharacterFlags2.NoXpGain;
+
+                if (playerFlags.HasAnyFlag(PlayerFlags.LowLevelRaidEnabled))
+                    Flags2 |= CharacterFlags2.LowLevelRaidEnabled;
+
+                if (playerFlags.HasAnyFlag(PlayerFlags.AutoDeclineGuild))
+                    Flags2 |= CharacterFlags2.AutoDeclineGuild;
+
+                if (playerFlags.HasAnyFlag(PlayerFlags.HidAccountAchievements))
+                    Flags3 |= CharacterFlags3.HideAccountAchievements;
+
+                if (playerFlags.HasAnyFlag(PlayerFlags.WarModeDesired))
+                    Flags3 |= CharacterFlags3.WarModeDesired;
 
                 FirstLogin = atLoginFlags.HasAnyFlag(AtLoginFlags.FirstLogin);
 
                 // show pet at selection character in character list only for non-ghost character
-                if (!playerFlags.HasAnyFlag(PlayerFlags.Ghost) && (ClassId == Class.Warlock || ClassId == Class.Hunter || ClassId == Class.Deathknight))
+                if (!playerFlags.HasAnyFlag(PlayerFlags.Ghost) && (ClassId == Class.Warlock || ClassId == Class.Hunter || ClassId == Class.DeathKnight))
                 {
                     CreatureTemplate creatureInfo = Global.ObjectMgr.GetCreatureTemplate(fields.Read<uint>(14));
                     if (creatureInfo != null)
@@ -150,19 +168,20 @@ namespace Game.Networking.Packets
 
                 StringArray equipment = new(fields.Read<string>(17), ' ');
                 ListPosition = fields.Read<byte>(19);
-                LastActiveTime = fields.Read<long>(20);
+                CreateTime = fields.Read<long>(20);
+                LastActiveTime = fields.Read<long>(21);
 
-                var spec = Global.DB2Mgr.GetChrSpecializationByIndex(ClassId, fields.Read<byte>(21));
+                var spec = Global.DB2Mgr.GetChrSpecializationByIndex(ClassId, fields.Read<byte>(22));
                 if (spec != null)
                     SpecID = (short)spec.Id;
 
-                LastLoginVersion = fields.Read<int>(22);
+                LastLoginVersion = fields.Read<int>(23);
 
-                PersonalTabard.EmblemStyle = fields.Read<int>(23);
-                PersonalTabard.EmblemColor = fields.Read<int>(24);
-                PersonalTabard.BorderStyle = fields.Read<int>(25);
-                PersonalTabard.BorderColor = fields.Read<int>(26);
-                PersonalTabard.BackgroundColor = fields.Read<int>(27);
+                PersonalTabard.EmblemStyle = fields.Read<int>(24);
+                PersonalTabard.EmblemColor = fields.Read<int>(25);
+                PersonalTabard.BorderStyle = fields.Read<int>(26);
+                PersonalTabard.BorderColor = fields.Read<int>(27);
+                PersonalTabard.BackgroundColor = fields.Read<int>(28);
 
                 int equipmentFieldsPerSlot = 5;
 
@@ -181,7 +200,7 @@ namespace Game.Networking.Packets
             {
                 data.WritePackedGuid(Guid);
                 data.WriteUInt32(VirtualRealmAddress);
-                data.WriteUInt8(ListPosition);
+                data.WriteUInt16(ListPosition);
                 data.WriteUInt8(RaceId);
                 data.WriteUInt8(SexId);
                 data.WriteUInt8((byte)ClassId);
@@ -196,7 +215,8 @@ namespace Game.Networking.Packets
                 data.WritePackedGuid(GuildGuid);
                 data.WriteUInt32((uint)Flags);
                 data.WriteUInt32((uint)Flags2);
-                data.WriteUInt32(Flags3);
+                data.WriteUInt32((uint)Flags3);
+                data.WriteUInt32((uint)Flags4);
                 data.WriteUInt8(CantLoginReason);
 
                 data.WriteUInt32(PetCreatureDisplayId);
@@ -207,6 +227,7 @@ namespace Game.Networking.Packets
                     visualItem.Write(data);
 
                 data.WriteInt32(SaveVersion);
+                data.WriteInt64(CreateTime);
                 data.WriteInt64(LastActiveTime);
                 data.WriteInt32(LastLoginVersion);
                 PersonalTabard.Write(data);
@@ -216,6 +237,7 @@ namespace Game.Networking.Packets
 
                 data.WriteInt32(TimerunningSeasonID);
                 data.WriteUInt32(OverrideSelectScreenFileDataID);
+                data.WriteUInt32(Unused1110_1);
 
                 foreach (ChrCustomizationChoice customization in Customizations)
                 {
@@ -225,6 +247,8 @@ namespace Game.Networking.Packets
 
                 data.WriteBits(Name.GetByteCount(), 6);
                 data.WriteBit(FirstLogin);
+                data.WriteBit(Unused1110_2);
+                data.WriteBit(Unused1110_3);
                 data.FlushBits();
 
                 data.WriteString(Name);
@@ -234,7 +258,7 @@ namespace Game.Networking.Packets
             public uint VirtualRealmAddress;
             public ulong GuildClubMemberID; // same as bgs.protocol.club.v1.MemberId.unique_id, guessed basing on SMSG_QUERY_PLAYER_NAME_RESPONSE (that one is known)
             public string Name;
-            public byte ListPosition; // Order of the characters in list
+            public ushort ListPosition; // Order of the characters in list
             public byte RaceId;
             public Class ClassId;
             public byte SexId;
@@ -245,10 +269,12 @@ namespace Game.Networking.Packets
             public Vector3 PreloadPos;
             public ObjectGuid GuildGuid;
             public CharacterFlags Flags; // Character flag @see enum CharacterFlags
-            public CharacterCustomizeFlags Flags2; // Character customization flags @see enum CharacterCustomizeFlags
-            public uint Flags3; // Character flags 3 @todo research
+            public CharacterFlags2 Flags2; // Character flag2 @see enum CharacterFlags2
+            public CharacterFlags3 Flags3; // Character flag3 @see enum CharacterFlags3
+            public CharacterFlags4 Flags4; // Character flag4 @see enum CharacterFlags4
             public bool FirstLogin;
             public byte CantLoginReason;
+            public long CreateTime;
             public long LastActiveTime;
             public short SpecID;
             public int SaveVersion;
@@ -261,6 +287,9 @@ namespace Game.Networking.Packets
             public uint[] ProfessionIds = new uint[2];      // @todo
             public VisualItemInfo[] VisualItems = new VisualItemInfo[19];
             public CustomTabardInfo PersonalTabard = new();
+            public uint Unused1110_1;
+            public bool Unused1110_2;
+            public bool Unused1110_3;
 
             public struct VisualItemInfo
             {
@@ -350,6 +379,7 @@ namespace Game.Networking.Packets
         {
             public CharacterInfoBasic Basic;
             public ulong Money;
+            public float AvgEquippedItemLevel;
             public float CurrentSeasonMythicPlusOverallScore;
             public uint CurrentSeasonBestPvpRating;
             public sbyte PvpRatingBracket;
@@ -364,6 +394,7 @@ namespace Game.Networking.Packets
             {
                 Basic.Write(data);
                 data.WriteUInt64(Money);
+                data.WriteFloat(AvgEquippedItemLevel);
                 data.WriteFloat(CurrentSeasonMythicPlusOverallScore);
                 data.WriteUInt32(CurrentSeasonBestPvpRating);
                 data.WriteInt8(PvpRatingBracket);
@@ -373,7 +404,7 @@ namespace Game.Networking.Packets
 
         public struct RaceUnlock
         {
-            public int RaceID;
+            public sbyte RaceID;
             public bool HasUnlockedLicense;
             public bool HasUnlockedAchievement;
             public bool HasHeritageArmorUnlockAchievement;
@@ -382,7 +413,7 @@ namespace Game.Networking.Packets
 
             public void Write(WorldPacket data)
             {
-                data.WriteInt32(RaceID);
+                data.WriteInt8(RaceID);
                 data.WriteBit(HasUnlockedLicense);
                 data.WriteBit(HasUnlockedAchievement);
                 data.WriteBit(HasHeritageArmorUnlockAchievement);
@@ -406,12 +437,12 @@ namespace Game.Networking.Packets
 
         public struct RaceLimitDisableInfo
         {
-            public int RaceID;
+            public sbyte RaceID;
             public int Reason;
 
             public void Write(WorldPacket data)
             {
-                data.WriteInt32(RaceID);
+                data.WriteInt8(RaceID);
                 data.WriteInt32(Reason);
             }
         }
@@ -492,7 +523,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8((byte)Code);
+            _worldPacket.WriteUInt32((uint)Code);
             _worldPacket.WritePackedGuid(Guid);
         }
 
@@ -518,7 +549,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8((byte)Code);
+            _worldPacket.WriteUInt32((uint)Code);
         }
 
         public ResponseCodes Code;
@@ -544,7 +575,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8((byte)Result);
+            _worldPacket.WriteUInt32((uint)Result);
             _worldPacket.WriteBit(Guid.HasValue);
             _worldPacket.WriteBits(Name.GetByteCount(), 6);
             _worldPacket.FlushBits();
@@ -630,7 +661,7 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8((byte)Result);
+            _worldPacket.WriteUInt32((uint)Result);
             _worldPacket.WritePackedGuid(Guid);
             _worldPacket.WriteBit(Display != null);
             _worldPacket.FlushBits();
@@ -758,18 +789,19 @@ namespace Game.Networking.Packets
 
     public class UndeleteCooldownStatusResponse : ServerPacket
     {
+        public uint MaxCooldown; // Max. cooldown until next free character restoration. Displayed in undelete confirm message. (in sec)
+        public uint CurrentCooldown; // Current cooldown until next free character restoration. (in sec)
+        public bool OnCooldown;
+
         public UndeleteCooldownStatusResponse() : base(ServerOpcodes.UndeleteCooldownStatusResponse) { }
 
         public override void Write()
         {
-            _worldPacket.WriteBit(OnCooldown);
             _worldPacket.WriteUInt32(MaxCooldown);
             _worldPacket.WriteUInt32(CurrentCooldown);
+            _worldPacket.WriteBit(OnCooldown);
+            _worldPacket.FlushBits();
         }
-
-        public bool OnCooldown; //
-        public uint MaxCooldown; // Max. cooldown until next free character restoration. Displayed in undelete confirm message. (in sec)
-        public uint CurrentCooldown; // Current cooldown until next free character restoration. (in sec)
     }
 
     public class PlayerLogin : ClientPacket
@@ -849,9 +881,18 @@ namespace Game.Networking.Packets
 
     public class LogoutComplete : ServerPacket
     {
+        SwitchGameModeData SwitchGameMode;
+
         public LogoutComplete() : base(ServerOpcodes.LogoutComplete) { }
 
-        public override void Write() { }
+        public override void Write()
+        {
+            _worldPacket.WriteBit(SwitchGameMode != null);
+            _worldPacket.FlushBits();
+
+            if (SwitchGameMode != null)
+                SwitchGameMode.Write(_worldPacket);
+        }
     }
 
     public class LogoutCancel : ClientPacket
@@ -957,9 +998,9 @@ namespace Game.Networking.Packets
         {
             var customizationCount = _worldPacket.ReadUInt32();
             NewSex = _worldPacket.ReadUInt8();
-            CustomizedRace = _worldPacket.ReadInt32();
+            CustomizedRace = _worldPacket.ReadInt8();
             CustomizedChrModelID = _worldPacket.ReadInt32();
-            UnalteredVisualRaceID = _worldPacket.ReadInt32();
+            UnalteredVisualRaceID = _worldPacket.ReadInt8();
 
             for (var i = 0; i < customizationCount; ++i)
             {
@@ -975,9 +1016,9 @@ namespace Game.Networking.Packets
 
         public byte NewSex;
         public Array<ChrCustomizationChoice> Customizations = new(250);
-        public int CustomizedRace;
+        public sbyte CustomizedRace;
         public int CustomizedChrModelID;
-        public int UnalteredVisualRaceID;
+        public sbyte UnalteredVisualRaceID;
     }
 
     public class BarberShopResult : ServerPacket
@@ -1135,11 +1176,11 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt8(Result);
+            _worldPacket.WriteUInt32(Result);
             _worldPacket.WritePackedGuid(CharGUID);
         }
 
-        public byte Result;
+        public uint Result;
         public ObjectGuid CharGUID;
     }
 
@@ -1292,13 +1333,13 @@ namespace Game.Networking.Packets
 
     public struct WarbandGroupMember
     {
-        public int WarbandScenePlacementID;
+        public uint WarbandScenePlacementID;
         public int Type;
         public ObjectGuid Guid;
 
         public void Write(WorldPacket data)
         {
-            data.WriteInt32(WarbandScenePlacementID);
+            data.WriteUInt32(WarbandScenePlacementID);
             data.WriteInt32(Type);
             if (Type == 0)
                 data.WritePackedGuid(Guid);
@@ -1308,19 +1349,79 @@ namespace Game.Networking.Packets
     public class WarbandGroup
     {
         public ulong GroupID;
-        public byte Unknown_1100;
-        public int Flags;    ///< enum WarbandGroupFlags { Collapsed = 1 }
+        public byte OrderIndex;
+        public uint WarbandSceneID;
+        public uint Flags;    ///< enum WarbandGroupFlags { Collapsed = 1 }
         public List<WarbandGroupMember> Members = new();
+        public string Name = "";
 
         public void Write(WorldPacket data)
         {
             data.WriteUInt64(GroupID);
-            data.WriteUInt8(Unknown_1100);
-            data.WriteInt32(Flags);
+            data.WriteUInt8(OrderIndex);
+            data.WriteUInt32(WarbandSceneID);
+            data.WriteUInt32(Flags);
             data.WriteInt32(Members.Count);
 
             foreach (WarbandGroupMember member in Members)
                 member.Write(data);
+
+            data.WriteBits(Name.GetByteCount(), 9);
+            data.FlushBits();
+
+            data.WriteString(Name);
+        }
+    }
+
+    class GameModeData
+    {
+        public int Unknown_1107_0;
+        public ObjectGuid Guid;
+        public byte GameMode;
+        public int MapID = 0;
+        public byte Unknown_1107_1;
+        public byte Unknown_1107_2;
+        public byte Unknown_1107_3;
+        public Array<ChrCustomizationChoice> Customizations = new(250);
+        public Array<ChrCustomizationChoice> Unknown_1107_4 = new(250);
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteInt32(Unknown_1107_0);
+            data.WritePackedGuid(Guid);
+            data.WriteUInt8(GameMode);
+            data.WriteInt32(MapID);
+            data.WriteUInt8(Unknown_1107_1);
+            data.WriteUInt8(Unknown_1107_2);
+            data.WriteUInt8(Unknown_1107_3);
+            data.WriteInt32(Customizations.Count);
+            data.WriteInt32(Unknown_1107_4.Count);
+
+            foreach (ChrCustomizationChoice customization in Customizations)
+            {
+                data.WriteUInt32(customization.ChrCustomizationOptionID);
+                data.WriteUInt32(customization.ChrCustomizationChoiceID);
+            }
+
+            foreach (ChrCustomizationChoice customization in Unknown_1107_4)
+            {
+                data.WriteUInt32(customization.ChrCustomizationOptionID);
+                data.WriteUInt32(customization.ChrCustomizationChoiceID);
+            }
+        }
+    }
+
+    class SwitchGameModeData
+    {
+        public bool IsFastLogin;
+        public GameModeData Current;
+        public GameModeData New;
+
+        public void Write(WorldPacket data)
+        {
+            data.WriteBits(IsFastLogin, 1);
+            Current.Write(data);
+            New.Write(data);
         }
     }
 }

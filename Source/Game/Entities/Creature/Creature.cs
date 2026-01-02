@@ -338,7 +338,9 @@ namespace Game.Entities
 
             ReplaceAllDynamicFlags(UnitDynFlags.None);
 
-            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.StateAnimID), Global.DB2Mgr.GetEmptyAnimStateID());
+            // Set StateWorldEffectsQuestObjectiveID if there is only one linked objective for this creature
+            if (data != null && data.spawnTrackingQuestObjectives.Count == 1)
+                SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.StateWorldEffectsQuestObjectiveID), data.spawnTrackingQuestObjectives.First());
 
             SetCanDualWield(cInfo.FlagsExtra.HasAnyFlag(CreatureFlagsExtra.UseOffhandAttack));
 
@@ -638,6 +640,16 @@ namespace Game.Entities
 
             // Creatures with CREATURE_STATIC_FLAG_2_FORCE_PARTY_MEMBERS_INTO_COMBAT periodically force party members into combat
             ForcePartyMembersIntoCombat();
+
+            // creatures should only attack surroundings initially after heartbeat has passed or until attacked
+            if (!_aggroGracePeriodExpired)
+            {
+                _aggroGracePeriodExpired = true;
+
+                // trigger MoveInLineOfSight
+                CreatureAggroGracePeriodExpiredNotifier notifier = new(this);
+                Cell.VisitAllObjects(this, notifier, GetVisibilityRange());
+            }
         }
 
         public void Regenerate(PowerType power)
@@ -735,7 +747,7 @@ namespace Game.Entities
                 var searcher = new CreatureLastSearcher(this, u_check);
                 Cell.VisitGridObjects(this, searcher, radius);
 
-                var creature = searcher.GetTarget();
+                var creature = searcher.GetResult();
 
                 SetNoSearchAssistance(true);
 
@@ -1080,6 +1092,8 @@ namespace Game.Entities
         {
             base.AtEngage(target);
 
+            _aggroGracePeriodExpired = true;
+
             GetThreatManager().ResetUpdateTimer();
 
             if (!HasFlag(CreatureStaticFlags2.AllowMountedCombat))
@@ -1164,10 +1178,10 @@ namespace Game.Entities
 
             foreach (Group partyToForceIntoCombat in partiesToForceIntoCombat)
             {
-                for (GroupReference refe = partyToForceIntoCombat.GetFirstMember(); refe != null; refe = refe.Next())
+                foreach (GroupReference groupRef in partyToForceIntoCombat.GetMembers())
                 {
-                    Player player = refe.GetSource();
-                    if (player == null || !player.IsInWorld || player.GetMap() != GetMap() || player.IsGameMaster())
+                    Player player = groupRef.GetSource();
+                    if (!player.IsInWorld || player.GetMap() != GetMap() || player.IsGameMaster())
                         continue;
 
                     EngageWithTarget(player);
@@ -1320,9 +1334,9 @@ namespace Game.Entities
             {
                 Group group = player.GetGroup();
                 if (group != null)
-                    for (var itr = group.GetFirstMember(); itr != null; itr = itr.Next())
-                        if (GetMap().IsRaid() || group.SameSubGroup(player, itr.GetSource()))
-                            m_tapList.Add(itr.GetSource().GetGUID());
+                    foreach (GroupReference groupRef in group.GetMembers())
+                        if (GetMap().IsRaid() || group.SameSubGroup(player, groupRef.GetSource()))
+                            m_tapList.Add(groupRef.GetSource().GetGUID());
             }
 
             if (m_tapList.Count >= SharedConst.CreatureTappersSoftCap)
@@ -1486,8 +1500,10 @@ namespace Game.Entities
             stmt.AddValue(index++, GetEntry());
             stmt.AddValue(index++, mapid);
             stmt.AddValue(index++, data.SpawnDifficulties.Empty() ? "" : string.Join(',', data.SpawnDifficulties));
+            stmt.AddValue(index++, (byte)data.PhaseUseFlags);
             stmt.AddValue(index++, data.PhaseId);
             stmt.AddValue(index++, data.PhaseGroup);
+            stmt.AddValue(index++, data.terrainSwapMap);
             stmt.AddValue(index++, displayId);
             stmt.AddValue(index++, GetCurrentEquipmentId());
             stmt.AddValue(index++, GetPositionX());
@@ -1518,6 +1534,14 @@ namespace Game.Entities
                 stmt.AddValue(index++, unitFlags3.Value);
             else
                 stmt.AddNull(index++);
+
+            stmt.AddValue(index++, Global.ObjectMgr.GetScriptName(data.ScriptId));
+            var stringId = GetStringId(StringIdType.Spawn);
+            if (!stringId.IsEmpty())
+                stmt.AddValue(index++, stringId);
+            else
+                stmt.AddNull(index++);
+
             trans.Append(stmt);
 
             DB.World.CommitTransaction(trans);
@@ -1679,6 +1703,8 @@ namespace Game.Entities
         float GetSparringHealthPct() { return _sparringHealthPct; }
 
         void SetInteractSpellId(int interactSpellId) { SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.InteractSpellID), interactSpellId); }
+
+        public bool IsAggroGracePeriodExpired() { return _aggroGracePeriodExpired; }
 
         public void OverrideSparringHealthPct(List<float> healthPct)
         {
@@ -2148,6 +2174,7 @@ namespace Game.Entities
                         ai.Reset();
 
                     triggerJustAppeared = true;
+                    _aggroGracePeriodExpired = false;
 
                     uint poolid = GetCreatureData() != null ? GetCreatureData().poolId : 0;
                     if (poolid != 0)
@@ -2306,7 +2333,7 @@ namespace Game.Entities
             var searcher = new UnitLastSearcher(this, u_check);
             Cell.VisitAllObjects(this, searcher, dist);
 
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         // select nearest hostile unit within the given attack distance (i.e. distance is ignored if > than ATTACK_DISTANCE), regardless of threat list.
@@ -2323,7 +2350,7 @@ namespace Game.Entities
 
             Cell.VisitAllObjects(this, searcher, Math.Max(dist, SharedConst.AttackDistance));
 
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public void SendAIReaction(AiReaction reactionType)
@@ -2860,9 +2887,9 @@ namespace Game.Entities
         {
             CreatureTemplate cInfo = GetCreatureTemplate();
             CreatureDifficulty creatureDifficulty = GetCreatureDifficulty();
-            float baseHealth = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureHealth, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass, 0);
+            double baseHealth = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.CreatureHealth, level, creatureDifficulty.GetHealthScalingExpansion(), creatureDifficulty.ContentTuningID, (Class)cInfo.UnitClass, 0);
 
-            return (ulong)Math.Max(baseHealth * creatureDifficulty.HealthModifier, 1.0f);
+            return (ulong)Math.Max(baseHealth * creatureDifficulty.HealthModifier, 1.0);
         }
 
         public override float GetHealthMultiplierForTarget(WorldObject target)
@@ -2874,7 +2901,7 @@ namespace Game.Entities
             if (GetLevel() < levelForTarget)
                 return 1.0f;
 
-            return (float)GetMaxHealthByLevel(levelForTarget) / GetCreateHealth();
+            return (float)GetMaxHealthByLevel(levelForTarget) / (float)GetCreateHealth();
         }
 
         public float GetBaseDamageForLevel(uint level)
@@ -2930,7 +2957,7 @@ namespace Game.Entities
                     int scalingLevelMin = m_unitData.ScalingLevelMin;
                     int scalingLevelMax = m_unitData.ScalingLevelMax;
                     int scalingLevelDelta = m_unitData.ScalingLevelDelta;
-                    int scalingFactionGroup = m_unitData.ScalingFactionGroup;
+                    byte scalingFactionGroup = m_unitData.ScalingFactionGroup;
                     uint targetLevel = unitTarget.m_unitData.EffectiveLevel;
                     if (targetLevel == 0)
                         targetLevel = unitTarget.GetLevel();
@@ -3009,6 +3036,24 @@ namespace Game.Entities
         }
 
         public string GetStringId(StringIdType type) { return m_stringIds[(int)type]; }
+
+        public override SpawnTrackingStateData GetSpawnTrackingStateDataForPlayer(Player player)
+        {
+            if (player == null)
+                return null;
+
+            CreatureData data = GetCreatureData();
+            if (data != null)
+            {
+                if (data.spawnTrackingData != null && !data.spawnTrackingQuestObjectives.Empty())
+                {
+                    SpawnTrackingState state = player.GetSpawnTrackingStateByObjectives(data.spawnTrackingData.SpawnTrackingId, data.spawnTrackingQuestObjectives);
+                    return data.spawnTrackingStates[(int)state];
+                }
+            }
+
+            return null;
+        }
 
         public VendorItemData GetVendorItems()
         {
@@ -3160,6 +3205,16 @@ namespace Game.Entities
             return base.GetName(locale);
         }
 
+        public bool HasLabel(int cretureLabel)
+        {
+            return GetLabels().Contains(cretureLabel);
+        }
+
+        public List<int> GetLabels()
+        {
+            return Global.DB2Mgr.GetCreatureLabels(GetCreatureDifficulty().CreatureDifficultyID);
+        }
+
         public virtual int GetPetAutoSpellSize()
         {
             return SharedConst.MaxSpellCharm;
@@ -3282,7 +3337,7 @@ namespace Game.Entities
             var u_check = new NearestHostileUnitInAggroRangeCheck(this, useLOS, ignoreCivilians);
             var searcher = new UnitSearcher(this, u_check);
             Cell.VisitGridObjects(this, searcher, SharedConst.MaxAggroRadius);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public override float GetNativeObjectScale()
@@ -3761,7 +3816,12 @@ namespace Game.Entities
             m_unitData.WriteCreate(data, flags, this, target);
 
             if (m_vendorData != null)
+            {
+                if (EntityFragmentsHolder.IsIndirectFragment(EntityFragment.FVendor_C))
+                    data.WriteUInt8(1);  // IndirectFragmentActive: FVendor_C
+
                 m_vendorData.WriteCreate(data, flags, this, target);
+            }
         }
 
         public override void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target)
@@ -3826,13 +3886,11 @@ namespace Game.Entities
 
         public override void ClearUpdateMask(bool remove)
         {
-            if (m_vendorData != null)
-                m_values.ClearChangesMask(m_vendorData);
-
+            m_values.ClearChangesMask(m_vendorData);
             base.ClearUpdateMask(remove);
         }
 
-        class ValuesUpdateForPlayerWithMaskSender : IDoWork<Player>
+        class ValuesUpdateForPlayerWithMaskSender
         {
             Creature Owner;
             ObjectFieldData ObjectMask = new();
@@ -3852,6 +3910,8 @@ namespace Game.Entities
                 udata.BuildPacket(out UpdateObject packet);
                 player.SendPacket(packet);
             }
+
+            public static implicit operator IDoWork<Player>(ValuesUpdateForPlayerWithMaskSender obj) => obj.Invoke;
         }
     }
 

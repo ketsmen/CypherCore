@@ -9,6 +9,7 @@ using Game.Networking;
 using Game.Networking.Packets;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Game
 {
@@ -22,8 +23,8 @@ namespace Game
         public void CheckAllQuestObjectiveCriteria(Player referencePlayer)
         {
             // suppress sending packets
-            for (CriteriaType i = 0; i < CriteriaType.Count; ++i)
-                UpdateCriteria(i, 0, 0, 0, null, referencePlayer);
+            foreach (CriteriaType criteriaType in CriteriaManager.GetRetroactivelyUpdateableCriteriaTypes())
+                UpdateCriteria(criteriaType, 0, 0, 0, null, referencePlayer);
         }
 
         public override void Reset()
@@ -150,15 +151,23 @@ namespace Game
             }
         }
 
-        public void ResetCriteriaTree(uint criteriaTreeId)
+        public void ResetCriteriaTree(QuestObjective questObjective)
         {
-            CriteriaTree tree = Global.CriteriaMgr.GetCriteriaTree(criteriaTreeId);
+            _completedObjectives.Remove(questObjective.Id);
+
+            CriteriaTree tree = Global.CriteriaMgr.GetCriteriaTree((uint)questObjective.ObjectID);
             if (tree == null)
                 return;
 
             CriteriaManager.WalkCriteriaTree(tree, criteriaTree =>
             {
                 RemoveCriteriaProgress(criteriaTree.Criteria);
+            });
+
+            CriteriaManager.WalkCriteriaTree(tree, criteriaTree =>
+            {
+                if (criteriaTree.Criteria != null && CriteriaManager.GetRetroactivelyUpdateableCriteriaTypes().Contains(criteriaTree.Criteria.Entry.Type))
+                    UpdateCriteria(criteriaTree.Criteria, 0, 0, 0, null, _owner);
             });
         }
 
@@ -274,7 +283,9 @@ namespace Game
             if (objective == null)
                 return;
 
-            CompletedObjective(objective, referencePlayer);
+            CriteriaTree entireObjectiveTree = Global.CriteriaMgr.GetCriteriaTree((uint)objective.ObjectID);
+            if (IsCompletedCriteriaTree(entireObjectiveTree))
+                CompletedObjective(objective, referencePlayer);
         }
 
         public override void SendPacket(ServerPacket data)

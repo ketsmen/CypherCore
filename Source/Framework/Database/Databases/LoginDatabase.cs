@@ -7,8 +7,8 @@ namespace Framework.Database
     {
         public override void PreparedStatements()
         {
-            const string BnetAccountInfo = "ba.id, UPPER(ba.email), ba.locked, ba.lock_country, ba.last_ip, ba.LoginTicketExpiry, bab.unbandate > UNIX_TIMESTAMP() OR bab.unbandate = bab.bandate, bab.unbandate = bab.bandate";
-            const string BnetGameAccountInfo = "a.id, a.username, ab.unbandate, ab.unbandate = ab.bandate, aa.SecurityLevel";
+            const string BnetAccountInfo = "ba.id AS bnet_account_id, UPPER(ba.email), ba.locked, ba.lock_country, ba.last_ip, ba.LoginTicketExpiry, bab.unbandate > UNIX_TIMESTAMP() OR bab.unbandate = bab.bandate AS is_bnet_banned, bab.unbandate = bab.bandate AS is_bnet_permanently_banned";
+            const string BnetGameAccountInfo = "a.id AS account_id, a.username, ab.unbandate AS account_unbandate, ab.unbandate = ab.bandate AS is_banned, aa.SecurityLevel";
 
             PrepareStatement(LoginStatements.SEL_REALMLIST, "SELECT id, name, address, localAddress, port, icon, flag, timezone, allowedSecurityLevel, population, gamebuild, Region, Battlegroup FROM realmlist WHERE flag <> 3 ORDER BY name");
             PrepareStatement(LoginStatements.UPD_REALM_POPULATION, "UPDATE realmlist SET population = ? WHERE id = ?");
@@ -27,8 +27,8 @@ namespace Framework.Database
             PrepareStatement(LoginStatements.UPD_LOGON, "UPDATE account SET salt = ?, verifier = ? WHERE id = ?");
             PrepareStatement(LoginStatements.SEL_ACCOUNT_ID_BY_NAME, "SELECT id FROM account WHERE username = ?");
             PrepareStatement(LoginStatements.SEL_ACCOUNT_LIST_BY_NAME, "SELECT id, username FROM account WHERE username = ?");
-            PrepareStatement(LoginStatements.SEL_ACCOUNT_INFO_BY_NAME, "SELECT a.id, a.session_key_bnet, ba.last_ip, ba.locked, ba.lock_country, a.expansion, a.mutetime, a.client_build, a.locale, a.recruiter, a.os, a.timezone_offset, ba.id, aa.SecurityLevel, " +        
-                "bab.unbandate > UNIX_TIMESTAMP() OR bab.unbandate = bab.bandate, ab.unbandate > UNIX_TIMESTAMP() OR ab.unbandate = ab.bandate, r.id " +                
+            PrepareStatement(LoginStatements.SEL_ACCOUNT_INFO_BY_NAME, "SELECT a.id AS aId, a.session_key_bnet, ba.last_ip, ba.locked, ba.lock_country, a.expansion, a.mutetime, a.client_build, a.locale, a.recruiter, a.os, a.timezone_offset, ba.id AS baId, aa.SecurityLevel, " +
+                "bab.unbandate > UNIX_TIMESTAMP() OR bab.unbandate = bab.bandate AS is_bnet_banned, ab.unbandate > UNIX_TIMESTAMP() OR ab.unbandate = ab.bandate AS is_banned, r.id " +
                 "FROM account a LEFT JOIN account r ON a.id = r.recruiter LEFT JOIN battlenet_accounts ba ON a.battlenet_account = ba.id " +
                 "LEFT JOIN account_access aa ON a.id = aa.AccountID AND aa.RealmID IN (-1, ?) LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id LEFT JOIN account_banned ab ON a.id = ab.id AND ab.active = 1 " +
                 "WHERE a.username = ? AND LENGTH(a.session_key_bnet) = 64 ORDER BY aa.RealmID DESC LIMIT 1");
@@ -108,8 +108,8 @@ namespace Framework.Database
             PrepareStatement(LoginStatements.SEL_BNET_EXISTING_AUTHENTICATION, "SELECT LoginTicketExpiry FROM battlenet_accounts WHERE LoginTicket = ?");
             PrepareStatement(LoginStatements.SEL_BNET_EXISTING_AUTHENTICATION_BY_ID, "SELECT LoginTicket FROM battlenet_accounts WHERE id = ?");
             PrepareStatement(LoginStatements.UPD_BNET_EXISTING_AUTHENTICATION, "UPDATE battlenet_accounts SET LoginTicketExpiry = ? WHERE LoginTicket = ?");
-            PrepareStatement(LoginStatements.SEL_BNET_ACCOUNT_INFO, $"SELECT {BnetAccountInfo}, {BnetGameAccountInfo}" +                
-                " FROM battlenet_accounts ba LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id LEFT JOIN account a ON ba.id = a.battlenet_account" +        
+            PrepareStatement(LoginStatements.SEL_BNET_ACCOUNT_INFO, $"SELECT {BnetAccountInfo}, {BnetGameAccountInfo}" +
+                " FROM battlenet_accounts ba LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id LEFT JOIN account a ON ba.id = a.battlenet_account" +
                 " LEFT JOIN account_banned ab ON a.id = ab.id AND ab.active = 1 LEFT JOIN account_access aa ON a.id = aa.AccountID AND aa.RealmID = -1 WHERE ba.LoginTicket = ? ORDER BY a.id");
             PrepareStatement(LoginStatements.UPD_BNET_LAST_LOGIN_INFO, "UPDATE battlenet_accounts SET last_ip = ?, last_login = NOW(), locale = ?, failed_logins = 0, os = ? WHERE id = ?");
             PrepareStatement(LoginStatements.UPD_BNET_GAME_ACCOUNT_LOGIN_INFO, "UPDATE account SET session_key_bnet = ?, last_ip = ?, last_login = NOW(), client_build = ?, locale = ?, failed_logins = 0, os = ?, timezone_offset = ? WHERE username = ?");
@@ -166,14 +166,26 @@ namespace Framework.Database
 
             // Transmog collection
             PrepareStatement(LoginStatements.SEL_BNET_ITEM_APPEARANCES, "SELECT blobIndex, appearanceMask FROM battlenet_item_appearances WHERE battlenetAccountId = ? ORDER BY blobIndex DESC");
-            PrepareStatement(LoginStatements.INS_BNET_ITEM_APPEARANCES, "INSERT INTO battlenet_item_appearances (battlenetAccountId, blobIndex, appearanceMask) VALUES (?, ?, ?) " +        
+            PrepareStatement(LoginStatements.INS_BNET_ITEM_APPEARANCES, "INSERT INTO battlenet_item_appearances (battlenetAccountId, blobIndex, appearanceMask) VALUES (?, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE appearanceMask = appearanceMask | VALUES(appearanceMask)");
             PrepareStatement(LoginStatements.SEL_BNET_ITEM_FAVORITE_APPEARANCES, "SELECT itemModifiedAppearanceId FROM battlenet_item_favorite_appearances WHERE battlenetAccountId = ?");
             PrepareStatement(LoginStatements.INS_BNET_ITEM_FAVORITE_APPEARANCE, "INSERT INTO battlenet_item_favorite_appearances (battlenetAccountId, itemModifiedAppearanceId) VALUES (?, ?)");
             PrepareStatement(LoginStatements.DEL_BNET_ITEM_FAVORITE_APPEARANCE, "DELETE FROM battlenet_item_favorite_appearances WHERE battlenetAccountId = ? AND itemModifiedAppearanceId = ?");
             PrepareStatement(LoginStatements.SEL_BNET_TRANSMOG_ILLUSIONS, "SELECT blobIndex, illusionMask FROM battlenet_account_transmog_illusions WHERE battlenetAccountId = ? ORDER BY blobIndex DESC");
-            PrepareStatement(LoginStatements.INS_BNET_TRANSMOG_ILLUSIONS, "INSERT INTO battlenet_account_transmog_illusions (battlenetAccountId, blobIndex, illusionMask) VALUES (?, ?, ?) " +        
+            PrepareStatement(LoginStatements.INS_BNET_TRANSMOG_ILLUSIONS, "INSERT INTO battlenet_account_transmog_illusions (battlenetAccountId, blobIndex, illusionMask) VALUES (?, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE illusionMask = illusionMask | VALUES(illusionMask)");
+            PrepareStatement(LoginStatements.SEL_BNET_WARBAND_SCENES, "SELECT warbandSceneId, isFavorite, hasFanfare FROM battlenet_account_warband_scenes WHERE battlenetAccountId = ?");
+            PrepareStatement(LoginStatements.INS_BNET_WARBAND_SCENE, "INSERT INTO battlenet_account_warband_scenes (battlenetAccountId, warbandSceneId, isFavorite, hasFanfare) VALUES (?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE isFavorite = VALUES(isFavorite)");
+            PrepareStatement(LoginStatements.UPD_BNET_WARBAND_SCENE, "UPDATE battlenet_account_warband_scenes SET isFavorite = ?, hasFanfare = ? WHERE battlenetAccountId = ? AND warbandSceneId = ?");
+            PrepareStatement(LoginStatements.DEL_BNET_WARBAND_SCENE, "DELETE FROM battlenet_account_warband_scenes WHERE battlenetAccountId = ? AND warbandSceneId = ?");
+
+            PrepareStatement(LoginStatements.SEL_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT, "SELECT playerDataElementAccountId, floatValue, int64Value FROM battlenet_account_player_data_element WHERE battlenetAccountId = ?");
+            PrepareStatement(LoginStatements.DEL_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT, "DELETE FROM battlenet_account_player_data_element WHERE battlenetAccountId = ? AND playerDataElementAccountId = ?");
+            PrepareStatement(LoginStatements.INS_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT, "INSERT INTO battlenet_account_player_data_element (battlenetAccountId, playerDataElementAccountId, floatValue, int64Value) VALUES (?, ?, ?, ?)");
+            PrepareStatement(LoginStatements.SEL_BNET_PLAYER_DATA_FLAGS_ACCOUNT, "SELECT storageIndex, mask FROM battlenet_account_player_data_flag WHERE battlenetAccountId = ?");
+            PrepareStatement(LoginStatements.DEL_BNET_PLAYER_DATA_FLAGS_ACCOUNT, "DELETE FROM battlenet_account_player_data_flag WHERE battlenetAccountId = ? AND storageIndex = ?");
+            PrepareStatement(LoginStatements.INS_BNET_PLAYER_DATA_FLAGS_ACCOUNT, "INSERT INTO battlenet_account_player_data_flag (battlenetAccountId, storageIndex, mask) VALUES (?, ?, ?)");
         }
     }
 
@@ -327,6 +339,17 @@ namespace Framework.Database
         DEL_BNET_ITEM_FAVORITE_APPEARANCE,
         SEL_BNET_TRANSMOG_ILLUSIONS,
         INS_BNET_TRANSMOG_ILLUSIONS,
+        SEL_BNET_WARBAND_SCENES,
+        INS_BNET_WARBAND_SCENE,
+        UPD_BNET_WARBAND_SCENE,
+        DEL_BNET_WARBAND_SCENE,
+
+        SEL_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT,
+        DEL_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT,
+        INS_BNET_PLAYER_DATA_ELEMENTS_ACCOUNT,
+        SEL_BNET_PLAYER_DATA_FLAGS_ACCOUNT,
+        DEL_BNET_PLAYER_DATA_FLAGS_ACCOUNT,
+        INS_BNET_PLAYER_DATA_FLAGS_ACCOUNT,
 
         MAX_LOGINDATABASE_STATEMENTS
     }

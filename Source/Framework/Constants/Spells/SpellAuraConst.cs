@@ -180,7 +180,7 @@ namespace Framework.Constants
         DetectAmore = 170,
         ModSpeedNotStack = 171,
         ModMountedSpeedNotStack = 172,
-        ModRecoveryRate2 = 173,  // NYI
+        ModChargeRecoveryRateByTypeMask = 173,
         ModSpellDamageOfStatPercent = 174,  // By Defeult Intelect, Dependent From ModSpellHealingOfStatPercent
         ModSpellHealingOfStatPercent = 175,
         SpiritOfRedemption = 176,
@@ -212,14 +212,14 @@ namespace Framework.Constants
         IgnoreCombatResult = 202,
         PreventInterrupt = 203, // NYI
         PreventCorpseRelease = 204, // NYI
-        ModChargeCooldown = 205, // NYI
+        ModChargeRecoveryByTypeMask = 205,
         ModIncreaseVehicleFlightSpeed = 206,
         ModIncreaseMountedFlightSpeed = 207,
         ModIncreaseFlightSpeed = 208,
         ModMountedFlightSpeedAlways = 209,
         ModVehicleSpeedAlways = 210,
         ModFlightSpeedNotStack = 211,
-        ModHonorGainPct = 212,
+        ModHonorGainPctFromSource = 212,
         ModRageFromDamageDealt = 213,
         Unk214 = 214,
         ArenaPreparation = 215,
@@ -329,7 +329,7 @@ namespace Framework.Constants
         ModMeleeHaste3 = 319,
         Unk320 = 320,
         ModNoActions = 321,
-        InterfereTargetting = 322,
+        InterfereEnemyTargeting = 322,
         Unk323 = 323,  // Not Used In 4.3.4
         OverrideUnlockedAzeriteEssenceRank = 324,  // testing aura
         LearnPvpTalent = 325,  // NYI
@@ -493,12 +493,12 @@ namespace Framework.Constants
         SuppressTransforms = 483, // NYI
         AllowInterruptSpell = 484, // NYI
         ModMovementForceMagnitude = 485,
-        Unk486 = 486,
+        InterfereAllTargeting = 486,
         CosmeticMounted = 487,
         DisableGravity = 488,
         ModAlternativeDefaultLanguage = 489, // NYI
         Unk490 = 490,
-        Unk491 = 491,
+        ModHonorGainPct = 491,
         Unk492 = 492,
         Unk493 = 493,
         SetPowerPointCharge = 494, // NYI
@@ -647,6 +647,13 @@ namespace Framework.Constants
         ModExplorationExperience = 637,
         ModCriticalBlockAmount = 638,
         Unk639 = 639,
+        Unk640 = 640,
+        Unk641 = 641,
+        Unk642 = 642,
+        ModRangedAttackSpeedFlat = 643,
+        Unk644 = 644,
+        Unk645 = 645,
+
         Total
     }
 

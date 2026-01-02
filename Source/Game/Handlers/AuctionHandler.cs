@@ -65,7 +65,7 @@ namespace Game
             }
 
             auctionHouse.BuildListBuckets(listBucketsResult, _player, browseQuery.Name, browseQuery.MinLevel, browseQuery.MaxLevel, browseQuery.Filters, classFilters,
-                browseQuery.KnownPets, browseQuery.KnownPets.Length, (byte)browseQuery.MaxPetLevel, browseQuery.Offset, browseQuery.Sorts, browseQuery.Sorts.Count);
+                browseQuery.KnownPets, (byte)browseQuery.MaxPetLevel, browseQuery.Offset, browseQuery.Sorts);
 
             listBucketsResult.BrowseMode = AuctionHouseBrowseMode.Search;
             listBucketsResult.DesiredDelay = (uint)throttle.DelayUntilNext.TotalSeconds;
@@ -174,7 +174,7 @@ namespace Game
             AuctionListBiddedItemsResult result = new();
 
             Player player = GetPlayer();
-            auctionHouse.BuildListBiddedItems(result, player, listBiddedItems.Offset, listBiddedItems.Sorts, listBiddedItems.Sorts.Count);
+            auctionHouse.BuildListBiddedItems(result, player, listBiddedItems.Offset, listBiddedItems.Sorts);
             result.DesiredDelay = (uint)throttle.DelayUntilNext.TotalSeconds;
             SendPacket(result);
         }
@@ -201,9 +201,7 @@ namespace Game
 
             AuctionListBucketsResult listBucketsResult = new();
 
-            auctionHouse.BuildListBuckets(listBucketsResult, _player,
-                listBucketsByBucketKeys.BucketKeys, listBucketsByBucketKeys.BucketKeys.Count,
-                listBucketsByBucketKeys.Sorts, listBucketsByBucketKeys.Sorts.Count);
+            auctionHouse.BuildListBuckets(listBucketsResult, _player, listBucketsByBucketKeys.BucketKeys, listBucketsByBucketKeys.Sorts);
 
             listBucketsResult.BrowseMode = AuctionHouseBrowseMode.SpecificKeys;
             listBucketsResult.DesiredDelay = (uint)throttle.DelayUntilNext.TotalSeconds;
@@ -236,8 +234,7 @@ namespace Game
             ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(listItemsByBucketKey.BucketKey.ItemID);
             listItemsResult.ListType = itemTemplate != null && itemTemplate.GetMaxStackSize() > 1 ? AuctionHouseListType.Commodities : AuctionHouseListType.Items;
 
-            auctionHouse.BuildListAuctionItems(listItemsResult, _player, new AuctionsBucketKey(listItemsByBucketKey.BucketKey), listItemsByBucketKey.Offset,
-                listItemsByBucketKey.Sorts, listItemsByBucketKey.Sorts.Count);
+            auctionHouse.BuildListAuctionItems(listItemsResult, _player, new AuctionsBucketKey(listItemsByBucketKey.BucketKey), listItemsByBucketKey.Offset, listItemsByBucketKey.Sorts);
 
             SendPacket(listItemsResult);
         }
@@ -268,8 +265,7 @@ namespace Game
             ItemTemplate itemTemplate = Global.ObjectMgr.GetItemTemplate(listItemsByItemID.ItemID);
             listItemsResult.ListType = itemTemplate != null && itemTemplate.GetMaxStackSize() > 1 ? AuctionHouseListType.Commodities : AuctionHouseListType.Items;
 
-            auctionHouse.BuildListAuctionItems(listItemsResult, _player, listItemsByItemID.ItemID, listItemsByItemID.Offset,
-                listItemsByItemID.Sorts, listItemsByItemID.Sorts.Count);
+            auctionHouse.BuildListAuctionItems(listItemsResult, _player, listItemsByItemID.ItemID, listItemsByItemID.Offset, listItemsByItemID.Sorts);
 
             SendPacket(listItemsResult);
         }
@@ -296,7 +292,7 @@ namespace Game
 
             AuctionListOwnedItemsResult result = new();
 
-            auctionHouse.BuildListOwnedItems(result, _player, listOwnedItems.Offset, listOwnedItems.Sorts, listOwnedItems.Sorts.Count);
+            auctionHouse.BuildListOwnedItems(result, _player, listOwnedItems.Offset, listOwnedItems.Sorts);
             result.DesiredDelay = (uint)throttle.DelayUntilNext.TotalSeconds;
             SendPacket(result);
         }
@@ -609,7 +605,7 @@ namespace Game
             Dictionary<ObjectGuid, (Item Item, ulong UseCount)> items2 = new();
 
             foreach (var itemForSale in sellCommodity.Items)
-    {
+            {
                 Item item = _player.GetItemByGuid(itemForSale.Guid);
                 if (item == null)
                 {
@@ -804,7 +800,7 @@ namespace Game
             Creature creature = GetPlayer().GetNPCIfCanInteractWith(sellItem.Auctioneer, NPCFlags.Auctioneer, NPCFlags2.None);
             if (creature == null)
             {
-                Log.outError(LogFilter.Network, "WORLD: HandleAuctionSellItem - Unit (%s) not found or you can't interact with him.", sellItem.Auctioneer.ToString());
+                Log.outError(LogFilter.Network, $"WORLD: HandleAuctionSellItem - Unit ({sellItem.Auctioneer}) not found or you can't interact with him.");
                 return;
             }
 
@@ -812,7 +808,7 @@ namespace Game
             AuctionHouseRecord auctionHouseEntry = Global.AuctionHouseMgr.GetAuctionHouseEntry(creature.GetFaction(), ref houseId);
             if (auctionHouseEntry == null)
             {
-                Log.outError(LogFilter.Network, "WORLD: HandleAuctionSellItem - Unit (%s) has wrong faction.", sellItem.Auctioneer.ToString());
+                Log.outError(LogFilter.Network, $"WORLD: HandleAuctionSellItem - Unit ({sellItem.Auctioneer}) has wrong faction.");
                 return;
             }
 
@@ -880,7 +876,7 @@ namespace Game
 
             auction.Items.Add(item);
 
-            Log.outInfo(LogFilter.Network, $"CMSG_AuctionAction.SellItem: {_player.GetGUID()} {_player.GetName()} is selling item {item.GetGUID()} {item.GetTemplate().GetName()} " +
+            Log.outInfo(LogFilter.Network, $"CMSG_AUCTION_SELL_ITEM: {_player.GetGUID()} {_player.GetName()} is selling item {item.GetGUID()} {item.GetTemplate().GetName()} " +
                 $"to auctioneer {creature.GetGUID()} with count {item.GetCount()} with initial bid {sellItem.MinBid} with buyout {sellItem.BuyoutPrice} and with time {auctionTime.TotalSeconds} " +
                 $"(in sec) in auctionhouse {auctionHouse.GetAuctionHouseId()}");
 
@@ -993,19 +989,22 @@ namespace Game
             if (ahEntry == null)
                 return;
 
+            GetPlayer().PlayerTalkClass.GetInteractionData().StartInteraction(guid, PlayerInteractionType.Auctioneer);
+
             AuctionHelloResponse auctionHelloResponse = new();
-            auctionHelloResponse.Guid = guid;
+            auctionHelloResponse.Auctioneer = guid;
+            auctionHelloResponse.AuctionHouseID = ahEntry.Id;
             auctionHelloResponse.OpenForBusiness = true;
             SendPacket(auctionHelloResponse);
         }
 
-        public void SendAuctionCommandResult(uint auctionId, AuctionCommand command, AuctionResult errorCode, TimeSpan delayForNextAction, InventoryResult bagError = 0)
+        public void SendAuctionCommandResult(uint auctionId, AuctionCommand command, AuctionResult errorCode, TimeSpan delayForNextAction, InventoryResult bagResult = 0)
         {
             AuctionCommandResult auctionCommandResult = new();
             auctionCommandResult.AuctionID = auctionId;
             auctionCommandResult.Command = (int)command;
             auctionCommandResult.ErrorCode = (int)errorCode;
-            auctionCommandResult.BagResult = (int)bagError;
+            auctionCommandResult.BagResult = (int)bagResult;
             auctionCommandResult.DesiredDelay = (uint)delayForNextAction.TotalSeconds;
             SendPacket(auctionCommandResult);
         }

@@ -249,9 +249,14 @@ namespace Game.Entities
 
         public void BuildEntityFragmentsForValuesUpdateForPlayerWithMask(WorldPacket data, UpdateFieldFlag flags)
         {
+            byte contentsChangedMask = EntityDefinitionsConst.CGObjectChangedMask;
+            foreach (var updateableFragmentId in m_entityFragments.GetUpdateableIds())
+                if (EntityFragmentsHolder.IsIndirectFragment(updateableFragmentId))
+                    contentsChangedMask |= (byte)(m_entityFragments.GetUpdateMaskFor(updateableFragmentId) >> 1);   // set the "fragment exists" bit
+
             data.WriteUInt8((byte)(flags.HasFlag(UpdateFieldFlag.Owner) ? 1 : 0));
             data.WriteUInt8(0);                                  // m_entityFragments.IdsChanged
-            data.WriteUInt8(EntityDefinitionsConst.CGObjectUpdateMask);
+            data.WriteUInt8(contentsChangedMask);
         }
 
         public void BuildDestroyUpdateBlock(UpdateData data)
@@ -294,6 +299,7 @@ namespace Game.Entities
             data.WriteBit(flags.NoBirthAnim);
             data.WriteBit(flags.EnablePortals);
             data.WriteBit(flags.PlayHoverAnim);
+            data.WriteBit(flags.ThisIsYou);
             data.WriteBit(flags.MovementUpdate);
             data.WriteBit(flags.MovementTransport);
             data.WriteBit(flags.Stationary);
@@ -302,10 +308,8 @@ namespace Game.Entities
             data.WriteBit(flags.Vehicle);
             data.WriteBit(flags.AnimKit);
             data.WriteBit(flags.Rotation);
-            data.WriteBit(flags.AreaTrigger);
             data.WriteBit(flags.GameObject);
             data.WriteBit(flags.SmoothPhasing);
-            data.WriteBit(flags.ThisIsYou);
             data.WriteBit(flags.SceneObject);
             data.WriteBit(flags.ActivePlayer);
             data.WriteBit(flags.Conversation);
@@ -319,6 +323,7 @@ namespace Game.Entities
                 bool HasSpline = unit.IsSplineEnabled();
                 bool HasInertia = unit.m_movementInfo.inertia.HasValue;
                 bool HasAdvFlying = unit.m_movementInfo.advFlying.HasValue;
+                bool HasDriveStatus = unit.m_movementInfo.driveStatus.HasValue;
                 bool HasStandingOnGameObjectGUID = unit.m_movementInfo.standingOnGameObjectGUID.HasValue;
 
                 data.WritePackedGuid(GetGUID());                                         // MoverGUID
@@ -349,6 +354,9 @@ namespace Game.Entities
                 data.WriteBit(false);                                          // HeightChangeFailed
                 data.WriteBit(false);                                          // RemoteTimeValid
                 data.WriteBit(HasInertia);                                     // HasInertia
+                data.WriteBit(HasAdvFlying);                                   // HasAdvFlying
+                data.WriteBit(HasDriveStatus);                                 // HasDriveStatus
+                data.FlushBits();
 
                 if (!unit.m_movementInfo.transport.guid.IsEmpty())
                     MovementExtensions.WriteTransportInfo(data, unit.m_movementInfo.transport);
@@ -380,6 +388,15 @@ namespace Game.Entities
                         data.WriteFloat(unit.m_movementInfo.jump.cosAngle);
                         data.WriteFloat(unit.m_movementInfo.jump.xyspeed);            // Speed
                     }
+                }
+
+                if (HasDriveStatus)
+                {
+                    data.WriteFloat(unit.m_movementInfo.driveStatus.Value.speed);
+                    data.WriteFloat(unit.m_movementInfo.driveStatus.Value.movementAngle);
+                    data.WriteBit(unit.m_movementInfo.driveStatus.Value.accelerating);
+                    data.WriteBit(unit.m_movementInfo.driveStatus.Value.drifting);
+                    data.FlushBits();
                 }
 
                 data.WriteFloat(unit.GetSpeed(UnitMoveType.Walk));
@@ -439,14 +456,14 @@ namespace Game.Entities
             if (flags.Stationary)
             {
                 WorldObject self = this;
-                data.WriteFloat(self.GetStationaryX());
-                data.WriteFloat(self.GetStationaryY());
-                data.WriteFloat(self.GetStationaryZ());
-                data.WriteFloat(self.GetStationaryO());
+                data.WriteXYZO(self.GetStationaryPosition());
             }
 
             if (flags.CombatVictim)
-                data.WritePackedGuid(ToUnit().GetVictim().GetGUID());                      // CombatVictim
+            {
+                Unit unit = ToUnit();
+                data.WritePackedGuid(unit.GetVictim().GetGUID());                          // CombatVictim
+            }
 
             if (flags.ServerTime)
                 data.WriteUInt32(GameTime.GetGameTimeMS());
@@ -466,7 +483,10 @@ namespace Game.Entities
             }
 
             if (flags.Rotation)
-                data.WriteInt64(ToGameObject().GetPackedLocalRotation());                 // Rotation
+            {
+                GameObject gameObject = ToGameObject();
+                data.WriteInt64(gameObject.GetPackedLocalRotation());                 // Rotation
+            }
 
             if (PauseTimes != null && !PauseTimes.Empty())
                 foreach (var stopFrame in PauseTimes)
@@ -476,145 +496,6 @@ namespace Game.Entities
             {
                 WorldObject self = this;
                 MovementExtensions.WriteTransportInfo(data, self.m_movementInfo.transport);
-            }
-
-            if (flags.AreaTrigger)
-            {
-                AreaTrigger areaTrigger = ToAreaTrigger();
-                AreaTriggerCreateProperties createProperties = areaTrigger.GetCreateProperties();
-                AreaTriggerShapeInfo shape = areaTrigger.GetShape();
-
-                data.WriteUInt32(areaTrigger.GetTimeSinceCreated());
-
-                data.WriteVector3(areaTrigger.GetRollPitchYaw());
-
-                switch (shape.TriggerType)
-                {
-                    case AreaTriggerShapeType.Sphere:
-                        data.WriteInt8(0);
-                        data.WriteFloat(shape.SphereDatas.Radius);
-                        data.WriteFloat(shape.SphereDatas.RadiusTarget);
-                        break;
-                    case AreaTriggerShapeType.Box:
-                        data.WriteInt8(1);
-                        data.WriteFloat(shape.BoxDatas.Extents[0]);
-                        data.WriteFloat(shape.BoxDatas.Extents[1]);
-                        data.WriteFloat(shape.BoxDatas.Extents[2]);
-                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[0]);
-                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[1]);
-                        data.WriteFloat(shape.BoxDatas.ExtentsTarget[2]);
-                        break;
-                    case AreaTriggerShapeType.Polygon:
-                        data.WriteInt8(3);
-                        data.WriteInt32(shape.PolygonVertices.Count);
-                        data.WriteInt32(shape.PolygonVerticesTarget.Count);
-                        data.WriteFloat(shape.PolygonDatas.Height);
-                        data.WriteFloat(shape.PolygonDatas.HeightTarget);
-
-                        foreach (var vertice in shape.PolygonVertices)
-                            data.WriteVector2(vertice);
-
-                        foreach (var vertice in shape.PolygonVerticesTarget)
-                            data.WriteVector2(vertice);
-                        break;
-                    case AreaTriggerShapeType.Cylinder:
-                        data.WriteInt8(4);
-                        data.WriteFloat(shape.CylinderDatas.Radius);
-                        data.WriteFloat(shape.CylinderDatas.RadiusTarget);
-                        data.WriteFloat(shape.CylinderDatas.Height);
-                        data.WriteFloat(shape.CylinderDatas.HeightTarget);
-                        data.WriteFloat(shape.CylinderDatas.LocationZOffset);
-                        data.WriteFloat(shape.CylinderDatas.LocationZOffsetTarget);
-                        break;
-                    case AreaTriggerShapeType.Disk:
-                        data.WriteInt8(7);
-                        data.WriteFloat(shape.DiskDatas.InnerRadius);
-                        data.WriteFloat(shape.DiskDatas.InnerRadiusTarget);
-                        data.WriteFloat(shape.DiskDatas.OuterRadius);
-                        data.WriteFloat(shape.DiskDatas.OuterRadiusTarget);
-                        data.WriteFloat(shape.DiskDatas.Height);
-                        data.WriteFloat(shape.DiskDatas.HeightTarget);
-                        data.WriteFloat(shape.DiskDatas.LocationZOffset);
-                        data.WriteFloat(shape.DiskDatas.LocationZOffsetTarget);
-                        break;
-                    case AreaTriggerShapeType.BoundedPlane:
-                        data.WriteInt8(8);
-                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[0]);
-                        data.WriteFloat(shape.BoundedPlaneDatas.Extents[1]);
-                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[0]);
-                        data.WriteFloat(shape.BoundedPlaneDatas.ExtentsTarget[1]);
-                        break;
-                    default:
-                        break;
-                }
-
-                bool hasAbsoluteOrientation = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasAbsoluteOrientation);
-                bool hasDynamicShape = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasDynamicShape);
-                bool hasAttached = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasAttached);
-                bool hasFaceMovementDir = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasFaceMovementDir);
-                bool hasFollowsTerrain = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasFollowsTerrain);
-                bool hasAlwaysExterior = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.AlwaysExterior);
-                bool hasUnknown1025 = false;
-                bool hasTargetRollPitchYaw = createProperties != null && createProperties.Flags.HasFlag(AreaTriggerCreatePropertiesFlag.HasTargetRollPitchYaw);
-                bool hasScaleCurveID = createProperties != null && createProperties.ScaleCurveId != 0;
-                bool hasMorphCurveID = createProperties != null && createProperties.MorphCurveId != 0;
-                bool hasFacingCurveID = createProperties != null && createProperties.FacingCurveId != 0;
-                bool hasMoveCurveID = createProperties != null && createProperties.MoveCurveId != 0;
-                bool hasAreaTriggerSpline = areaTrigger.HasSplines();
-                bool hasOrbit = areaTrigger.HasOrbit();
-                bool hasMovementScript = false;
-                bool hasPositionalSoundKitID = false;
-
-                data.WriteBit(hasAbsoluteOrientation);
-                data.WriteBit(hasDynamicShape);
-                data.WriteBit(hasAttached);
-                data.WriteBit(hasFaceMovementDir);
-                data.WriteBit(hasFollowsTerrain);
-                data.WriteBit(hasAlwaysExterior);
-                data.WriteBit(hasUnknown1025);
-                data.WriteBit(hasTargetRollPitchYaw);
-                data.WriteBit(hasScaleCurveID);
-                data.WriteBit(hasMorphCurveID);
-                data.WriteBit(hasFacingCurveID);
-                data.WriteBit(hasMoveCurveID);
-                data.WriteBit(hasPositionalSoundKitID);
-                data.WriteBit(hasAreaTriggerSpline);
-                data.WriteBit(hasOrbit);
-                data.WriteBit(hasMovementScript);
-
-                data.FlushBits();
-
-                if (hasAreaTriggerSpline)
-                {
-                    data.WriteUInt32(areaTrigger.GetTimeToTarget());
-                    data.WriteUInt32(areaTrigger.GetElapsedTimeForMovement());
-
-                    MovementExtensions.WriteCreateObjectAreaTriggerSpline(areaTrigger.GetSpline(), data);
-                }
-
-                if (hasTargetRollPitchYaw)
-                    data.WriteVector3(areaTrigger.GetTargetRollPitchYaw());
-
-                if (hasScaleCurveID)
-                    data.WriteUInt32(createProperties.ScaleCurveId);
-
-                if (hasMorphCurveID)
-                    data.WriteUInt32(createProperties.MorphCurveId);
-
-                if (hasFacingCurveID)
-                    data.WriteUInt32(createProperties.FacingCurveId);
-
-                if (hasMoveCurveID)
-                    data.WriteUInt32(createProperties.MoveCurveId);
-
-                if (hasPositionalSoundKitID)
-                    data.WriteUInt32(0);
-
-                //if (hasMovementScript)
-                //    *data << *areaTrigger.GetMovementScript(); // AreaTriggerMovementScriptInfo
-
-                if (hasOrbit)
-                    areaTrigger.GetOrbit().Write(data);
             }
 
             if (flags.GameObject)
@@ -632,9 +513,11 @@ namespace Game.Entities
                 data.FlushBits();
                 if (transport != null)
                 {
-                    data.WriteUInt32(transport.GetTransportPeriod());
-                    data.WriteUInt32(transport.GetTimer());
-                    data.WriteBit(transport.IsStopRequested());
+                    uint period = transport.GetTransportPeriod();
+
+                    data.WriteUInt32((uint)((((long)transport.GetTimer() - (long)GameTime.GetGameTimeMS()) % period) + period) % period);  // TimeOffset
+                    data.WriteUInt32(transport.GetNextStopTimestamp().GetValueOrDefault(0));
+                    data.WriteBit(transport.GetNextStopTimestamp().HasValue);
                     data.WriteBit(transport.IsStopped());
                     data.WriteBit(false);
                     data.FlushBits();
@@ -775,7 +658,7 @@ namespace Game.Entities
                 Player player = ToPlayer();
 
                 bool HasSceneInstanceIDs = !player.GetSceneMgr().GetSceneTemplateByInstanceMap().Empty();
-                bool HasRuneState = ToUnit().GetPowerIndex(PowerType.Runes) != (int)PowerType.Max;
+                bool HasRuneState = player.GetPowerIndex(PowerType.Runes) != (int)PowerType.Max;
 
                 data.WriteBit(HasSceneInstanceIDs);
                 data.WriteBit(HasRuneState);
@@ -784,8 +667,8 @@ namespace Game.Entities
                 if (HasSceneInstanceIDs)
                 {
                     data.WriteInt32(player.GetSceneMgr().GetSceneTemplateByInstanceMap().Count);
-                    foreach (var pair in player.GetSceneMgr().GetSceneTemplateByInstanceMap())
-                        data.WriteUInt32(pair.Key);
+                    foreach (var (sceneInstanceId, _) in player.GetSceneMgr().GetSceneTemplateByInstanceMap())
+                        data.WriteUInt32(sceneInstanceId);
                 }
 
                 if (HasRuneState)
@@ -841,7 +724,6 @@ namespace Game.Entities
         {
             m_values.ClearChangesMask(m_objectData);
             m_entityFragments.IdsChanged = false;
-            m_entityFragments.ContentsChangedMask = EntityDefinitionsConst.CGObjectActiveMask;
 
             if (m_objectUpdated)
             {
@@ -866,6 +748,8 @@ namespace Game.Entities
         }
 
         public virtual Loot GetLootForPlayer(Player player) { return null; }
+
+        public virtual SpawnTrackingStateData GetSpawnTrackingStateDataForPlayer(Player player) { return null; }
 
         public virtual void BuildValuesCreate(WorldPacket data, UpdateFieldFlag flags, Player target) { }
         public virtual void BuildValuesUpdate(WorldPacket data, UpdateFieldFlag flags, Player target) { }
@@ -958,6 +842,12 @@ namespace Game.Entities
         {
             AddToObjectUpdateIfNeeded();
             updateField.RemoveValue(index);
+        }
+
+        public void RemoveMapUpdateFieldValue<K, V>(MapUpdateField<K, V> setter, K key) where V : new()
+        {
+            AddToObjectUpdateIfNeeded();
+            setter.MarkKeyForRemoval(key);
         }
 
         public void ClearDynamicUpdateFieldValues<T>(DynamicUpdateField<T> updateField) where T : new()
@@ -1251,29 +1141,42 @@ namespace Game.Entities
 
         public SmoothPhasing GetSmoothPhasing() { return _smoothPhasing; }
 
-        public bool CanSeeOrDetect(WorldObject obj, bool implicitDetect = false, bool distanceCheck = false, bool checkAlert = false)
+        public bool CanSeeOrDetect(WorldObject obj, CanSeeOrDetectExtraArgs args = default)
         {
             if (this == obj)
                 return true;
 
-            if (obj.IsNeverVisibleFor(this, implicitDetect) || CanNeverSee(obj))
+            if (obj.IsNeverVisibleFor(this, args.ImplicitDetection) || CanNeverSee(obj, args.IgnorePhaseShift))
                 return false;
 
             if (obj.IsAlwaysVisibleFor(this) || CanAlwaysSee(obj))
                 return true;
 
-            if (!obj.CheckPrivateObjectOwnerVisibility(this))
+            if (!args.IncludeAnyPrivateObject && !obj.CheckPrivateObjectOwnerVisibility(this))
                 return false;
 
             SmoothPhasing smoothPhasing = obj.GetSmoothPhasing();
             if (smoothPhasing != null && smoothPhasing.IsBeingReplacedForSeer(GetGUID()))
                 return false;
 
-            if (!obj.IsPrivateObject() && !Global.ConditionMgr.IsObjectMeetingVisibilityByObjectIdConditions((uint)obj.GetTypeId(), obj.GetEntry(), this))
+            if (!obj.IsPrivateObject() && !Global.ConditionMgr.IsObjectMeetingVisibilityByObjectIdConditions(obj, this))
                 return false;
 
+            Player player = ToPlayer();
+
+            // Spawn tracking
+            if (!args.IncludeHiddenBySpawnTracking)
+            {
+                if (player != null)
+                {
+                    SpawnTrackingStateData spawnTrackingStateData = obj.GetSpawnTrackingStateDataForPlayer(player);
+                    if (spawnTrackingStateData != null && !spawnTrackingStateData.Visible)
+                        return false;
+                }
+            }
+
             bool corpseVisibility = false;
-            if (distanceCheck)
+            if (args.DistanceCheck)
             {
                 bool corpseCheck = false;
                 Player thisPlayer = ToPlayer();
@@ -1304,7 +1207,6 @@ namespace Game.Entities
                 }
 
                 WorldObject viewpoint = this;
-                Player player = ToPlayer();
                 if (player != null)
                     viewpoint = player.GetViewpoint();
 
@@ -1348,15 +1250,15 @@ namespace Game.Entities
             if (obj.IsInvisibleDueToDespawn(this))
                 return false;
 
-            if (!CanDetect(obj, implicitDetect, checkAlert))
+            if (!CanDetect(obj, args.ImplicitDetection, args.AlertCheck))
                 return false;
 
             return true;
         }
 
-        public virtual bool CanNeverSee(WorldObject obj)
+        public virtual bool CanNeverSee(WorldObject obj, bool ignorePhaseShift = false)
         {
-            return GetMap() != obj.GetMap() || !InSamePhase(obj);
+            return GetMap() != obj.GetMap() || (!ignorePhaseShift && !InSamePhase(obj));
         }
 
         public virtual bool CanAlwaysSee(WorldObject obj) { return false; }
@@ -1746,7 +1648,7 @@ namespace Game.Entities
             var searcher = new CreatureLastSearcher(this, checker);
 
             Cell.VisitAllObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public Creature FindNearestCreatureWithOptions(float range, FindCreatureOptions options)
@@ -1758,7 +1660,7 @@ namespace Game.Entities
                 searcher.i_phaseShift = PhasingHandler.GetAlwaysVisiblePhaseShift();
 
             Cell.VisitAllObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public GameObject FindNearestGameObject(uint entry, float range, bool spawnedOnly = true)
@@ -1767,7 +1669,7 @@ namespace Game.Entities
             var searcher = new GameObjectLastSearcher(this, checker);
 
             Cell.VisitGridObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public GameObject FindNearestGameObjectWithOptions(float range, FindGameObjectOptions options)
@@ -1779,7 +1681,7 @@ namespace Game.Entities
                 searcher.i_phaseShift = PhasingHandler.GetAlwaysVisiblePhaseShift();
 
             Cell.VisitGridObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public GameObject FindNearestUnspawnedGameObject(uint entry, float range)
@@ -1788,7 +1690,7 @@ namespace Game.Entities
             GameObjectLastSearcher searcher = new(this, checker);
 
             Cell.VisitGridObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public GameObject FindNearestGameObjectOfType(GameObjectTypes type, float range)
@@ -1797,7 +1699,7 @@ namespace Game.Entities
             var searcher = new GameObjectLastSearcher(this, checker);
 
             Cell.VisitGridObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public Player SelectNearestPlayer(float range)
@@ -1805,7 +1707,7 @@ namespace Game.Entities
             var checker = new NearestPlayerInObjectRangeCheck(this, range);
             var searcher = new PlayerLastSearcher(this, checker);
             Cell.VisitWorldObjects(this, searcher, range);
-            return searcher.GetTarget();
+            return searcher.GetResult();
         }
 
         public ObjectGuid GetCharmerOrOwnerOrOwnGUID()
@@ -2532,13 +2434,8 @@ namespace Game.Entities
             }
 
             Spell spell = new(this, info, args.TriggerFlags, args.OriginalCaster, args.OriginalCastId);
-            foreach (var spellOverride in args.SpellValueOverrides)
-            {
-                if (spellOverride.Type < (int)SpellValueMod.IntEnd)
-                    spell.SetSpellValue((SpellValueMod)spellOverride.Type, spellOverride.IntValue);
-                else
-                    spell.SetSpellValue((SpellValueModFloat)spellOverride.Type, spellOverride.FloatValue);
-            }
+            foreach (var value in args.SpellValueOverrides)
+                spell.SetSpellValue(value);
 
             spell.m_CastItem = args.CastItem;
             if (args.OriginalCastItemLevel.HasValue)
@@ -2563,7 +2460,7 @@ namespace Game.Entities
             return spell.Prepare(targets.Targets, args.TriggeringAura);
         }
 
-        void SendPlayOrphanSpellVisual(Position sourceLocation, ObjectGuid target, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
+        public void SendPlayOrphanSpellVisual(Position sourceLocation, ObjectGuid target, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
         {
             PlayOrphanSpellVisual playOrphanSpellVisual = new();
             playOrphanSpellVisual.SourceLocation = sourceLocation;
@@ -2588,7 +2485,7 @@ namespace Game.Entities
             SendMessageToSet(playOrphanSpellVisual, true);
         }
 
-        void SendPlayOrphanSpellVisual(Position sourceLocation, Position targetLocation, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
+        public void SendPlayOrphanSpellVisual(Position sourceLocation, Position targetLocation, uint spellVisualId, float travelSpeed, bool speedAsTime = false, bool withSourceOrientation = false)
         {
             PlayOrphanSpellVisual playOrphanSpellVisual = new();
             playOrphanSpellVisual.SourceLocation = sourceLocation;
@@ -2656,11 +2553,16 @@ namespace Game.Entities
             if (unit != null)
             {
                 // can't attack invisible
-                if (bySpell == null || !bySpell.HasAttribute(SpellAttr6.IgnorePhaseShift))
+                CanSeeOrDetectExtraArgs canSeeOrDetectExtraArgs = new();
+                if (bySpell != null)
                 {
-                    if (!unit.CanSeeOrDetect(target, bySpell != null && bySpell.IsAffectingArea()))
-                        return false;
+                    canSeeOrDetectExtraArgs.ImplicitDetection = bySpell.IsAffectingArea();
+                    canSeeOrDetectExtraArgs.IgnorePhaseShift = bySpell.HasAttribute(SpellAttr6.IgnorePhaseShift);
+                    canSeeOrDetectExtraArgs.IncludeHiddenBySpawnTracking = bySpell.HasAttribute(SpellAttr8.AllowTargetsHiddenBySpawnTracking);
+                    canSeeOrDetectExtraArgs.IncludeAnyPrivateObject = bySpell.HasAttribute(SpellCustomAttributes.CanTargetAnyPrivateObject);
                 }
+                if (!unit.CanSeeOrDetect(target, canSeeOrDetectExtraArgs))
+                    return false;
             }
 
             // can't attack dead
@@ -2822,7 +2724,15 @@ namespace Game.Entities
             }
 
             // can't assist invisible
-            if ((bySpell == null || !bySpell.HasAttribute(SpellAttr6.IgnorePhaseShift)) && !CanSeeOrDetect(target, bySpell != null && bySpell.IsAffectingArea()))
+            CanSeeOrDetectExtraArgs canSeeOrDetectExtraArgs = new();
+            if (bySpell != null)
+            {
+                canSeeOrDetectExtraArgs.ImplicitDetection = bySpell.IsAffectingArea();
+                canSeeOrDetectExtraArgs.IgnorePhaseShift = bySpell.HasAttribute(SpellAttr6.IgnorePhaseShift);
+                canSeeOrDetectExtraArgs.IncludeHiddenBySpawnTracking = bySpell.HasAttribute(SpellAttr8.AllowTargetsHiddenBySpawnTracking);
+                canSeeOrDetectExtraArgs.IncludeAnyPrivateObject = bySpell.HasAttribute(SpellCustomAttributes.CanTargetAnyPrivateObject);
+            }
+            if (!CanSeeOrDetect(target, canSeeOrDetectExtraArgs))
                 return false;
 
             // can't assist dead
@@ -2920,9 +2830,9 @@ namespace Game.Entities
                             // Set up missile speed based delay
                             float hitDelay = spellInfo.LaunchDelay;
                             if (spellInfo.HasAttribute(SpellAttr9.MissileSpeedIsDelayInSec))
-                                hitDelay += spellInfo.Speed;
+                                hitDelay += Math.Max(spellInfo.Speed, spellInfo.MinDuration);
                             else if (spellInfo.Speed > 0.0f)
-                                hitDelay += Math.Max(victim.GetDistance(this), 5.0f) / spellInfo.Speed;
+                                hitDelay += Math.Max(Math.Max(victim.GetDistance(this), 5.0f) / spellInfo.Speed, spellInfo.MinDuration);
 
                             uint delay = (uint)Math.Floor(hitDelay * 1000.0f);
                             // Schedule charge drop
@@ -2992,7 +2902,7 @@ namespace Game.Entities
         public List<Player> GetPlayerListInGrid(float maxSearchRange, bool alive = true)
         {
             List<Player> playerList = new();
-            var checker = new AnyPlayerInObjectRangeCheck(this, maxSearchRange, alive);
+            var checker = new AnyUnitInObjectRangeCheck(this, maxSearchRange, alive);
             var searcher = new PlayerListSearcher(this, playerList, checker);
 
             Cell.VisitWorldObjects(this, searcher, maxSearchRange);
@@ -3083,26 +2993,9 @@ namespace Game.Entities
             if (!IsInWorld)
                 return;
 
-            List<Player> targets = new();
-            var check = new AnyPlayerInObjectRangeCheck(this, GetVisibilityRange(), false);
-            var searcher = new PlayerListSearcher(this, targets, check);
-
-            Cell.VisitWorldObjects(this, searcher, GetVisibilityRange());
-            foreach (Player player in targets)
-            {
-                if (player == this)
-                    continue;
-
-                if (!player.HaveAtClient(this))
-                    continue;
-
-                Unit unit = ToUnit();
-                if (unit != null && unit.GetCharmerGUID() == player.GetGUID())// @todo this is for puppet
-                    continue;
-
-                DestroyForPlayer(player);
-                player.m_clientGUIDs.Remove(GetGUID());
-            }
+            WorldObjectClientDestroyWork destroyer = new() { obj = this };
+            WorldObjectVisibleChangeVisitor visitor = new(destroyer);
+            Cell.VisitWorldObjects(this, visitor, GetVisibilityRange());
         }
 
         public virtual void UpdateObjectVisibility(bool force = true)
@@ -3122,7 +3015,8 @@ namespace Game.Entities
         public virtual void BuildUpdate(Dictionary<Player, UpdateData> data)
         {
             var notifier = new WorldObjectChangeAccumulator(this, data);
-            Cell.VisitWorldObjects(this, notifier, GetVisibilityRange());
+            WorldObjectVisibleChangeVisitor visitor = new(notifier);
+            Cell.VisitWorldObjects(this, visitor, GetVisibilityRange());
 
             ClearUpdateMask(false);
         }
@@ -3213,7 +3107,7 @@ namespace Game.Entities
         public float GetTransOffsetY() { return m_movementInfo.transport.pos.GetPositionY(); }
         public float GetTransOffsetZ() { return m_movementInfo.transport.pos.GetPositionZ(); }
         public float GetTransOffsetO() { return m_movementInfo.transport.pos.GetOrientation(); }
-        Position GetTransOffset() { return m_movementInfo.transport.pos; }
+        public Position GetTransOffset() { return m_movementInfo.transport.pos; }
         public uint GetTransTime() { return m_movementInfo.transport.time; }
         public sbyte GetTransSeat() { return m_movementInfo.transport.seat; }
         public virtual ObjectGuid GetTransGUID()
@@ -3225,10 +3119,7 @@ namespace Game.Entities
         }
         public void SetTransport(ITransport t) { m_transport = t; }
 
-        public virtual float GetStationaryX() { return GetPositionX(); }
-        public virtual float GetStationaryY() { return GetPositionY(); }
-        public virtual float GetStationaryZ() { return GetPositionZ(); }
-        public virtual float GetStationaryO() { return GetOrientation(); }
+        public virtual Position GetStationaryPosition() { return this; }
 
         public virtual float GetCollisionHeight() { return 0.0f; }
         public float GetMidsectionHeight() { return GetCollisionHeight() / 2.0f; }
@@ -3878,6 +3769,11 @@ namespace Game.Entities
 
         public void SetLocationInstanceId(uint _instanceId) { instanceId = _instanceId; }
 
+        public override string ToString()
+        {
+            return GetName();
+        }
+
         #region Fields
         public TypeMask ObjectTypeMask { get; set; }
         protected TypeId ObjectTypeId { get; set; }
@@ -3953,6 +3849,7 @@ namespace Game.Entities
         public JumpInfo jump;
         public float stepUpStartElevation { get; set; }
         public AdvFlying? advFlying;
+        public Drive? driveStatus;
         public ObjectGuid? standingOnGameObjectGUID;
 
         public MovementInfo()
@@ -4017,12 +3914,14 @@ namespace Game.Entities
             public uint prevTime;
             public uint vehicleId;
         }
+
         public struct Inertia
         {
             public int id;
             public Position force;
             public uint lifetime;
         }
+
         public struct JumpInfo
         {
             public void Reset()
@@ -4037,11 +3936,20 @@ namespace Game.Entities
             public float cosAngle;
             public float xyspeed;
         }
+
         // advflying
         public struct AdvFlying
         {
             public float forwardVelocity;
             public float upVelocity;
+        }
+
+        public struct Drive
+        {
+            public float speed;
+            public float movementAngle;
+            public bool accelerating;
+            public bool drifting;
         }
     }
 
@@ -4054,6 +3962,9 @@ namespace Game.Entities
         public float Magnitude;
         public MovementForceType Type;
         public int MovementForceID;
+        public int Unknown1110_1;
+        public int Unused1110;
+        public uint Flags;
 
         public void Read(WorldPacket data)
         {
@@ -4063,6 +3974,9 @@ namespace Game.Entities
             TransportID = data.ReadUInt32();
             Magnitude = data.ReadFloat();
             MovementForceID = data.ReadInt32();
+            Unknown1110_1 = data.ReadInt32();
+            Unused1110 = data.ReadInt32();
+            Flags = data.ReadUInt32();
             Type = (MovementForceType)data.ReadBits<byte>(2);
         }
 
@@ -4127,7 +4041,6 @@ namespace Game.Entities
         public bool Vehicle;
         public bool AnimKit;
         public bool Rotation;
-        public bool AreaTrigger;
         public bool GameObject;
         public bool SmoothPhasing;
         public bool ThisIsYou;
@@ -4148,7 +4061,6 @@ namespace Game.Entities
             Vehicle = false;
             AnimKit = false;
             Rotation = false;
-            AreaTrigger = false;
             GameObject = false;
             SmoothPhasing = false;
             ThisIsYou = false;
@@ -4158,7 +4070,7 @@ namespace Game.Entities
         }
     }
 
-    class CombatLogSender : IDoWork<Player>
+    class CombatLogSender
     {
         CombatLogServerPacket i_message;
 
@@ -4174,6 +4086,8 @@ namespace Game.Entities
 
             player.SendPacket(i_message);
         }
+
+        public static implicit operator IDoWork<Player>(CombatLogSender obj) => obj.Invoke;
     }
 
     public struct FindCreatureOptions
@@ -4181,7 +4095,7 @@ namespace Game.Entities
         public FindCreatureOptions SetCreatureId(uint creatureId) { CreatureId = creatureId; return this; }
         public FindCreatureOptions SetStringId(string stringId) { StringId = stringId; return this; }
 
-        public FindCreatureOptions SetIsAlive(bool isAlive) { IsAlive = isAlive; return this; }
+        public FindCreatureOptions SetIsAlive(FindCreatureAliveState isAlive) { IsAlive = isAlive; return this; }
         public FindCreatureOptions SetIsInCombat(bool isInCombat) { IsInCombat = isInCombat; return this; }
         public FindCreatureOptions SetIsSummon(bool isSummon) { IsSummon = isSummon; return this; }
 
@@ -4199,7 +4113,7 @@ namespace Game.Entities
         public uint? CreatureId;
         public string StringId;
 
-        public bool? IsAlive;
+        public FindCreatureAliveState? IsAlive;
         public bool? IsInCombat;
         public bool? IsSummon;
 
@@ -4252,9 +4166,18 @@ namespace Game.Entities
 
         public void ClearChangesMask(HasChangesMask updateData)
         {
+            if (updateData == null)
+                return;
+
             _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
             if ((EntityFragment)updateData._blockBit == EntityFragment.CGObject)
+            {
                 _changesMask.Reset(updateData.Bit);
+                if (!_changesMask.IsAnySet())
+                    _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
+            }
+            else
+                _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
 
             updateData.ClearChangesMask();
         }
@@ -4263,7 +4186,13 @@ namespace Game.Entities
         {
             _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
             if ((EntityFragment)updateData._blockBit == EntityFragment.CGObject)
+            {
                 _changesMask.Reset(updateData.Bit);
+                if (!_changesMask.IsAnySet())
+                    _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
+            }
+            else
+                _owner.m_entityFragments.ContentsChangedMask &= (byte)~_owner.m_entityFragments.GetUpdateMaskFor((EntityFragment)updateData._blockBit);
 
             if (typeof(IHasChangesMask).IsAssignableFrom(typeof(U)))
                 ((IHasChangesMask)updateField._value).ClearChangesMask();
@@ -4278,5 +4207,89 @@ namespace Game.Entities
         {
             return _changesMask[(int)index];
         }
+    }
+
+    public struct CanSeeOrDetectExtraArgs
+    {
+        public bool ImplicitDetection;
+        public bool IgnorePhaseShift;
+        public bool IncludeHiddenBySpawnTracking;
+        public bool IncludeAnyPrivateObject;
+
+        public bool DistanceCheck;
+        public bool AlertCheck;
+    }
+
+    class WorldObjectVisibleChangeVisitor : Notifier
+    {
+        IDoWork<Player> work;
+
+        public WorldObjectVisibleChangeVisitor(IDoWork<Player> _work)
+        {
+            work = _work;
+        }
+
+        public override void Visit(IList<Player> objs)
+        {
+            for (var i = 0; i < objs.Count; ++i)
+            {
+                Player player = objs[i];
+
+                work.Invoke(player);
+
+                foreach (Player viewer in player.GetSharedVisionList())
+                    work.Invoke(viewer);
+            }
+        }
+
+        public override void Visit(IList<Creature> objs)
+        {
+            for (var i = 0; i < objs.Count; ++i)
+            {
+                Creature creature = objs[i];
+                foreach (Player viewer in creature.GetSharedVisionList())
+                    work.Invoke(viewer);
+            }
+        }
+
+        public override void Visit(IList<DynamicObject> objs)
+        {
+            for (var i = 0; i < objs.Count; ++i)
+            {
+                DynamicObject dynamicObject = objs[i];
+                ObjectGuid guid = dynamicObject.GetCasterGUID();
+
+                if (guid.IsPlayer())
+                {
+                    //GetCaster() will be nullptr if DynObj is in removelist
+                    Player caster = Global.ObjAccessor.GetPlayer(dynamicObject, guid);
+                    if (caster != null && caster.m_activePlayerData.FarsightObject == dynamicObject.GetGUID())
+                        work.Invoke(caster);
+                }
+            }
+        }
+    }
+
+    struct WorldObjectClientDestroyWork
+    {
+        public WorldObject obj;
+
+        public void Invoke(Player player)
+        {
+            if (player == obj)
+                return;
+
+            if (!player.HaveAtClient(obj))
+                return;
+
+            Unit unit = obj.ToUnit();
+            if (unit != null && unit.GetCharmerGUID() == player.GetGUID()) /// @todo this is for puppet
+                return;
+
+            obj.DestroyForPlayer(player);
+            player.m_clientGUIDs.Remove(obj.GetGUID());
+        }
+
+        public static implicit operator IDoWork<Player>(WorldObjectClientDestroyWork obj) => obj.Invoke;
     }
 }

@@ -178,15 +178,12 @@ namespace Game.Entities
         public override ObjectGuid GetOwnerGUID() { return m_sceneObjectData.CreatedBy; }
         public override uint GetFaction() { return 0; }
 
-        public override float GetStationaryX() { return _stationaryPosition.GetPositionX(); }
-        public override float GetStationaryY() { return _stationaryPosition.GetPositionY(); }
-        public override float GetStationaryZ() { return _stationaryPosition.GetPositionZ(); }
-        public override float GetStationaryO() { return _stationaryPosition.GetOrientation(); }
+        public override Position GetStationaryPosition() { return _stationaryPosition; }
         void RelocateStationaryPosition(Position pos) { _stationaryPosition.Relocate(pos); }
 
         public void SetCreatedBySpellCast(ObjectGuid castId) { _createdBySpellCast = castId; }
 
-        class ValuesUpdateForPlayerWithMaskSender : IDoWork<Player>
+        class ValuesUpdateForPlayerWithMaskSender
         {
             SceneObject Owner;
             ObjectFieldData ObjectMask = new();
@@ -206,6 +203,8 @@ namespace Game.Entities
                 udata.BuildPacket(out UpdateObject packet);
                 player.SendPacket(packet);
             }
+
+            public static implicit operator IDoWork<Player>(ValuesUpdateForPlayerWithMaskSender obj) => obj.Invoke;
         }
     }
 }

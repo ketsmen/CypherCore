@@ -3,6 +3,7 @@
 
 using Framework.Constants;
 using Framework.Dynamic;
+using Game.Entities;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -37,6 +38,7 @@ namespace Game.Movement
             vertical_acceleration = 0.0f;
             effect_start_time = 0;
             spell_effect_extra = args.spellEffectExtra;
+            turn = args.turnData;
             anim_tier = args.animTier;
             splineIsFacingOnly = args.path.Count == 2 && args.facing.type != MonsterMoveType.Normal && ((args.path[1] - args.path[0]).Length() < 0.1f);
 
@@ -77,17 +79,17 @@ namespace Game.Movement
 
         void InitSpline(MoveSplineInitArgs args)
         {
-            EvaluationMode[] modes = new EvaluationMode[2] { EvaluationMode.Linear, EvaluationMode.Catmullrom };
+            EvaluationMode mode = args.flags.IsSmooth() ? EvaluationMode.Catmullrom : EvaluationMode.Linear;
             if (args.flags.HasFlag(MoveSplineFlagEnum.Cyclic))
             {
                 int cyclic_point = 0;
                 if (splineflags.HasFlag(MoveSplineFlagEnum.EnterCycle))
                     cyclic_point = 1;   // shouldn't be modified, came from client
-                spline.InitCyclicSpline(args.path.ToArray(), args.path.Count, modes[Convert.ToInt32(args.flags.IsSmooth())], cyclic_point, args.initialOrientation);
+                spline.InitCyclicSpline(args.path.ToArray(), args.path.Count, mode, cyclic_point, args.initialOrientation);
             }
             else
             {
-                spline.InitSpline(args.path.ToArray(), args.path.Count, modes[Convert.ToInt32(args.flags.IsSmooth())], args.initialOrientation);
+                spline.InitSpline(args.path.ToArray(), args.path.Count, mode, args.initialOrientation);
             }
 
             // init spline timestamps
@@ -108,6 +110,13 @@ namespace Game.Movement
                 Log.outError(LogFilter.Unit, "MoveSpline.init_spline: zero length spline, wrong input data?");
                 spline.Set_length(spline.Last(), spline.IsCyclic() ? 1000 : 1);
             }
+
+            if (turn != null)
+            {
+                float totalTurnTime = (float)(turn.TotalTurnRads / turn.RadsPerSec * (float)Time.InMilliseconds);
+                spline.Set_length(spline.Last(), MathF.Max(spline.Length(), totalTurnTime));
+            }
+
             point_Idx = spline.First();
         }
 
@@ -127,18 +136,20 @@ namespace Game.Movement
         public int CurrentSplineIdx() { return point_Idx; }
         public uint GetId() { return m_Id; }
         public bool Finalized() { return splineflags.HasFlag(MoveSplineFlagEnum.Done); }
+
         void _Finalize()
         {
             splineflags.SetUnsetFlag(MoveSplineFlagEnum.Done);
             point_Idx = spline.Last() - 1;
             time_passed = Duration();
         }
+
         public Vector4 ComputePosition(int time_point, int point_index)
         {
             float u = 1.0f;
-            int seg_time = spline.Length(point_index, point_index + 1);
+            float seg_time = (float)spline.Length(point_index, point_index + 1);
             if (seg_time > 0)
-                u = (time_point - spline.Length(point_index)) / (float)seg_time;
+                u = MathF.Min((time_point - spline.Length(point_index)) / (float)seg_time, 1.0f);
 
             Vector3 c;
             float orientation = initialOrientation;
@@ -157,12 +168,16 @@ namespace Game.Movement
                     orientation = MathF.Atan2(facing.f.Y - c.Y, facing.f.X - c.X);
                 //nothing to do for MoveSplineFlag.Final_Target flag
             }
+            else if (splineflags.HasFlag(MoveSplineFlagEnum.Turning))
+            {
+                orientation = Position.NormalizeOrientation(turn.StartFacing + (float)time_point / (float)Time.InMilliseconds * turn.RadsPerSec);
+            }
             else
             {
                 if (!splineflags.HasFlag(MoveSplineFlagEnum.OrientationFixed | MoveSplineFlagEnum.Falling | MoveSplineFlagEnum.JumpOrientationFixed))
                 {
                     Vector3 hermite;
-                    spline.Evaluate_Derivative(point_Idx, u, out hermite);
+                    spline.Evaluate_Derivative(point_index, u, out hermite);
                     if (hermite.X != 0f || hermite.Y != 0f)
                         orientation = MathF.Atan2(hermite.Y, hermite.X);
                 }
@@ -290,34 +305,7 @@ namespace Game.Movement
                         if (splineflags.HasFlag(MoveSplineFlagEnum.EnterCycle))
                         {
                             splineflags.SetUnsetFlag(MoveSplineFlagEnum.EnterCycle, false);
-
-                            MoveSplineInitArgs args = new(spline.GetPointCount());
-                            args.path.AddRange(spline.GetPoints().AsSpan().Slice(spline.First() + 1, spline.Last()).ToArray());
-                            args.facing = facing;
-                            args.flags = splineflags;
-                            args.path_Idx_offset = point_Idx_offset;
-                            // MoveSplineFlag::Parabolic | MoveSplineFlag::Animation not supported currently
-                            //args.parabolic_amplitude = ?;
-                            //args.time_perc = ?;
-                            args.splineId = m_Id;
-                            args.initialOrientation = initialOrientation;
-                            args.velocity = 1.0f; // Calculated below
-                            args.HasVelocity = true;
-                            args.TransformForTransport = onTransport;
-                            if (args.Validate(null))
-                            {
-                                // New cycle should preserve previous cycle's duration for some weird reason, even though
-                                // the path is really different now. Blizzard is weird. Or this was just a simple oversight.
-                                // Since our splines precalculate length with velocity in mind, if we want to find the desired
-                                // velocity, we have to make a fake spline, calculate its duration and then compare it to the
-                                // desired duration, thus finding out how much the velocity has to be increased for them to match.
-                                MoveSpline tempSpline = new();
-                                tempSpline.Initialize(args);
-                                args.velocity = (float)tempSpline.Duration() / Duration();
-
-                                if (args.Validate(null))
-                                    InitSpline(args);
-                            }
+                            reinit_spline_for_next_cycle();
                         }
                     }
                     else
@@ -331,10 +319,43 @@ namespace Game.Movement
 
             return result;
         }
+
+        void reinit_spline_for_next_cycle()
+        {
+            MoveSplineInitArgs args = new(spline.GetPointCount());
+            args.path.AddRange(spline.GetPoints().AsSpan().Slice(spline.First() + 1, spline.Last()).ToArray());
+            args.facing = facing;
+            args.flags = splineflags;
+            args.path_Idx_offset = point_Idx_offset;
+            // MoveSplineFlag::Parabolic | MoveSplineFlag::Animation not supported currently
+            //args.parabolic_amplitude = ?;
+            //args.time_perc = ?;
+            args.splineId = m_Id;
+            args.initialOrientation = initialOrientation;
+            args.velocity = 1.0f; // Calculated below
+            args.HasVelocity = true;
+            args.TransformForTransport = onTransport;
+            if (args.Validate(null))
+            {
+                // New cycle should preserve previous cycle's duration for some weird reason, even though
+                // the path is really different now. Blizzard is weird. Or this was just a simple oversight.
+                // Since our splines precalculate length with velocity in mind, if we want to find the desired
+                // velocity, we have to make a fake spline, calculate its duration and then compare it to the
+                // desired duration, thus finding out how much the velocity has to be increased for them to match.
+                MoveSpline tempSpline = new();
+                tempSpline.Initialize(args);
+                args.velocity = (float)tempSpline.Duration() / Duration();
+
+                if (args.Validate(null))
+                    InitSpline(args);
+            }
+        }
+
         int NextTimestamp() { return spline.Length(point_Idx + 1); }
         int SegmentTimeElapsed() { return NextTimestamp() - time_passed; }
         public bool IsCyclic() { return splineflags.HasFlag(MoveSplineFlagEnum.Cyclic); }
         public bool IsFalling() { return splineflags.HasFlag(MoveSplineFlagEnum.Falling); }
+        public bool IsTurning() { return splineflags.HasFlag(MoveSplineFlagEnum.Turning); }
         public bool Initialized() { return !spline.Empty(); }
         public Vector3 FinalDestination() { return Initialized() ? spline.GetPoint(spline.Last()) : Vector3.Zero; }
         public Vector3 CurrentDestination() { return Initialized() ? spline.GetPoint(point_Idx + 1) : Vector3.Zero; }
@@ -357,6 +378,7 @@ namespace Game.Movement
         public int point_Idx_offset;
         public float velocity;
         public SpellEffectExtraData spell_effect_extra;
+        public TurnData turn;
         public AnimTierTransition anim_tier;
         #endregion
 

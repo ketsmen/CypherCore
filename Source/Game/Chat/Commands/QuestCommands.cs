@@ -86,26 +86,21 @@ namespace Game.Chat
 
             if (oldStatus != QuestStatus.None)
             {
+                player.RemoveActiveQuest(quest.Id, false);
+
                 // remove all quest entries for 'entry' from quest log
-                for (byte slot = 0; slot < SharedConst.MaxQuestLogSize; ++slot)
+                if (oldStatus != QuestStatus.Rewarded)
                 {
-                    uint logQuest = player.GetQuestSlotQuestId(slot);
-                    if (logQuest == quest.Id)
+                    // we ignore unequippable quest items in this case, its' still be equipped
+                    player.TakeQuestSourceItem(quest.Id, false);
+
+                    if (quest.HasFlag(QuestFlags.Pvp))
                     {
-                        player.SetQuestSlot(slot, 0);
-
-                        // we ignore unequippable quest items in this case, its' still be equipped
-                        player.TakeQuestSourceItem(logQuest, false);
-
-                        if (quest.HasFlag(QuestFlags.Pvp))
-                        {
-                            player.pvpInfo.IsHostile = player.pvpInfo.IsInHostileArea || player.HasPvPForcingQuest();
-                            player.UpdatePvPState();
-                        }
+                        player.pvpInfo.IsHostile = player.pvpInfo.IsInHostileArea || player.HasPvPForcingQuest();
+                        player.UpdatePvPState();
                     }
                 }
 
-                player.RemoveActiveQuest(quest.Id, false);
                 player.RemoveRewardedQuest(quest.Id);
                 player.DespawnPersonalSummonsForQuest(quest.Id);
 
@@ -184,18 +179,9 @@ namespace Game.Chat
                     }
                     break;
                 }
-                case QuestObjectiveType.Monster:
+                case QuestObjectiveType.Currency:
                 {
-                    CreatureTemplate creatureInfo = Global.ObjectMgr.GetCreatureTemplate((uint)obj.ObjectID);
-                    if (creatureInfo != null)
-                        for (var z = 0; z < obj.Amount; ++z)
-                            player.KilledMonster(creatureInfo, ObjectGuid.Empty);
-                    break;
-                }
-                case QuestObjectiveType.GameObject:
-                {
-                    for (var z = 0; z < obj.Amount; ++z)
-                        player.KillCreditGO((uint)obj.ObjectID);
+                    player.ModifyCurrency((uint)obj.ObjectID, obj.Amount, CurrencyGainSource.Cheat);
                     break;
                 }
                 case QuestObjectiveType.MinReputation:
@@ -225,12 +211,12 @@ namespace Game.Chat
                     player.ModifyMoney(obj.Amount);
                     break;
                 }
-                case QuestObjectiveType.PlayerKills:
-                {
-                    for (var z = 0; z < obj.Amount; ++z)
-                        player.KilledPlayerCredit(ObjectGuid.Empty);
+                case QuestObjectiveType.ProgressBar:
+                    // do nothing
                     break;
-                }
+                default:
+                    player.UpdateQuestObjectiveProgress(obj.Type, obj.ObjectID, obj.Amount);
+                    break;
             }
         }
     }

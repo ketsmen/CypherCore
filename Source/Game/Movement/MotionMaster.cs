@@ -1015,7 +1015,7 @@ namespace Game.Movement
         {
             if (_owner.IsTypeId(TypeId.Player))
             {
-                if (path < CliDB.TaxiPathNodesByPath.Count)
+                if (path < DB2Manager.TaxiPathNodesByPath.Count)
                 {
                     Log.outDebug(LogFilter.Server, $"MotionMaster::MoveTaxiFlight: {_owner.GetGUID()} taxi to Path Id: {path} (node {pathnode})");
 
@@ -1339,6 +1339,7 @@ namespace Game.Movement
         public uint? SpellVisualId;
         public uint? ProgressCurveId;
         public uint? ParabolicCurveId;
+        public uint? TriggerSpellId;
     }
 
     public struct ChaseRange

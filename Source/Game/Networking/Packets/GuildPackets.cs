@@ -152,8 +152,8 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteUInt32((uint)Result);
-            _worldPacket.WriteUInt32((uint)Command);
+            _worldPacket.WriteUInt8((byte)Result);
+            _worldPacket.WriteUInt8((byte)Command);
 
             _worldPacket.WriteBits(Name.GetByteCount(), 8);
             _worldPacket.WriteString(Name);
@@ -843,12 +843,11 @@ namespace Game.Networking.Packets
 
         public override void Write()
         {
-            _worldPacket.WriteBit(InGuildParty);
-            _worldPacket.FlushBits();
-
             _worldPacket.WriteInt32(NumMembers);
             _worldPacket.WriteInt32(NumRequired);
             _worldPacket.WriteFloat(GuildXPEarnedMult);
+            _worldPacket.WriteBit(InGuildParty);
+            _worldPacket.FlushBits();
         }
 
         public float GuildXPEarnedMult = 0.0f;
@@ -1620,12 +1619,12 @@ namespace Game.Networking.Packets
             data.WriteUInt8(Gender);
             data.WriteUInt64(GuildClubMemberID);
             data.WriteUInt8(RaceID);
+            data.WriteInt32(TimerunningSeasonID);
 
             data.WriteBits(Name.GetByteCount(), 6);
             data.WriteBits(Note.GetByteCount(), 8);
             data.WriteBits(OfficerNote.GetByteCount(), 8);
             data.WriteBit(Authenticated);
-            data.WriteBit(SorEligible);
             data.FlushBits();
 
             DungeonScore.Write(data);
@@ -1654,8 +1653,8 @@ namespace Game.Networking.Packets
         public byte Gender;
         public ulong GuildClubMemberID;
         public byte RaceID;
+        public int TimerunningSeasonID;
         public bool Authenticated;
-        public bool SorEligible;
         public GuildRosterProfessionData[] Profession = new GuildRosterProfessionData[2];
         public DungeonScoreSummary DungeonScore = new();
     }
@@ -1759,7 +1758,7 @@ namespace Game.Networking.Packets
         {
             data.WriteInt32(Id);
             CompletedDate.Write(data);
-            data.WriteInt32(Type);
+            data.WriteInt8(Type);
             data.WriteInt32(Flags);
 
             for (byte i = 0; i < 2; i++)
@@ -1780,7 +1779,7 @@ namespace Game.Networking.Packets
 
         public int Id;
         public WowTime CompletedDate;
-        public int Type;
+        public sbyte Type;
         public int Flags;
         public int[] Data = new int[2];
         public ObjectGuid MemberGuid;

@@ -84,7 +84,7 @@ namespace Game.DataStorage
     {
         public uint Id;
         public ushort Fallback;
-        public byte BehaviorTier;
+        public sbyte BehaviorTier;
         public short BehaviorID;
         public int[] Flags = new int[2];
     }
@@ -123,7 +123,7 @@ namespace Game.DataStorage
         public byte FactionGroupMask;
         public float AmbientMultiplier;
         public int MountFlags;
-        public short PvpCombatWorldStateID;
+        public int PvpCombatWorldStateID;
         public byte WildBattlePetLevelMin;
         public byte WildBattlePetLevelMax;
         public byte WindSettingsID;
@@ -378,7 +378,7 @@ namespace Game.DataStorage
         public uint Id;
         public uint AzeritePowerSetID;
         public int AzeritePowerID;
-        public int Class;
+        public sbyte Class;
         public byte Tier;
         public uint OrderIndex;
     }

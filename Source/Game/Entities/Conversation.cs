@@ -2,6 +2,7 @@
 // Licensed under the GNU GENERAL PUBLIC LICENSE. See LICENSE file in the project root for full license information.
 
 using Framework.Constants;
+using Game.AI;
 using Game.DataStorage;
 using Game.Maps;
 using Game.Networking;
@@ -43,6 +44,8 @@ namespace Game.Entities
             //- Remove the Conversation from the accessor and from all lists of objects in world
             if (IsInWorld)
             {
+                _ai.OnRemove();
+
                 base.RemoveFromWorld();
                 GetMap().GetObjectsStore().Remove(GetGUID());
             }
@@ -50,7 +53,7 @@ namespace Game.Entities
 
         public override void Update(uint diff)
         {
-            Global.ScriptMgr.OnConversationUpdate(this, diff);
+            _ai.OnUpdate(diff);
 
             if (GetDuration() > TimeSpan.FromMilliseconds(diff))
             {
@@ -116,12 +119,12 @@ namespace Game.Entities
             SetEntry(conversationEntry);
             SetObjectScale(1.0f);
 
+            AI_Initialize();
+
             _textureKitId = conversationTemplate.TextureKitId;
 
             foreach (var actor in conversationTemplate.Actors)
                 new ConversationActorFillVisitor(this, creator, map, actor).Invoke(actor);
-
-            Global.ScriptMgr.OnConversationCreate(this, creator);
 
             List<ConversationLine> lines = new();
             foreach (ConversationLineTemplate line in conversationTemplate.Lines)
@@ -129,7 +132,7 @@ namespace Game.Entities
                 if (!Global.ConditionMgr.IsObjectMeetingNotGroupedConditions(ConditionSourceType.ConversationLine, line.Id, creator))
                     continue;
 
-                var  convoLine = CliDB.ConversationLineStorage.LookupByKey(line.Id); // never null for conversationTemplate->Lines
+                var convoLine = CliDB.ConversationLineStorage.LookupByKey(line.Id); // never null for conversationTemplate->Lines
 
                 ConversationLine lineField = new();
                 lineField.ConversationLineID = line.Id;
@@ -139,12 +142,16 @@ namespace Game.Entities
                 lineField.Flags = line.Flags;
                 lineField.ChatType = line.ChatType;
 
+                if (!_lineStartTimes.ContainsKey(line.Id))
+                    _lineStartTimes[(int)line.Id] = new TimeSpan[(int)Locale.Total];
+
+                var startTimes = _lineStartTimes[(int)line.Id];
                 for (Locale locale = Locale.enUS; locale < Locale.Total; locale = locale + 1)
                 {
                     if (locale == Locale.None)
                         continue;
 
-                    _lineStartTimes[(locale, line.Id)] = _lastLineEndTimes[(int)locale];
+                    startTimes[(int)locale] = _lastLineEndTimes[(int)locale];
                     if (locale == Locale.enUS)
                         lineField.StartTime = (uint)_lastLineEndTimes[(int)locale].TotalMilliseconds;
 
@@ -165,7 +172,7 @@ namespace Game.Entities
             // conversations are despawned 5-20s after LastLineEndTime
             _duration += TimeSpan.FromSeconds(10);
 
-            Global.ScriptMgr.OnConversationCreate(this, creator);
+            _ai.OnCreate(creator);
         }
 
         public bool Start()
@@ -193,7 +200,7 @@ namespace Game.Entities
             if (!GetMap().AddToMap(this))
                 return false;
 
-            Global.ScriptMgr.OnConversationStart(this);
+            _ai.OnStart();
             return true;
         }
 
@@ -221,7 +228,10 @@ namespace Game.Entities
 
         public TimeSpan GetLineStartTime(Locale locale, int lineId)
         {
-            return _lineStartTimes.LookupByKey((locale, lineId));
+            if (_lineStartTimes.TryGetValue(lineId, out var timeSpans))
+                return timeSpans[(int)locale];
+
+            return default;
         }
 
         public TimeSpan GetLastLineEndTime(Locale locale)
@@ -283,6 +293,20 @@ namespace Game.Entities
 
             return actor.ToCreature();
         }
+
+        void AI_Initialize()
+        {
+            AI_Destroy();
+            _ai = AISelector.SelectConversationAI(this);
+            _ai.OnInitialize();
+        }
+
+        void AI_Destroy()
+        {
+            _ai = null;
+        }
+
+        public ConversationAI GetAI() { return _ai; }
 
         public uint GetScriptId()
         {
@@ -347,10 +371,7 @@ namespace Game.Entities
         public override ObjectGuid GetOwnerGUID() { return GetCreatorGUID(); }
         public override uint GetFaction() { return 0; }
 
-        public override float GetStationaryX() { return _stationaryPosition.GetPositionX(); }
-        public override float GetStationaryY() { return _stationaryPosition.GetPositionY(); }
-        public override float GetStationaryZ() { return _stationaryPosition.GetPositionZ(); }
-        public override float GetStationaryO() { return _stationaryPosition.GetOrientation(); }
+        public override Position GetStationaryPosition() { return _stationaryPosition; }
         void RelocateStationaryPosition(Position pos) { _stationaryPosition.Relocate(pos); }
 
         ConversationData m_conversationData;
@@ -360,10 +381,12 @@ namespace Game.Entities
         TimeSpan _duration;
         uint _textureKitId;
 
-        Dictionary<(Locale locale, uint lineId), TimeSpan> _lineStartTimes = new();
+        Dictionary<int, TimeSpan[]> _lineStartTimes = new();
         TimeSpan[] _lastLineEndTimes = new TimeSpan[(int)Locale.Total];
 
-        class ValuesUpdateForPlayerWithMaskSender : IDoWork<Player>
+        ConversationAI _ai;
+
+        class ValuesUpdateForPlayerWithMaskSender
         {
             Conversation Owner;
             ObjectFieldData ObjectMask = new();
@@ -383,6 +406,8 @@ namespace Game.Entities
                 udata.BuildPacket(out UpdateObject packet);
                 player.SendPacket(packet);
             }
+
+            public static implicit operator IDoWork<Player>(ValuesUpdateForPlayerWithMaskSender obj) => obj.Invoke;
         }
     }
 

@@ -48,9 +48,17 @@ namespace Game
             if (packet.DataType >= AccountDataTypes.Max)
                 return;
 
+            UpdateAccountDataComplete updateAccountDataComplete = new();
+
             if (packet.Size == 0)
             {
                 SetAccountData(packet.DataType, 0, "");
+
+                updateAccountDataComplete.Player = packet.PlayerGuid;
+                updateAccountDataComplete.DataType = (int)packet.DataType;
+                updateAccountDataComplete.Result = 0;
+                SendPacket(updateAccountDataComplete);
+
                 return;
             }
 
@@ -62,6 +70,11 @@ namespace Game
 
             byte[] data = ZLib.Decompress(packet.CompressedData.GetData(), packet.Size);
             SetAccountData(packet.DataType, packet.Time, Encoding.Default.GetString(data));
+
+            updateAccountDataComplete.Player = packet.PlayerGuid;
+            updateAccountDataComplete.DataType = (int)packet.DataType;
+            updateAccountDataComplete.Result = 0;
+            SendPacket(updateAccountDataComplete);
         }
 
         [WorldPacketHandler(ClientOpcodes.SetSelection)]
@@ -245,9 +258,14 @@ namespace Game
             {
                 // set resting flag we are in the inn
                 if (packet.Entered)
-                    player.GetRestMgr().SetInnTriggerID(atEntry.Id);
+                {
+                    player.GetRestMgr().SetInnTrigger(new InnAreaTrigger(true, atEntry.Id));
+                }
                 else
+                {
                     player.GetRestMgr().RemoveRestFlag(RestFlag.Tavern);
+                    player.GetRestMgr().SetInnTrigger(null);
+                }
 
                 if (Global.WorldMgr.IsFFAPvPRealm())
                 {
@@ -270,7 +288,7 @@ namespace Game
             if (!packet.Entered)
                 return;
 
-            AreaTriggerStruct at = Global.ObjectMgr.GetAreaTrigger(packet.AreaTriggerID);
+            AreaTriggerTeleport at = Global.ObjectMgr.GetAreaTrigger(packet.AreaTriggerID);
             if (at == null)
                 return;
 
@@ -436,7 +454,9 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.CloseInteraction)]
         void HandleCloseInteraction(CloseInteraction closeInteraction)
         {
-            if (_player.PlayerTalkClass.GetInteractionData().SourceGuid == closeInteraction.SourceGuid)
+            if (_player.PlayerTalkClass.GetInteractionData().IsLaunchedByQuest)
+                _player.PlayerTalkClass.GetInteractionData().IsLaunchedByQuest = false;
+            else if (_player.PlayerTalkClass.GetInteractionData().SourceGuid == closeInteraction.SourceGuid)
                 _player.PlayerTalkClass.GetInteractionData().Reset();
 
             if (_player.GetStableMaster() == closeInteraction.SourceGuid)
@@ -446,9 +466,9 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.ConversationLineStarted)]
         void HandleConversationLineStarted(ConversationLineStarted conversationLineStarted)
         {
-            Conversation convo = ObjectAccessor.GetConversation(_player, conversationLineStarted.ConversationGUID);
-            if (convo != null)
-                Global.ScriptMgr.OnConversationLineStarted(convo, conversationLineStarted.LineID, _player);
+            Conversation conversation = ObjectAccessor.GetConversation(_player, conversationLineStarted.ConversationGUID);
+            if (conversation != null)
+                conversation.GetAI().OnLineStarted(conversationLineStarted.LineID, _player);
         }
 
         [WorldPacketHandler(ClientOpcodes.RequestLatestSplashScreen)]

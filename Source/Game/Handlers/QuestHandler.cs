@@ -9,6 +9,8 @@ using Game.Networking;
 using Game.Networking.Packets;
 using Game.DataStorage;
 using System.Collections.Generic;
+using System;
+using Game.Misc;
 
 namespace Game
 {
@@ -54,8 +56,8 @@ namespace Game
             if (creature.GetAI().OnGossipHello(_player))
                 return;
 
-            GetPlayer().PrepareGossipMenu(creature, _player.GetGossipMenuForSource(creature), true);
-            GetPlayer().SendPreparedGossip(creature);
+            _player.PrepareQuestMenu(creature.GetGUID());
+            _player.SendPreparedQuest(creature);
         }
 
         [WorldPacketHandler(ClientOpcodes.QuestGiverAcceptQuest, Processing = PacketProcessing.Inplace)]
@@ -75,117 +77,99 @@ namespace Game
 
             // no or incorrect quest giver
             if (obj == null)
-            {
-                CLOSE_GOSSIP_CLEAR_SHARING_INFO();
                 return;
-            }
 
             Player playerQuestObject = obj.ToPlayer();
             if (playerQuestObject != null)
             {
                 if ((_player.GetPlayerSharingQuest().IsEmpty() && _player.GetPlayerSharingQuest() != packet.QuestGiverGUID) || !playerQuestObject.CanShareQuest(packet.QuestID))
-                {
-                    CLOSE_GOSSIP_CLEAR_SHARING_INFO();
                     return;
-                }
+
                 if (!_player.IsInSameRaidWith(playerQuestObject))
-                {
-                    CLOSE_GOSSIP_CLEAR_SHARING_INFO();
                     return;
-                }
             }
             else
             {
                 if (!obj.HasQuest(packet.QuestID))
-                {
-                    CLOSE_GOSSIP_CLEAR_SHARING_INFO();
                     return;
-                }
             }
 
             // some kind of WPE protection
             if (!_player.CanInteractWithQuestGiver(obj))
-            {
-                CLOSE_GOSSIP_CLEAR_SHARING_INFO();
                 return;
-            }
 
             Quest quest = Global.ObjectMgr.GetQuestTemplate(packet.QuestID);
-            if (quest != null)
+            if (quest == null)
+                return;
+
+            // prevent cheating
+            if (!GetPlayer().CanTakeQuest(quest, true))
+                return;
+
+            if (!_player.GetPlayerSharingQuest().IsEmpty())
             {
-                // prevent cheating
-                if (!GetPlayer().CanTakeQuest(quest, true))
+                Player player = Global.ObjAccessor.FindPlayer(_player.GetPlayerSharingQuest());
+                if (player != null)
                 {
-                    CLOSE_GOSSIP_CLEAR_SHARING_INFO();
-                    return;
-                }
-
-                if (!_player.GetPlayerSharingQuest().IsEmpty())
-                {
-                    Player player = Global.ObjAccessor.FindPlayer(_player.GetPlayerSharingQuest());
-                    if (player != null)
-                    {
-                        player.SendPushToPartyResponse(_player, QuestPushReason.Accepted);
-                        _player.ClearQuestSharingInfo();
-                    }
-                }
-
-                if (_player.CanAddQuest(quest, true))
-                {
-                    _player.AddQuestAndCheckCompletion(quest, obj);
-
-                    if (quest.IsPushedToPartyOnAccept())
-                    {
-                        var group = _player.GetGroup();
-                        if (group != null)
-                        {
-                            for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
-                            {
-                                Player player = refe.GetSource();
-
-                                if (player == null || player == _player || !player.IsInMap(_player))     // not self and in same map
-                                    continue;
-
-                                if (player.CanTakeQuest(quest, true))
-                                {
-                                    player.SetQuestSharingInfo(_player.GetGUID(), quest.Id);
-
-                                    //need confirmation that any gossip window will close
-                                    player.PlayerTalkClass.SendCloseGossip();
-
-                                    _player.SendQuestConfirmAccept(quest, player);
-                                }
-                            }
-                        }
-                    }
-
-                    _player.PlayerTalkClass.SendCloseGossip();
-
-                    if (quest.HasFlag(QuestFlags.LaunchGossipAccept))
-                    {
-                        void launchGossip(WorldObject worldObject)
-                        {
-                            _player.PlayerTalkClass.ClearMenus();
-                            _player.PrepareGossipMenu(worldObject, _player.GetGossipMenuForSource(worldObject), true);
-                            _player.SendPreparedGossip(worldObject);
-                        }
-
-                        Creature creature = obj.ToCreature();
-                        if (creature != null)
-                            launchGossip(creature);
-                        else
-                        {
-                            GameObject go = obj.ToGameObject();
-                            if (go != null)
-                                launchGossip(go);
-                        }
-                    }
-
-                    return;
+                    player.SendPushToPartyResponse(_player, QuestPushReason.Accepted);
+                    _player.ClearQuestSharingInfo();
                 }
             }
 
-            CLOSE_GOSSIP_CLEAR_SHARING_INFO();
+            if (!_player.CanAddQuest(quest, true))
+                return;
+
+            _player.AddQuestAndCheckCompletion(quest, obj);
+
+            if (quest.IsPushedToPartyOnAccept())
+            {
+                var group = _player.GetGroup();
+                if (group != null)
+                {
+                    foreach (GroupReference groupRef in group.GetMembers())
+                    {
+                        Player player = groupRef.GetSource();
+                        if (player == _player || !player.IsInMap(_player))     // not self and in same map
+                            continue;
+
+                        if (player.CanTakeQuest(quest, true))
+                        {
+                            player.SetQuestSharingInfo(_player.GetGUID(), quest.Id);
+
+                            //need confirmation that any gossip window will close
+                            player.PlayerTalkClass.SendCloseGossip();
+
+                            _player.SendQuestConfirmAccept(quest, player);
+                        }
+                    }
+                }
+            }
+
+            if (quest.HasFlag(QuestFlags.LaunchGossipAccept) && !quest.HasFlagEx(QuestFlagsEx.SuppressGossipAccept))
+            {
+                void launchGossip(WorldObject worldObject)
+                {
+                    _player.PlayerTalkClass.ClearMenus();
+                    _player.PrepareGossipMenu(worldObject, _player.GetGossipMenuForSource(worldObject), true);
+                    _player.SendPreparedGossip(worldObject);
+                    _player.PlayerTalkClass.GetInteractionData().IsLaunchedByQuest = true;
+                }
+
+                Creature creature = obj.ToCreature();
+                if (creature != null)
+                    launchGossip(creature);
+                else
+                {
+                    GameObject go = obj.ToGameObject();
+                    if (go != null)
+                        launchGossip(go);
+                }
+            }
+            // do not close gossip if quest accept script started a new interaction
+            else if (!_player.PlayerTalkClass.GetInteractionData().IsInteractingWith(obj.GetGUID(), PlayerInteractionType.QuestGiver))
+                _player.PlayerTalkClass.GetInteractionData().IsLaunchedByQuest = true;
+            else
+                _player.PlayerTalkClass.SendCloseGossip();
         }
 
         [WorldPacketHandler(ClientOpcodes.QuestGiverQueryQuest, Processing = PacketProcessing.Inplace)]
@@ -396,6 +380,8 @@ namespace Game
                     Quest quest = Global.ObjectMgr.GetQuestTemplate(questId);
                     QuestStatus oldStatus = _player.GetQuestStatus(questId);
 
+                    _player.RemoveActiveQuest(questId);
+
                     if (quest != null)
                     {
                         if (quest.HasFlagEx(QuestFlagsEx.NoAbandonOnceBegun))
@@ -415,10 +401,9 @@ namespace Game
                         }
                     }
 
-                    GetPlayer().SetQuestSlot(packet.Entry, 0);
+                    GetPlayer().SendForceSpawnTrackingUpdate(questId);
                     GetPlayer().TakeQuestSourceItem(questId, true); // remove quest src item from player
                     GetPlayer().AbandonQuest(questId); // remove all quest items player received before abandoning quest. Note, this does not remove normal drop items that happen to be quest requirements. 
-                    GetPlayer().RemoveActiveQuest(questId);
                     GetPlayer().DespawnPersonalSummonsForQuest(questId);
 
                     Log.outInfo(LogFilter.Network, "Player {0} abandoned quest {1}", GetPlayer().GetGUID().ToString(), questId);
@@ -565,11 +550,10 @@ namespace Game
                 return;
             }
 
-            for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
+            foreach (GroupReference groupRef in group.GetMembers())
             {
-                Player receiver = refe.GetSource();
-
-                if (receiver == null || receiver == sender)
+                Player receiver = groupRef.GetSource();
+                if (receiver == sender)
                     continue;
 
                 if (!receiver.GetPlayerSharingQuest().IsEmpty())
@@ -735,9 +719,29 @@ namespace Game
         [WorldPacketHandler(ClientOpcodes.ChoiceResponse)]
         void HandlePlayerChoiceResponse(ChoiceResponse choiceResponse)
         {
-            if (_player.PlayerTalkClass.GetInteractionData().PlayerChoiceId != choiceResponse.ChoiceID)
+            PlayerChoiceData playerChoiceData = _player.PlayerTalkClass.GetInteractionData().GetPlayerChoice();
+            if (playerChoiceData == null)
             {
-                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to respond to invalid player choice {choiceResponse.ChoiceID} (allowed {_player.PlayerTalkClass.GetInteractionData().PlayerChoiceId}) (possible packet-hacking detected)");
+                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to respond to invalid player choice {choiceResponse.ChoiceID} (none allowed)");
+                return;
+            }
+
+            if (playerChoiceData.GetChoiceId() != choiceResponse.ChoiceID)
+            {
+                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to respond to invalid player choice {choiceResponse.ChoiceID} ({playerChoiceData.GetChoiceId()} allowed)");
+                return;
+            }
+
+            if (playerChoiceData.GetExpireTime().HasValue && playerChoiceData.GetExpireTime() < GameTime.GetSystemTime())
+            {
+                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to respond to expired player choice {choiceResponse.ChoiceID})");
+                return;
+            }
+
+            uint? responseId = playerChoiceData.FindIdByClientIdentifier((ushort)choiceResponse.ResponseIdentifier);
+            if (!responseId.HasValue)
+            {
+                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to select invalid player choice response identifier {choiceResponse.ResponseIdentifier}");
                 return;
             }
 
@@ -745,52 +749,21 @@ namespace Game
             if (playerChoice == null)
                 return;
 
-            PlayerChoiceResponse playerChoiceResponse = playerChoice.GetResponseByIdentifier(choiceResponse.ResponseIdentifier);
+            PlayerChoiceResponse playerChoiceResponse = playerChoice.GetResponse((ushort)responseId);
             if (playerChoiceResponse == null)
             {
-                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to select invalid player choice response {choiceResponse.ResponseIdentifier} (possible packet-hacking detected)");
+                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to select invalid player choice response {responseId}");
                 return;
             }
 
-            Global.ScriptMgr.OnPlayerChoiceResponse(GetPlayer(), (uint)choiceResponse.ChoiceID, (uint)choiceResponse.ResponseIdentifier);
-
-            if (playerChoiceResponse.Reward != null)
+            if (playerChoiceResponse.Flags.HasFlag(PlayerChoiceResponseFlags.DisabledButton | PlayerChoiceResponseFlags.DisabledOption | PlayerChoiceResponseFlags.HideButtonShowText))
             {
-                var reward = playerChoiceResponse.Reward;
-                if (reward.TitleId != 0)
-                    _player.SetTitle(CliDB.CharTitlesStorage.LookupByKey(reward.TitleId), false);
-
-                if (reward.PackageId != 0)
-                    _player.RewardQuestPackage((uint)reward.PackageId, ItemContext.None);
-
-                if (reward.SkillLineId != 0 && _player.HasSkill((SkillType)reward.SkillLineId))
-                    _player.UpdateSkillPro((uint)reward.SkillLineId, 1000, reward.SkillPointCount);
-
-                if (reward.HonorPointCount != 0)
-                    _player.AddHonorXP(reward.HonorPointCount);
-
-                if (reward.Money != 0)
-                    _player.ModifyMoney((long)reward.Money, false);
-
-                if (reward.Xp != 0)
-                    _player.GiveXP(reward.Xp, null, 0.0f);
-
-                foreach (PlayerChoiceResponseRewardItem item in reward.Items)
-                {
-                    List<ItemPosCount> dest = new();
-                    if (_player.CanStoreNewItem(ItemConst.NullBag, ItemConst.NullSlot, dest, item.Id, (uint)item.Quantity) == InventoryResult.Ok)
-                    {
-                        Item newItem = _player.StoreNewItem(dest, item.Id, true, ItemEnchantmentManager.GenerateItemRandomBonusListId(item.Id), null, ItemContext.QuestReward, item.BonusListIDs);
-                        _player.SendNewItem(newItem, (uint)item.Quantity, true, false);
-                    }
-                }
-
-                foreach (PlayerChoiceResponseRewardEntry currency in reward.Currency)
-                    _player.ModifyCurrency(currency.Id, currency.Quantity);
-
-                foreach (PlayerChoiceResponseRewardEntry faction in reward.Faction)
-                    _player.GetReputationMgr().ModifyReputation(CliDB.FactionStorage.LookupByKey(faction.Id), faction.Quantity);
+                Log.outError(LogFilter.Player, $"Error in CMSG_CHOICE_RESPONSE: {GetPlayerInfo()} tried to select disabled player choice response {responseId}");
+                return;
             }
+
+            Global.ScriptMgr.OnPlayerChoiceResponse(Global.ObjAccessor.GetWorldObject(_player, _player.PlayerTalkClass.GetInteractionData().SourceGuid), _player,
+                playerChoice, playerChoiceResponse, (ushort)choiceResponse.ResponseIdentifier);
         }
 
         [WorldPacketHandler(ClientOpcodes.UiMapQuestLinesRequest)]
@@ -834,6 +807,69 @@ namespace Game
                 Quest quest = Global.ObjectMgr.GetQuestTemplate(questId);
                 if (quest != null && _player.CanTakeQuest(quest, false))
                     response.QuestIDs.Add(questId);
+            }
+
+            SendPacket(response);
+        }
+
+        [WorldPacketHandler(ClientOpcodes.SpawnTrackingUpdate)]
+        void HandleSpawnTrackingUpdate(SpawnTrackingUpdate spawnTrackingUpdate)
+        {
+            QuestPOIUpdateResponse response = new();
+
+            bool hasObjectTypeRequested(TypeMask objectTypeMask, SpawnObjectType objectType)
+            {
+                if (objectTypeMask.HasAnyFlag(TypeMask.Unit))
+                    return objectType == SpawnObjectType.Creature;
+                else if (objectTypeMask.HasAnyFlag(TypeMask.GameObject))
+                    return objectType == SpawnObjectType.GameObject;
+
+                return false;
+            }
+
+            foreach (var requestInfo in spawnTrackingUpdate.SpawnTrackingRequests)
+            {
+                SpawnTrackingResponseInfo responseInfo = new();
+                responseInfo.SpawnTrackingID = requestInfo.SpawnTrackingID;
+                responseInfo.ObjectID = requestInfo.ObjectID;
+
+                var spawnTrackingTemplateData = Global.ObjectMgr.GetSpawnTrackingData(requestInfo.SpawnTrackingID);
+                QuestObjective activeQuestObjective = _player.GetActiveQuestObjectiveForSpawnTracking(requestInfo.SpawnTrackingID);
+
+                // Send phase info if map is the same or spawn tracking related quests are taken or completed
+                if (spawnTrackingTemplateData != null && (_player.GetMapId() == spawnTrackingTemplateData.MapId || activeQuestObjective != null))
+                {
+                    responseInfo.PhaseID = (int)spawnTrackingTemplateData.PhaseId;
+                    responseInfo.PhaseGroupID = (int)spawnTrackingTemplateData.PhaseGroup;
+                    responseInfo.PhaseUseFlags = spawnTrackingTemplateData.PhaseUseFlags;
+
+                    // Send spawn visibility data if available
+                    if (requestInfo.ObjectTypeMask != 0 && (requestInfo.ObjectTypeMask & (int)(TypeMask.Unit | TypeMask.GameObject)) != 0)
+                    {
+                        // There should only be one entity
+                        foreach (var data in Global.ObjectMgr.GetSpawnMetadataForSpawnTracking(requestInfo.SpawnTrackingID))
+                        {
+                            var spawnData = data.ToSpawnData();
+                            if (spawnData == null)
+                                continue;
+
+                            if (spawnData.Id != requestInfo.ObjectID)
+                                continue;
+
+                            if (!hasObjectTypeRequested((TypeMask)requestInfo.ObjectTypeMask, data.type))
+                                continue;
+
+                            if (activeQuestObjective != null)
+                            {
+                                SpawnTrackingState state = _player.GetSpawnTrackingStateByObjectives(requestInfo.SpawnTrackingID, data.spawnTrackingQuestObjectives);
+                                responseInfo.Visible = data.spawnTrackingStates[(int)state].Visible;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                response.SpawnTrackingResponses.Add(responseInfo);
             }
 
             SendPacket(response);

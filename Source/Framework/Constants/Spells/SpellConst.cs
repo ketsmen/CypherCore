@@ -431,12 +431,12 @@ namespace Framework.Constants
 
     public enum SpellState
     {
-        None = 0,
+        Null = 0,
         Preparing = 1,
-        Casting = 2,
-        Finished = 3,
-        Idle = 4,
-        Delayed = 5
+        Launched = 2,
+        Channeling = 3,
+        Finished = 4,
+        Idle = 5
     }
 
     public enum SpellSchools
@@ -775,7 +775,8 @@ namespace Framework.Constants
         DragonridingRidingRequirement = 319,
         ItemModAppearanceGroupAlreadyKnown = 320,
         ItemCreationDisabledForEvent = 321,
-        Unknown = 322,
+        WarbandSceneAlreadyKnown = 322,
+        Unknown = 323,
 
         // Ok Cast Value - Here In Case A Future Version Removes Success And We Need To Use A Custom Value (Not Sent To Client Either Way)
         SpellCastOk = Success
@@ -1410,55 +1411,97 @@ namespace Framework.Constants
         RequiresAResilientStone = 832, // Requires A Resilient Stone.
         MyrritCannotCarryAnyMoreMaps = 835, // Myrrit Cannot Carry Any More Maps. Go On A Dig With Him!
         SomeGiftsAreBetterLeftUndelivered = 836, // Some gifts are better left undelivered.
-        RequiresNiffenCaveDiveKeyandShieldDisabled = 850, // Requires Niffen Cave Dive Key And Shield Disabled.
-        ElusiveCreatureBaitWasRecentlyUsed = 851, // You Cannot Lure Anything In This Area For A Few Minutes. Elusive Creature Bait Was Recently Used.
-        MustBeInQuietPlaceWithinCaerDarrow = 852, // Must be in a suitably quiet place within Caer Darrow.
-        YouDontHaveAnyGlimmerOfLightsActive = 856, // You don't have any Glimmer of Lights active.
-        YouDontHaveTheSwirlingMojoStone = 999, // You Don'T Have The Swirling Mojo Stone Equipped.
-        YouMustBeNearADragonflightOathstone = 1000, // You Must Be Near One Of The Five Dragonflight Oathstones In The Dragon Isles.
-        CanOnlyUseThisItemWhileAirborne = 1001, // You Can Only Use This Item While Airborne.
-        ThisPlayerIsNotOppositeFaction = 1002, // This Player Is Not Of The Opposite Faction.
-        ThisPlayerAlreadyHasThisMount = 1003, // This Player Already Has This Mount.
-        YourTargetIsInWarMode = 1004, // Your Target Is In War Mode.
-        CooldownReset = 1005, // Cooldown Reset
-        SoilNutrientsMustReplenish = 1006, // The Nutrients Of This Soil Must Replenish Before Further Growth.
-        TargetAlreadyHadSomeFeathersPlucked = 1007, // The Target Has Already Had Some Feathers Plucked. It Would Be Rude To Take More.
-        ThisCreatureHasAlreadyBeenAttunedWith = 1008, // This Creature Has Already Been Attuned With Recently.
-        YouAlreadyHaveSomeMulchPrepared = 1009, // You Already Have Some Mulch Prepared. Use Your Current Mulch First.
-        YouDontKnowHowToGatherThis = 1010, // You Don't Know How To Gather This.
-        YouDontHaveAnyItemsOfThisType = 1011, // You Don't Have Any Items Of This Type.
-        YouDontHaveAnyRadiantRemnants = 1012, // You Don't Have Any Radiant Remnants.
-        TargetsRingIsAlreadyBoundToAnotherPlayer = 1013, // Your Target's Ring Is Already Bound To Another Player.
-        TargetIsNotWearingThisRing = 1014, // Your Target Is Not Also Wearing This Ring.
-        CanOnlyBeUsedOnSocketablePvpTwwItems = 1015, // Can Only Be Used On Socket Eligible Pvp Items From The War Within Expansion.
-        HarvestbotsAlreadyActive = 1016, // Harvestbots Already Active.
-        AirshipDauntlessIsAlreadyActive = 1017, // The Airship Dauntless Is Already Active.
-        CannotSwapSpellsOnCooldownInCombat = 1026, // You Cannot Swap Spells On Cooldown While In Combat.
-        MustEquipCloakOfInfinitePotential = 1027, // You Must First Equip The Cloak Of Infinite Potential.
-        InsufficientBronze = 1028, // You Have Insufficient Bronze To Make This Trade.
-        RequiresSkyriding = 1029, // Requires Skyriding
-        YouAlreadyOverloadedThisGatheringNode = 1030, // You Have Already Overloaded This Gathering Node.
-        YouDontKnowHowToOverloadThisNode = 1031, // You Do Not Know How To Overload This Gathering Node.
-        TimerunnersCannotTeleportOutOfPandaria = 1032, // Timerunners Cannot Teleport Outside Of Pandaria.
-        SpecializeFurtherForTheseNotes = 1033, // Specialize Further Or Improve Your Hasty Handwriting To Make Sense Of These Notes.
-        ThereIsNothingLeftToInvent = 1034, // There Is Nothing Left To Invent And You Cannot Be Convinced Otherwise.
-        PlayerInPartyDoesntHaveThisTierUnlocked = 1035, // A Player In Your Party Does Not Have This Tier Unlocked
-        YouDontHaveAnyRadiantEchoes = 1036, // You Don't Have Any Radiant Echoes.
-        RequiresTwwPathfinderUnlocked = 1037, // Requires The War Within Pathfinder Unlocked To Use In This Area.
-        CanOnlyBeUsedWhileInCombat = 1039, // Can Only Be Used While In Combat.
-        NotHighEnoughLevelToEnterADelve = 1040, // You Are Not High Enough Level To Enter A Delve.
-        WondrousWisdomballIsNonresponsive = 1041, // For Some Reason The Wondrous Wisdomball Is Nonresponsive.
-        YouAlreadyHaveThisCurioInYourCollection = 1042, // You Already Have This Curio In Your Collection.
-        AlreadyHaveIdentifiedPrototype = 1043, // You Must Choose What To Do With Your Current Prototype Before Identifying New Ones.
-        YouAlreadyUsedKhazAlgarContract = 1044, // You Have Already Used A Khaz Algar Contract This Week.
-        YouAlreadyRevealedAllTodayPactLocations = 1051, // You Have Revealed Or Completed All Of Today's Pact Locations.
-        TimerunnersCannotCastThisSpell = 1053, // Timerunners Cannot Cast This Spell.
-        ThisEmblemHasNoMagicStored = 2001, // The Emblem Has No Magic Stored.
-        YouMustBeInVisageForm = 2222, // You Must Be In Visage Form To Do This.
-        ATrialIsBeingUndergoneNearby = 2223, // A Trial Is Already Being Undergone Nearby.
-        YouCannotUseVantusRuneInStoryMode = 2224, // You Cannot Use A Vantus Rune In Story Mode.
-        TooCloseToAnotherMoltenRitual = 2424, // You Can't Begin A Molten Ritual This Close To Another One.
-        EarthenCannotConsumeRegularFoodOrDrink = 2425, // Earthen Cannot Consume Traditional Food Or Drink.
+        CompanionIsUnconscious = 837, // Companion Is Unconscious!
+        RequiresCompanion = 838, // Requires Companion.
+        YouAteTooManyDesserts = 840, // You Should Not Eat Too Many Desserts If You Wish To Be Invited To The Next Party.
+        OnlyUsableDuringLoveIsInTheAir = 841, // Only Usable During Love Is In The Air
+        NoSmellsNearby = 842, // No Smells Nearby!
+        YouAlreadyHaveAConjuredFlask = 845, // You Already Have A Conjured Flask.
+        YouAlreadyHaveSomeConjuredPotions = 846, // You Already Have Some Conjured Potions.
+        Requiresniffencavedivekeyandshielddisabled = 850, // Requires Niffen Cave Dive Key And Shield Disabled.
+        Elusivecreaturebaitwasrecentlyused = 851, // You Cannot Lure Anything In This Area For A Few Minutes. Elusive Creature Bait Was Recently Used.
+        Mustbeinquietplacewithincaerdarrow = 852, // Must Be In A Suitably Quiet Place Within Caer Darrow.
+        YouNeedShadowrootedGrippers = 853, // You Need Shadowrooted Grippers.
+        Youdonthaveanyglimmeroflightsactive = 856, // You Don't Have Any Glimmer Of Lights Active.
+        OnlyTheForsakenCanDisplayThisHonor = 857, // Only The Forsaken Can Display This Honor.
+        EnoughMoonkinHatchlingsAlreadyFollowYou = 858, // Enough Moonkin Hatchlings Already Follow You.
+        YouCanOnlyOpenThisChestInYourDreams = 859, // You Can Only Open This Chest In Your Dreams.
+        YouHaveNotProvenYourselfToThisSpirit = 860, // You Have Not Proven Yourself To This Spirit.
+        NotEnoughDelveEmpowerment = 861, // Not Enough Delve Empowerment.
+        ThisItemCannotBeUsedInTheCurrentSeason = 870, // This Item Cannot Be Used In The Current Season.
+        YouCannotEnterADelveWhileInARaidGroup = 871, // You Cannot Enter A Delve While In A Raid Group.
+        YourCompanionIsInCombat = 872, // Your Companion Is In Combat.
+        ThisDelveIsNotAvailableForTesting = 873, // This Delve Is Not Available For Testing. Check Back Later!
+        YouAreAlreadyAtFullVigor = 891, // You Are Already At Full Vigor
+        YouAlreadyHaveAtLeastOneConjuredFlask = 892, // You Already Have At Least One Conjured Flask.
+        ActiveFlasksCanOnlyBeChangedOutsOfCombat = 893, // Active Flasks Can Only Be Changed Outside Of Combat.
+        ThisCannotBeCraftedDuringEarlyAccess = 900, // This Cannot Be Crafted During Early Access.
+        Youdonthavetheswirlingmojostone = 999, // You Don't Have The Swirling Mojo Stone Equipped.
+        Youmustbenearadragonflightoathstone = 1000, // You Must Be Near One Of The Five Dragonflight Oathstones In The Dragon Isles.
+        Canonlyusethisitemwhileairborne = 1001, // You Can Only Use This Item While Airborne.
+        Thisplayerisnotoppositefaction = 1002, // This Player Is Not Of The Opposite Faction.
+        Thisplayeralreadyhasthismount = 1003, // This Player Already Has This Mount.
+        Yourtargetisinwarmode = 1004, // Your Target Is In War Mode.
+        Cooldownreset = 1005, // Cooldown Reset
+        Soilnutrientsmustreplenish = 1006, // The Nutrients Of This Soil Must Replenish Before Further Growth.
+        Targetalreadyhadsomefeathersplucked = 1007, // The Target Has Already Had Some Feathers Plucked. It Would Be Rude To Take More.
+        Thiscreaturehasalreadybeenattunedwith = 1008, // This Creature Has Already Been Attuned With Recently.
+        Youalreadyhavesomemulchprepared = 1009, // You Already Have Some Mulch Prepared. Use Your Current Mulch First.
+        Youdontknowhowtogatherthis = 1010, // You Don't Know How To Gather This.
+        Youdonthaveanyitemsofthistype = 1011, // You Don't Have Any Items Of This Type.
+        Youdonthaveanyradiantremnants = 1012, // You Don't Have Any Radiant Remnants.
+        Targetsringisalreadyboundtoanotherplayer = 1013, // Your Target's Ring Is Already Bound To Another Player.
+        Targetisnotwearingthisring = 1014, // Your Target Is Not Also Wearing This Ring.
+        Canonlybeusedonsocketablepvptwwitems = 1015, // Can Only Be Used On Socket Eligible Pvp Items From The War Within Expansion.
+        Harvestbotsalreadyactive = 1016, // Harvestbots Already Active.
+        Airshipdauntlessisalreadyactive = 1017, // The Airship Dauntless Is Already Active.
+        Cannotswapspellsoncooldownincombat = 1026, // You Cannot Swap Spells On Cooldown While In Combat.
+        Mustequipcloakofinfinitepotential = 1027, // You Must First Equip The Cloak Of Infinite Potential.
+        Insufficientbronze = 1028, // You Have Insufficient Bronze To Make This Trade.
+        Requiresskyriding = 1029, // Requires Skyriding
+        Youalreadyoverloadedthisgatheringnode = 1030, // You Have Already Overloaded This Gathering Node.
+        Youdontknowhowtooverloadthisnode = 1031, // You Do Not Know How To Overload This Gathering Node.
+        Timerunnerscannotteleportoutofpandaria = 1032, // Timerunners Cannot Teleport Outside Of Pandaria.
+        Specializefurtherforthesenotes = 1033, // Specialize Further Or Improve Your Hasty Handwriting To Make Sense Of These Notes.
+        Thereisnothinglefttoinvent = 1034, // There Is Nothing Left To Invent And You Cannot Be Convinced Otherwise.
+        Playerinpartydoesnthavethistierunlocked = 1035, // A Player In Your Party Does Not Have This Tier Unlocked
+        Youdonthaveanyradiantechoes = 1036, // You Don't Have Any Radiant Echoes.
+        Requirestwwpathfinderunlocked = 1037, // Requires The War Within Pathfinder Unlocked To Use In This Area.
+        YouDoNotOwnThatMount = 1038, // You Do Not Own That Mount.
+        Canonlybeusedwhileincombat = 1039, // Can Only Be Used While In Combat.
+        Nothighenoughleveltoenteradelve = 1040, // You Are Not High Enough Level To Enter A Delve.
+        Wondrouswisdomballisnonresponsive = 1041, // For Some Reason The Wondrous Wisdomball Is Nonresponsive.
+        Youalreadyhavethiscurioinyourcollection = 1042, // You Already Have This Curio In Your Collection.
+        Alreadyhaveidentifiedprototype = 1043, // You Must Choose What To Do With Your Current Prototype Before Identifying New Ones.
+        Youalreadyusedkhazalgarcontract = 1044, // You Have Already Used A Khaz Algar Contract This Week.
+        Locked = 1045, // Locked.
+        MarksmanshipHuntersCannotUseCallPet = 1050, // Marksmanship Hunters Cannot Use Call Pet.
+        Youalreadyrevealedalltodaypactlocations = 1051, // You Have Revealed Or Completed All Of Today's Pact Locations.
+        YouHaveNoBlacksteelCannonballs = 1052, // You Have No Blacksteel Cannonballs
+        Timerunnerscannotcastthisspell = 1053, // Timerunners Cannot Cast This Spell.
+        ThatCantBeUsedHere = 1054, // That Can't Be Used Here.
+        YouAreNotYetEligibleToUseThisItem = 1056, // You Are Not Yet Eligible To Use This Item.
+        RequiresShadowforgeTorch = 1057, // Lighting The Shadowforge Brazier Requires A Shadowforge Torch.
+        ThisShadowforgeBrazierIsAlreadyBurning = 1058, // This Shadowforge Brazier Is Already Burning.
+        FullBags = 1059, // Full Bags
+        YouMustBeARatToPassThroughHere = 1060, // You Must Be A Rat To Pass Through Here.
+        YourHandsAreFull = 1061, // Your Hands Are Full.
+        MustReachEmpoweredRestorationStone = 1064, // Must Reach Empowered Restoration Stone.
+        CantDoThisNow = 1066, // Can't Do This Now.
+        NoEligibleBountifulDelves = 1067, // No Eligible Bountiful Delves.
+        OnlyARogueCouldPickThisLock = 1068, // Only A Rogue Could Pick This Lock.
+        TheMegaMagnetMustBeChargedFirst = 1070, // The Mega Magnet Must Be Charged First!
+        MustTargetEligibleHeadChestOrLegSetItem = 1071, // Must Target An Eligible Head, Chest, Or Leg Class Set Item.
+        MustTargetEligibleShoulderOrHandSetItem = 1072, // Must Target An Eligible Shoulder Or Hand Class Set Item.
+        CannotMountWhileDisguised = 1074, // Cannot Mount While Disguised.
+        YourTargetIsProtectedByDarkfuseMedichopper = 1075, // Your Target Is Already Protected By A Darkfuse Medichopper.
+        Thisemblemhasnomagicstored = 2001, // The Emblem Has No Magic Stored.
+        Youmustbeinvisageform = 2222, // You Must Be In Visage Form To Do This.
+        Atrialisbeingundergonenearby = 2223, // A Trial Is Already Being Undergone Nearby.
+        Youcannotusevantusruneinstorymode = 2224, // You Cannot Use A Vantus Rune In Story Mode.
+        Tooclosetoanothermoltenritual = 2424, // You Can't Begin A Molten Ritual This Close To Another One.
+        Earthencannotconsumeregularfoodordrink = 2425, // Earthen Cannot Consume Traditional Food Or Drink.
+        BarrierProtectsTheAmplifierFromLosingPower = 2427, // A Barrier Protects The Amplifier From Losing Power.
     }
 
     public enum SpellMissInfo
@@ -1579,13 +1622,13 @@ namespace Framework.Constants
         None = 0x0,   //! Not Triggered
         IgnoreGCD = 0x01,   //! Will Ignore Gcd
         IgnoreSpellAndCategoryCD = 0x02,   //! Will Ignore Spell And Category Cooldowns
-        IgnorePowerAndReagentCost = 0x04,   //! Will Ignore Power And Reagent Cost
+        IgnorePowerCost = 0x04,   //! Will Ignore Power Cost
         IgnoreCastItem = 0x08,   //! Will Not Take Away Cast Item Or Update Related Achievement Criteria
         IgnoreAuraScaling = 0x10,   //! Will Ignore Aura Scaling
         IgnoreCastInProgress = 0x20,   //! Will Not Check If A Current Cast Is In Progress
         IgnoreCastTime = 0x40,   //! Will always be instantly cast
         CastDirectly = 0x80,   //! In Spell.Prepare, Will Be Cast Directly Without Setting Containers For Executed Spell
-        // reuse = 0x100,   //
+        IgnoreReagentCost = 0x04,   //! Will Ignore Reagent Cost
         IgnoreSetFacing = 0x200,   //! Will Not Adjust Facing To Target (If Any)
         IgnoreShapeshift = 0x400,   //! Will Ignore Shapeshift Checks
         // reuse = 0x800,   //
@@ -1597,6 +1640,7 @@ namespace Framework.Constants
         DontResetPeriodicTimer = 0x20000,   //! Will allow periodic aura timers to keep ticking (instead of resetting)
         DontReportCastError = 0x40000,   //! Will Return SpellFailedDontReport In Checkcast Functions
         FullMask = 0x0007FFFF, //! Used when doing CastSpell with triggered == true
+        IsTriggeredMask = FullMask & ~(IgnorePowerCost | IgnoreCastInProgress | IgnoreCastTime | IgnoreShapeshift | DontReportCastError), //!< Will be recognized by Spell::IsTriggered as triggered
 
         // debug flags (used with .cast triggered commands)
         IgnoreEquippedItemRequirement = 0x80000, //! Will ignore equipped item requirements
@@ -1639,7 +1683,7 @@ namespace Framework.Constants
         Unk8 = 0x80,
         Unk9 = 0x100,
         Unk10 = 0x200,
-        Unk11 = 0x400,
+        Unk11 = 0x400,           // sorts missed targets before hit targets for chain visual
         PowerLeftSelf = 0x800,
         Unk13 = 0x1000,
         Unk14 = 0x2000,
@@ -1907,7 +1951,7 @@ namespace Framework.Constants
         NotAnAttack = 0x04, /*Nyi*/ // Not An Attack
         CanAssistImmunePc = 0x08, // Can Assist Immune Pc
         IgnoreForModTimeRate = 0x10, /*Nyi, Time Rate Not Implemented*/ // Ignore For Mod Time Rate
-        DoNotConsumeResources = 0x20, // Do Not Consume Resources
+        DoNotConsumeResources = 0x20, // Do Not Consume Resources Requires power/reagents to cast but doesn't consume them
         FloatingCombatTextOnCast = 0x40, // Floating Combat Text On Cast (Client Only)
         AuraIsWeaponProc = 0x80, // Aura Is Weapon Proc
         DoNotChainToCrowdControlledTargets = 0x100, // Do Not Chain To Crowd-Controlled Targets Description Implicit Targeting (Chaining And Area Targeting) Will Not Impact Crowd Controlled Targets
@@ -1991,7 +2035,7 @@ namespace Framework.Constants
         OnlyTargetOwnSummons = 0x10000, // Only Target Own Summons
         HasteAffectsDuration = 0x20000, // Haste Affects Duration
         IgnoreSpellcastOverrideCost = 0x40000, // Ttile Ignore Spellcast Override Cost
-        AllowTargetsHiddenBySpawnTracking = 0x80000, /*Nyi - No Spawn Tracking Implementation*/ // Allow Targets Hidden By Spawn Tracking
+        AllowTargetsHiddenBySpawnTracking = 0x80000, // Allow Targets Hidden By Spawn Tracking
         RequiresEquippedInvTypes = 0x100000, // Requires Equipped Inv Types
         NoSummonDestFromClientTargetingPathingRequirement = 0x200000, /*Nyi - Vald Path To A Spell Dest Is Not Required Currently If The Dest Comes From Client*/ // No 'Summon + Dest From Client' Targeting Pathing Requirement
         MeleeHasteAffectsPeriodic = 0x400000, // Melee Haste Affects Periodic
@@ -2162,7 +2206,7 @@ namespace Framework.Constants
         Unk12 = 0x1000, // 12
         Unk13 = 0x2000, // 13
         Unk14 = 0x4000, // 14
-        Unk15 = 0x8000, // 15
+        DoNotFailIfNoTarget = 0x8000, // 15 Do Not Fail if No Target
         Unk16 = 0x10000, // 16
         Unk17 = 0x20000, // 17
         ActivatesRequiredShapeshift = 0x40000, // 18
@@ -2276,7 +2320,8 @@ namespace Framework.Constants
         SchoolmaskNormalWithMagic = 0x200000,
         DeprecatedLiquidAura = 0x400000,
         IsTalent = 0x800000,
-        AuraCannotBeSaved = 0x1000000
+        AuraCannotBeSaved = 0x1000000,
+        CanTargetAnyPrivateObject = 0x2000000,
     }
     #endregion
 
@@ -2575,7 +2620,7 @@ namespace Framework.Constants
         CraftItem = 288, // Miscvalue[0] = Craftingdataid
         ModifyAuraStacks = 289, // Miscvalue[0] = 0 Means Add, = 1 Means Set
         ModifyCooldown = 290,
-        ModifyCooldowns = 291, // Miscvalue[0] = Spellfamily, Miscvalue[1] = Maybe Bit Index For Family Flags? Off By 1 For The Only Spell Using This Effect
+        ModifyCooldowns = 291, // Miscvalue[0] = Spellfamily, Miscvalue[1] = bit index for family flags
         ModifyCooldownsByCategory = 292, // Miscvalue[0] = Category
         ModifyCharges = 293, // Miscvalue[0] = Charge Category
         CraftLoot = 294, // Miscvalue[0] = Craftingdataid
@@ -2600,7 +2645,7 @@ namespace Framework.Constants
         ChangeItemBonuses2 = 313, // MiscValue[0] = ItemBonusTreeID to preserve
         AddSocketBonus = 314, // MiscValue[0] = required ItemBonusTreeID
         LearnTransmogAppearanceFromItemModAppearanceGroup = 315, // MiscValue[0] = ItemModAppearanceGroupID (not in db2)
-        KillCreditLbael1 = 316,
+        KillCreditLabel1 = 316,
         KillCreditLabel2 = 317,
         Unk318 = 318,
         Unk319 = 319,
@@ -2618,6 +2663,18 @@ namespace Framework.Constants
         Unk331 = 331,
         Unk332 = 332,
         Unk333 = 333,
+        Unk334 = 334,
+        SetPlayerDataElementAccount = 335, // MiscValue[0] = PlayerDataElementAccount
+        SetPlayerDataElementCharacter = 336, // MiscValue[0] = PlayerDataElementCharacter
+        SetPlayerDataFlagAccount = 337, // MiscValue[0] = PlayerDataFlagAccount
+        SetPlayerDataFlagCharacter = 338, // MiscValue[0] = PlayerDataFlagCharacter
+        UiAction = 339,
+        Unk340 = 340,
+        LearnWarbanScene = 341,
+        Unk342 = 342,
+        Unk343 = 343,
+        Unk344 = 344, // some kind of teleport
+        AssistAction = 345, // MiscValue[0] = AssistActionType, MiscValue[1] = ID, depends on type
 
         TotalSpellEffects
     }
@@ -2908,7 +2965,7 @@ namespace Framework.Constants
         UnitPassenger7 = 103,
         UnitConeCasterToDestEnemy = 104,
         UnitCasterAndPassengers = 105,
-        DestChannelCaster = 106,
+        DestNearbyDb = 106,
         DestNearbyEntry2 = 107,
         GameobjectConeCasterToDestEnemy = 108,
         GameobjectConeCasterToDestAlly = 109,

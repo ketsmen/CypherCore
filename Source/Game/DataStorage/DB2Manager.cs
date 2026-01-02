@@ -37,8 +37,10 @@ namespace Game.DataStorage
             }
         }
 
-        public void LoadStores()
+        public void IndexLoadedStores()
         {
+            uint oldMSTime = Time.GetMSTime();
+
             foreach (var areaGroupMember in AreaGroupMemberStorage.Values)
                 _areaGroupMembers.Add(areaGroupMember.AreaGroupID, areaGroupMember.AreaID);
 
@@ -255,6 +257,9 @@ namespace Game.DataStorage
             foreach (ContentTuningXLabelRecord contentTuningXLabel in ContentTuningXLabelStorage.Values)
                 _contentTuningLabels.Add((contentTuningXLabel.ContentTuningID, contentTuningXLabel.LabelID));
 
+            foreach (var (_, creatureLabel) in CreatureLabelStorage)
+                _creatureLabels.Add(creatureLabel.CreatureDifficultyID, creatureLabel.LabelID);
+
             foreach (CurrencyContainerRecord currencyContainer in CurrencyContainerStorage.Values)
                 _currencyContainers.Add(currencyContainer.CurrencyTypesID, currencyContainer);
 
@@ -270,7 +275,6 @@ namespace Game.DataStorage
                 _curvePoints.AddRange(curveId, curvePoints.Select(p => p.Pos));
             }
 
-
             foreach (EmotesTextSoundRecord emoteTextSound in EmotesTextSoundStorage.Values)
                 _emoteTextSounds[Tuple.Create(emoteTextSound.EmotesTextId, emoteTextSound.RaceId, emoteTextSound.SexId, emoteTextSound.ClassId)] = emoteTextSound;
 
@@ -282,7 +286,7 @@ namespace Game.DataStorage
                     _factionTeams.Add(faction.ParentFactionID, faction.Id);
 
             foreach (FriendshipRepReactionRecord friendshipRepReaction in FriendshipRepReactionStorage.Values)
-                _friendshipRepReactions.Add((uint)friendshipRepReaction.FriendshipRepID, friendshipRepReaction);
+                _friendshipRepReactions.Add(friendshipRepReaction.FriendshipRepID, friendshipRepReaction);
 
             foreach (var key in _friendshipRepReactions.Keys)
                 _friendshipRepReactions[key].Sort(new FriendshipRepReactionRecordComparer());
@@ -296,6 +300,9 @@ namespace Game.DataStorage
                 if (gameObjectDisplayInfo.GeoBoxMax.Z < gameObjectDisplayInfo.GeoBoxMin.Z)
                     Extensions.Swap(ref gameObjectDisplayInfo.GeoBox[5], ref gameObjectDisplayInfo.GeoBox[2]);
             }
+
+            foreach (var (_, gameobjectLabel) in GameObjectLabelStorage)
+                _gameobjectLabels.Add(gameobjectLabel.GameObjectID, gameobjectLabel.LabelID);
 
             foreach (HeirloomRecord heirloom in HeirloomStorage.Values)
                 _heirlooms[heirloom.ItemID] = heirloom;
@@ -556,6 +563,24 @@ namespace Game.DataStorage
                 _talentsByPosition[talentInfo.ClassID][talentInfo.TierID][talentInfo.ColumnIndex].Add(talentInfo);
             }
 
+            foreach (var entry in TaxiPathStorage.Values)
+                _taxiPaths[(entry.FromTaxiNode, entry.ToTaxiNode)] = entry;
+
+            uint pathCount = TaxiPathStorage.GetNumRows();
+
+            // Calculate path nodes count
+            uint[] pathLength = new uint[pathCount];                           // 0 and some other indexes not used
+            foreach (TaxiPathNodeRecord entry in TaxiPathNodeStorage.Values)
+                pathLength[entry.PathID] = (uint)Math.Max(pathLength[entry.PathID], entry.NodeIndex + 1u);
+
+            // Set path length
+            for (uint i = 0; i < pathCount; ++i)
+                TaxiPathNodesByPath[i] = new TaxiPathNodeRecord[pathLength[i]];
+
+            // fill data
+            foreach (var entry in TaxiPathNodeStorage.Values)
+                TaxiPathNodesByPath[entry.PathID][entry.NodeIndex] = entry;
+
             foreach (ToyRecord toy in ToyStorage.Values)
                 _toys.Add(toy.ItemID);
 
@@ -680,8 +705,39 @@ namespace Game.DataStorage
             foreach (WMOAreaTableRecord entry in WMOAreaTableStorage.Values)
                 _wmoAreaTableLookup[Tuple.Create((short)entry.WmoID, (sbyte)entry.NameSetID, entry.WmoGroupID)] = entry;
 
+            var taxiMaskSize = ((TaxiNodesStorage.GetNumRows() - 1) / (1 * 64) + 1) * 8;
+            TaxiNodesMask = new byte[taxiMaskSize];
+            OldContinentsNodesMask = new byte[taxiMaskSize];
+            HordeTaxiNodesMask = new byte[taxiMaskSize];
+            AllianceTaxiNodesMask = new byte[taxiMaskSize];
+
+            foreach (var node in TaxiNodesStorage.Values)
+            {
+                if (!node.IsPartOfTaxiNetwork())
+                    continue;
+
+                // valid taxi network node
+                uint field = (node.Id - 1) / 8;
+                byte submask = (byte)(1 << (int)((node.Id - 1) % 8));
+
+                TaxiNodesMask[field] |= submask;
+                if (node.HasFlag(TaxiNodeFlags.ShowOnHordeMap))
+                    HordeTaxiNodesMask[field] |= submask;
+                if (node.HasFlag(TaxiNodeFlags.ShowOnAllianceMap))
+                    AllianceTaxiNodesMask[field] |= submask;
+
+                uint uiMapId;
+                if (!Global.DB2Mgr.GetUiMapPosition(node.Pos.X, node.Pos.Y, node.Pos.Z, node.ContinentID, 0, 0, 0, UiMapSystem.Adventure, false, out uiMapId))
+                    Global.DB2Mgr.GetUiMapPosition(node.Pos.X, node.Pos.Y, node.Pos.Z, node.ContinentID, 0, 0, 0, UiMapSystem.Taxi, false, out uiMapId);
+
+                if (uiMapId == 985 || uiMapId == 986)
+                    OldContinentsNodesMask[field] |= submask;
+            }
+
             foreach (PvpStatRecord pvpStat in PvpStatStorage.Values)
                 _pvpStatIdsByMap.Add(pvpStat.MapID, pvpStat.Id);
+
+            Log.outInfo(LogFilter.ServerLoading, $"Indexed DB2 data stores in {Time.GetMSTimeDiffToNow(oldMSTime)} ms");
         }
 
         public IDB2Storage GetStorage(uint type)
@@ -744,6 +800,7 @@ namespace Game.DataStorage
                 push.Records.Add(hotfixRecord);
                 push.AvailableLocalesMask |= hotfixRecord.AvailableLocalesMask;
 
+                _maxHotfixId = Math.Max(_maxHotfixId, id);
                 deletedRecords[(tableHash, recordId)] = status == HotfixRecord.Status.RecordRemoved;
 
                 ++count;
@@ -901,6 +958,20 @@ namespace Game.DataStorage
         public uint GetEmptyAnimStateID()
         {
             return AnimationDataStorage.GetNumRows();
+        }
+
+        public void InsertNewHotfix(uint tableHash, uint recordId)
+        {
+            HotfixRecord hotfixRecord = new();
+            hotfixRecord.TableHash = tableHash;
+            hotfixRecord.RecordID = (int)recordId;
+            hotfixRecord.ID.PushID = (int)++_maxHotfixId;
+            hotfixRecord.ID.UniqueID = RandomHelper.Rand32();
+            hotfixRecord.AvailableLocalesMask = 0xDFF;
+
+            HotfixPush push = _hotfixData[hotfixRecord.ID.PushID];
+            push.Records.Add(hotfixRecord);
+            push.AvailableLocalesMask |= hotfixRecord.AvailableLocalesMask;
         }
 
         public List<uint> GetAreasForGroup(uint areaGroupId)
@@ -1173,6 +1244,11 @@ namespace Game.DataStorage
                 return "";
 
             return petFamily.Name[locale][0] != '\0' ? petFamily.Name[locale] : "";
+        }
+
+        public List<int> GetCreatureLabels(int creatureDifficultyId)
+        {
+            return _creatureLabels.LookupByKey(creatureDifficultyId);
         }
 
         public CurrencyContainerRecord GetCurrencyContainerForCurrencyQuantity(uint currencyId, int quantity)
@@ -1511,6 +1587,11 @@ namespace Game.DataStorage
             return _friendshipRepReactions.LookupByKey(friendshipRepID);
         }
 
+        public List<int> GetGameObjectLabels(uint gameobjectId)
+        {
+            return _gameobjectLabels.LookupByKey(gameobjectId);
+        }
+
         public uint GetGlobalCurveId(GlobalCurve globalCurveType)
         {
             foreach (var globalCurveEntry in GlobalCurveStorage.Values)
@@ -1761,7 +1842,7 @@ namespace Game.DataStorage
             {
                 return playerClass switch
                 {
-                    Class.Deathknight => numTalentsAtLevel.NumTalentsDeathKnight,
+                    Class.DeathKnight => numTalentsAtLevel.NumTalentsDeathKnight,
                     Class.DemonHunter => numTalentsAtLevel.NumTalentsDemonHunter,
                     _ => numTalentsAtLevel.NumTalents,
                 };
@@ -1816,7 +1897,7 @@ namespace Game.DataStorage
             {
                 switch (class_)
                 {
-                    case Class.Deathknight:
+                    case Class.DeathKnight:
                         return _pvpTalentSlotUnlock[slot].DeathKnightLevelRequired;
                     case Class.DemonHunter:
                         return _pvpTalentSlotUnlock[slot].DemonHunterLevelRequired;
@@ -1862,7 +1943,7 @@ namespace Game.DataStorage
             if (v2 == null)
                 return 0;
 
-            return v2.UniqueBitFlag;
+            return (uint)v2.UniqueBitFlag;
         }
 
         public List<uint> GetPhasesForGroup(uint group)
@@ -1979,6 +2060,11 @@ namespace Game.DataStorage
         public List<TalentRecord> GetTalentsByPosition(Class class_, uint tier, uint column)
         {
             return _talentsByPosition[(int)class_][tier][column];
+        }
+
+        public TaxiPathRecord GetTaxiPath(uint from, uint to)
+        {
+            return _taxiPaths.LookupByKey((from, to));
         }
 
         public bool IsTotemCategoryCompatibleWith(uint itemTotemCategoryId, uint requiredTotemCategoryId, bool requireAllTotems = true)
@@ -2341,14 +2427,16 @@ namespace Game.DataStorage
         Dictionary<int, ConditionalChrModelRecord> _conditionalChrModelsByChrModelId = new();
         Dictionary<uint, List<ConditionalContentTuningRecord>> _conditionalContentTuning = new();
         List<(uint, int)> _contentTuningLabels = new();
+        MultiMap<uint, int> _creatureLabels = new();
         MultiMap<uint, CurrencyContainerRecord> _currencyContainers = new();
         MultiMap<uint, Vector2> _curvePoints = new();
-        Dictionary<Tuple<uint, byte, byte, byte>, EmotesTextSoundRecord> _emoteTextSounds = new();
+        Dictionary<Tuple<uint, sbyte, sbyte, sbyte>, EmotesTextSoundRecord> _emoteTextSounds = new();
         Dictionary<Tuple<uint, int>, ExpectedStatRecord> _expectedStatsByLevel = new();
         MultiMap<uint, ContentTuningXExpectedRecord> _expectedStatModsByContentTuning = new();
         MultiMap<uint, uint> _factionTeams = new();
         MultiMap<uint, FriendshipRepReactionRecord> _friendshipRepReactions = new();
         Dictionary<uint, HeirloomRecord> _heirlooms = new();
+        MultiMap<uint, int> _gameobjectLabels = new();
         MultiMap<uint, uint> _glyphBindableSpells = new();
         MultiMap<uint, ChrSpecialization> _glyphRequiredSpecs = new();
         Dictionary<uint, ItemChildEquipmentRecord> _itemChildEquipment = new();
@@ -2364,7 +2452,7 @@ namespace Game.DataStorage
         Dictionary<uint, MountRecord> _mountsBySpellId = new();
         MultiMap<uint, MountTypeXCapabilityRecord> _mountCapabilitiesByType = new();
         MultiMap<uint, MountXDisplayRecord> _mountDisplays = new();
-        Dictionary<uint, List<NameGenRecord>[]> _nameGenData = new();
+        Dictionary<sbyte, List<NameGenRecord>[]> _nameGenData = new();
         List<string>[] _nameValidators = new List<string>[(int)Locale.Total + 1];
         Dictionary<uint, ParagonReputationRecord> _paragonReputations = new();
         Dictionary<uint, PathDb2> _paths = new();
@@ -2386,6 +2474,7 @@ namespace Game.DataStorage
         MultiMap<uint, SpellProcsPerMinuteModRecord> _spellProcsPerMinuteMods = new();
         MultiMap<uint, SpellVisualMissileRecord> _spellVisualMissilesBySet = new();
         List<TalentRecord>[][][] _talentsByPosition = new List<TalentRecord>[(int)Class.Max][][];
+        Dictionary<(uint, uint), TaxiPathRecord> _taxiPaths = new();
         List<uint> _toys = new();
         Dictionary<uint, TransmogIllusionRecord> _transmogIllusionsByEnchantmentId = new();
         MultiMap<uint, TransmogSetRecord> _transmogSetsByItemModifiedAppearance = new();
@@ -2398,6 +2487,14 @@ namespace Game.DataStorage
         List<int> _uiMapPhases = new();
         Dictionary<Tuple<short, sbyte, int>, WMOAreaTableRecord> _wmoAreaTableLookup = new();
         MultiMap<uint, uint> _pvpStatIdsByMap = new();
+
+        public static byte[] TaxiNodesMask;
+        public static byte[] OldContinentsNodesMask;
+        public static byte[] HordeTaxiNodesMask;
+        public static byte[] AllianceTaxiNodesMask;
+        public static Dictionary<uint, TaxiPathNodeRecord[]> TaxiPathNodesByPath = new();
+
+        int _maxHotfixId;
     }
 
     class UiMapBounds

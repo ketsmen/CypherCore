@@ -42,7 +42,7 @@ namespace Game.Entities
             // Set or remove correct flags based on available seats. Will overwrite db data (if wrong).
             if (UsableSeatNum != 0)
                 _me.SetNpcFlag(_me.IsTypeId(TypeId.Player) ? NPCFlags.PlayerVehicle : NPCFlags.SpellClick);
-            else if(unit.m_unitData.InteractSpellID == 0)
+            else if (unit.m_unitData.InteractSpellID == 0)
                 _me.RemoveNpcFlag(_me.IsTypeId(TypeId.Player) ? NPCFlags.PlayerVehicle : NPCFlags.SpellClick);
 
             InitMovementInfoForBase();
@@ -74,7 +74,7 @@ namespace Game.Entities
 
             foreach (var acc in accessories)
                 if (!evading || acc.IsMinion)  // only install minions on evade mode
-                    InstallAccessory(acc.AccessoryEntry, acc.SeatId, acc.IsMinion, acc.SummonedType, acc.SummonTime);
+                    InstallAccessory(acc.AccessoryEntry, acc.SeatId, acc.IsMinion, acc.SummonedType, acc.SummonTime, acc.RideSpellID);
         }
 
         public void Uninstall()
@@ -260,11 +260,11 @@ namespace Game.Entities
 
             return null;
         }
-        
-        void InstallAccessory(uint entry, sbyte seatId, bool minion, byte type, uint summonTime)
+
+        void InstallAccessory(uint entry, sbyte seatId, bool minion, byte type, uint summonTime, uint? rideSpellId = null)
         {
             // @Prevent adding accessories when vehicle is uninstalling. (Bad script in OnUninstall/OnRemovePassenger/PassengerBoarded hook.)
-            
+
             if (_status == Status.UnInstalling)
             {
                 Log.outError(LogFilter.Vehicle, "Vehicle ({0}, Entry: {1}) attempts to install accessory (Entry: {2}) on seat {3} with STATUS_UNINSTALLING! " +
@@ -280,7 +280,10 @@ namespace Game.Entities
             if (minion)
                 accessory.AddUnitTypeMask(UnitTypeMask.Accessory);
 
-            _me.HandleSpellClick(accessory, seatId);
+            if (rideSpellId.HasValue)
+                _me.HandleSpellClick(accessory, seatId, rideSpellId.Value);
+            else
+                _me.HandleSpellClick(accessory, seatId);
 
             // If for some reason adding accessory to vehicle fails it will unsummon in
             // @VehicleJoinEvent.Abort
@@ -362,7 +365,7 @@ namespace Game.Entities
             var seat = GetSeatKeyValuePairForPassenger(unit);
             Cypher.Assert(seat.Value != null);
 
-            Log.outDebug( LogFilter.Vehicle, "Unit {0} exit vehicle entry {1} id {2} dbguid {3} seat {4}",
+            Log.outDebug(LogFilter.Vehicle, "Unit {0} exit vehicle entry {1} id {2} dbguid {3} seat {4}",
                 unit.GetName(), _me.GetEntry(), _vehicleInfo.Id, _me.GetGUID().ToString(), seat.Key);
 
             if (seat.Value.SeatInfo.CanEnterOrExit() && ++UsableSeatNum != 0)
@@ -386,13 +389,17 @@ namespace Game.Entities
 
             // only for flyable vehicles
             if (unit.IsFlying())
-                _me.CastSpell(unit, SharedConst.VehicleSpellParachute, true);
+            {
+                VehicleTemplate vehicleTemplate = Global.ObjectMgr.GetVehicleTemplate(this);
+                if (vehicleTemplate == null || !vehicleTemplate.CustomFlags.HasFlag(VehicleCustomFlags.DontForceParachuteOnExit))
+                    _me.CastSpell(unit, SharedConst.VehicleSpellParachute, true);
+            }
 
             if (_me.IsTypeId(TypeId.Unit) && _me.ToCreature().IsAIEnabled())
                 _me.ToCreature().GetAI().PassengerBoarded(unit, seat.Key, false);
 
             if (GetBase().IsTypeId(TypeId.Unit))
-               Global.ScriptMgr.OnRemovePassenger(this, unit);
+                Global.ScriptMgr.OnRemovePassenger(this, unit);
 
             unit.SetVehicle(null);
             return this;
@@ -441,7 +448,7 @@ namespace Game.Entities
 
             return false;
         }
-        
+
         void InitMovementInfoForBase()
         {
             VehicleFlags vehicleFlags = (VehicleFlags)GetVehicleInfo().Flags;
@@ -456,6 +463,8 @@ namespace Game.Entities
                 _me.AddUnitMovementFlag2(MovementFlag2.AlwaysAllowPitching);
             if (vehicleFlags.HasAnyFlag(VehicleFlags.Fullspeedpitching))
                 _me.AddUnitMovementFlag2(MovementFlag2.FullSpeedPitching);
+
+            _me.m_movementInfo.Pitch = GetPitch();
         }
 
         public VehicleSeatRecord GetSeatForPassenger(Unit passenger)
@@ -491,11 +500,11 @@ namespace Game.Entities
         public float GetTransportOrientation() { return GetBase().GetOrientation(); }
 
         public void AddPassenger(WorldObject passenger) { Log.outFatal(LogFilter.Vehicle, "Vehicle cannot directly gain passengers without auras"); }
-        
+
         public void CalculatePassengerPosition(ref float x, ref float y, ref float z, ref float o)
         {
-            ITransport.CalculatePassengerPosition(ref x, ref y, ref z, ref o, 
-                GetBase().GetPositionX(), GetBase().GetPositionY(), 
+            ITransport.CalculatePassengerPosition(ref x, ref y, ref z, ref o,
+                GetBase().GetPositionX(), GetBase().GetPositionY(),
                 GetBase().GetPositionZ(), GetBase().GetOrientation());
         }
 
@@ -507,7 +516,7 @@ namespace Game.Entities
         }
 
         public int GetMapIdForSpawning() { return (int)GetBase().GetMapId(); }
-        
+
         public void RemovePendingEvent(VehicleJoinEvent e)
         {
             foreach (var Event in _pendingJoinEvents)
@@ -535,7 +544,7 @@ namespace Game.Entities
 
         public void RemovePendingEventsForPassenger(Unit passenger)
         {
-            for (var i = 0; i< _pendingJoinEvents.Count; ++i)
+            for (var i = 0; i < _pendingJoinEvents.Count; ++i)
             {
                 var joinEvent = _pendingJoinEvents[i];
                 if (joinEvent.Passenger == passenger)
@@ -556,7 +565,7 @@ namespace Game.Entities
             }
             return false;
         }
-        
+
         public TimeSpan GetDespawnDelay()
         {
             VehicleTemplate vehicleTemplate = Global.ObjectMgr.GetVehicleTemplate(this);
@@ -564,6 +573,15 @@ namespace Game.Entities
                 return vehicleTemplate.DespawnDelay;
 
             return TimeSpan.FromMilliseconds(1);
+        }
+
+        float GetPitch()
+        {
+            VehicleTemplate vehicleTemplate = Global.ObjectMgr.GetVehicleTemplate(this);
+            if (vehicleTemplate != null && vehicleTemplate.Pitch.HasValue)
+                return vehicleTemplate.Pitch.Value;
+
+            return Math.Clamp(0.0f, _vehicleInfo.PitchMin, _vehicleInfo.PitchMax);
         }
 
         public string GetDebugInfo()
@@ -797,24 +815,34 @@ namespace Game.Entities
 
     public struct VehicleAccessory
     {
-        public VehicleAccessory(uint entry, sbyte seatId, bool isMinion, byte summonType, uint summonTime)
+        public VehicleAccessory(uint entry, sbyte seatId, bool isMinion, byte summonType, uint summonTime, uint? rideSpellID)
         {
             AccessoryEntry = entry;
             IsMinion = isMinion;
             SummonTime = summonTime;
             SeatId = seatId;
             SummonedType = summonType;
+            RideSpellID = rideSpellID;
         }
         public uint AccessoryEntry;
         public bool IsMinion;
         public uint SummonTime;
         public sbyte SeatId;
         public byte SummonedType;
+        public uint? RideSpellID;
+    }
+
+    public enum VehicleCustomFlags
+    {
+        None = 0x0,
+        DontForceParachuteOnExit = 0x1
     }
 
     public class VehicleTemplate
     {
         public TimeSpan DespawnDelay;
+        public float? Pitch;
+        public VehicleCustomFlags CustomFlags;
     }
 
     public class VehicleSeatAddon

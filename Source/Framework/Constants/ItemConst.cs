@@ -47,7 +47,7 @@ namespace Framework.Constants
             SocketColor.Blue,
             SocketColor.Hydraulic,
             SocketColor.Cogwheel,
-            SocketColor.Prismatic,
+            SocketColor.Red | SocketColor.Yellow | SocketColor.Blue,
             SocketColor.RelicIron,
             SocketColor.RelicBlood,
             SocketColor.RelicShadow,
@@ -62,10 +62,15 @@ namespace Framework.Constants
             SocketColor.PunchcardRed,
             SocketColor.PunchcardYellow,
             SocketColor.PunchcardBlue,
-            SocketColor.Domination,
+            SocketColor.DominationBlood | SocketColor.DominationFrost | SocketColor.DominationUnholy,
             SocketColor.Cypher,
             SocketColor.Tinker,
-            SocketColor.Primordial
+            SocketColor.Primordial,
+            SocketColor.Fragrance,
+            SocketColor.SingingThunder,
+            SocketColor.SingingSea,
+            SocketColor.SingingWind,
+            SocketColor.Fiber
         };
 
         public static ItemModifier[] AppearanceModifierSlotBySpec =
@@ -140,20 +145,17 @@ namespace Framework.Constants
         public const byte ItemStart = 35;
         public const byte ItemEnd = 63;
 
-        public const byte BankItemStart = 63;
-        public const byte BankItemEnd = 91;
+        public const byte BankBagStart = 63;
+        public const byte BankBagEnd = 69;
 
-        public const byte BankBagStart = 91;
-        public const byte BankBagEnd = 98;
+        public const byte BuyBackStart = 69;
+        public const byte BuyBackEnd = 81;
 
-        public const byte BuyBackStart = 98;
-        public const byte BuyBackEnd = 110;
+        public const byte ChildEquipmentStart = 81;
+        public const byte ChildEquipmentEnd = 84;
 
-        public const byte ReagentStart = 110;
-        public const byte ReagentEnd = 208;
-
-        public const byte ChildEquipmentStart = 208;
-        public const byte ChildEquipmentEnd = 211;
+        public const byte AccountBankBagStart = 100;
+        public const byte AccountBankBagEnd = 105;
 
         public const byte Bag0 = 255;
         public const byte DefaultSize = 16;
@@ -161,22 +163,22 @@ namespace Framework.Constants
 
     enum EquipableSpellSlots
     {
-        OffensiveSlot1 = 211,
-        OffensiveSlot2 = 212,
-        OffensiveSlot3 = 213,
-        OffensiveSlot4 = 214,
-        UtilitySlot1 = 215,
-        UtilitySlot2 = 216,
-        UtilitySlot3 = 217,
-        UtilitySlot4 = 218,
-        DefensiveSlot1 = 219,
-        DefensiveSlot2 = 220,
-        DefensiveSlot3 = 221,
-        DefensiveSlot4 = 222,
-        WeaponSlot1 = 223,
-        WeaponSlot2 = 224,
-        WeaponSlot3 = 225,
-        WeaponSlot4 = 226,
+        OffensiveSlot1 = 84,
+        OffensiveSlot2 = 85,
+        OffensiveSlot3 = 86,
+        OffensiveSlot4 = 87,
+        UtilitySlot1 = 88,
+        UtilitySlot2 = 89,
+        UtilitySlot3 = 90,
+        UtilitySlot4 = 91,
+        DefensiveSlot1 = 92,
+        DefensiveSlot2 = 93,
+        DefensiveSlot3 = 94,
+        DefensiveSlot4 = 95,
+        WeaponSlot1 = 96,
+        WeaponSlot2 = 97,
+        WeaponSlot3 = 98,
+        WeaponSlot4 = 99,
     }
 
     public struct EquipmentSlot
@@ -206,31 +208,37 @@ namespace Framework.Constants
 
     public enum SocketColor
     {
-        Meta = 0x00001,
-        Red = 0x00002,
-        Yellow = 0x00004,
-        Blue = 0x00008,
-        Hydraulic = 0x00010, // Not Used
-        Cogwheel = 0x00020,
-        Prismatic = 0x0000e,
-        RelicIron = 0x00040,
-        RelicBlood = 0x00080,
-        RelicShadow = 0x00100,
-        RelicFel = 0x00200,
-        RelicArcane = 0x00400,
-        RelicFrost = 0x00800,
-        RelicFire = 0x01000,
-        RelicWater = 0x02000,
-        RelicLife = 0x04000,
-        RelicWind = 0x08000,
-        RelicHoly = 0x10000,
-        PunchcardRed = 0x20000,
-        PunchcardYellow = 0x40000,
-        PunchcardBlue = 0x80000,
-        Domination = 0x100000,
-        Cypher = 0x200000,
-        Tinker = 0x400000,
-        Primordial = 0x800000,
+        Meta = 0X01,
+        Red = 0X02,
+        Yellow = 0X04,
+        Blue = 0X08,
+        Hydraulic = 0X10,
+        Cogwheel = 0X20,
+        RelicIron = 0X40,
+        RelicBlood = 0X80,
+        RelicShadow = 0X100,
+        RelicFel = 0X200,
+        RelicArcane = 0X400,
+        RelicFrost = 0X800,
+        RelicFire = 0X1000,
+        RelicWater = 0X2000,
+        RelicLife = 0X4000,
+        RelicWind = 0X8000,
+        RelicHoly = 0X10000,
+        PunchcardRed = 0X20000,
+        PunchcardYellow = 0X40000,
+        PunchcardBlue = 0X80000,
+        DominationBlood = 0X100000,
+        DominationFrost = 0X200000,
+        DominationUnholy = 0X400000,
+        Cypher = 0X800000,
+        Tinker = 0x01000000,
+        Primordial = 0x02000000,
+        Fragrance = 0x04000000,
+        SingingThunder = 0x08000000,
+        SingingSea = 0x10000000,
+        SingingWind = 0x20000000,
+        Fiber = 0x40000000,
 
         Standard = (Red | Yellow | Blue)
     }
@@ -419,6 +427,8 @@ namespace Framework.Constants
         CraftingReagentSlot13 = 56,
         CraftingReagentSlot14 = 57,
         Reforge = 58,
+        DbIdHigh = 59,
+        DbIdLow = 60,
 
         Max
     }
@@ -450,12 +460,42 @@ namespace Framework.Constants
         ItemEffectId = 23,
         ModifiedCraftingStat = 25,
         RequiredLevelCurve = 27,
+        IconFileDataID = 28,
         DescriptionText = 30,             // Item Description
         OverrideName = 31,             // Itemnamedescription Id
+        UpgradeSequenceValue = 33,
         ItemBonusListGroup = 34,
         ItemLimitCategory = 35,
+        PvpItemLevelIncrement = 36,
         ItemConversion = 37,
         ItemHistorySlot = 38,
+        OverrideCanSalvage = 39,
+        OverrideCanRecraft = 41,
+        ItemLevelBase = 42,
+        PvpItemLevelBase = 43,
+        CosmeticStat = 44,
+        OverrideDescriptionColor = 45,             // Overrides color of item description and upgrade track if TimeEvent from value[1] has passed
+        OverrideCannotTradeBop = 46,
+        BondingWithPriority = 47,
+        ItemOffsetCurve = 48,
+        ScalingConfigAndReqLevel = 49,
+        ScalingConfig = 51,
+    }
+
+    public enum ItemCollectionType : byte
+    {
+        None = 0,
+        Toy = 1,
+        Heirloom = 2,
+        Transmog = 3,
+        TransmogSetFavorite = 4,
+        RuneforgeLegendaryAbility = 5,
+        TransmogIllusion = 6,
+        WarbandScene = 7,
+        Room = 8,
+        ExteriorFixture = 9,
+        RoomTheme = 10,
+        RoomMaterial = 11
     }
 
     public enum ItemContext : byte
@@ -625,6 +665,27 @@ namespace Framework.Constants
         TournamentRealm2 = 162,
         TournamentRealm3 = 163,
         TournamentRealm4 = 164,
+        Warbound1 = 165,
+        Warbound2 = 166,
+        Warbound3 = 167,
+        Warbound4 = 168,
+        Warbound5 = 169,
+        Warbound6 = 170,
+        Warbound7 = 171,
+        Warbound8 = 172,
+        Warbound9 = 173,
+        Warbound10 = 174,
+        Warbound11 = 175,
+        Warbound12 = 176,
+        Warbound13 = 177,
+        Warbound14 = 178,
+        Warbound15 = 179,
+        Warbound16 = 180,
+        Warbound17 = 181,
+        Warbound18 = 182,
+        Warbound19 = 183,
+        Warbound20 = 184,
+        Endeavors = 185,
 
         Max
     }
@@ -738,7 +799,7 @@ namespace Framework.Constants
         BnetAccountUntilEquipped = 9,
     }
 
-    public enum ItemClass : sbyte
+    public enum ItemClass : int
     {
         None = -1,
         Consumable = 0,
@@ -776,6 +837,9 @@ namespace Framework.Constants
         Bandage = 7,
         ConsumableOther = 8,
         VantusRune = 9,
+        UtilityCurio = 10,
+        CombatCurio = 11,
+
         Max
     }
 
@@ -1067,10 +1131,10 @@ namespace Framework.Constants
         Unk8 = 0x2000, // ?
         Unk9 = 0x4000, // ?
         Unk10 = 0x8000, // ?
-        Unk11 = 0x00010000, // ?
-        Unk12 = 0x00020000, // ?
-        Unk13 = 0x00040000, // ?
-        Child = 0x00080000,
+        Unk11 = 0X0010000, // ?
+        Unk12 = 0X0020000, // ?
+        Unk13 = 0X0040000, // ?
+        Child = 0X0080000,
         Unk15 = 0x00100000, // ?
         NewItem = 0x00200000, // Item glows in inventory
         AzeriteEmpoweredItemViewed = 0x00400000, // Won't play azerite powers animation when viewing it
@@ -1085,7 +1149,7 @@ namespace Framework.Constants
         Unk26 = 0x80000000 // ?
     }
 
-    public enum ItemFieldFlags2
+    public enum ItemZoneFlags
     {
         Equipped = 0x1
     }
@@ -1372,6 +1436,9 @@ namespace Framework.Constants
         CantDeleteInAccountBank = 127,// Items Must Be Moved Out Of The Warband Bank To Be Deleted.
         BankNotAccessible = 128,// This Character Does Not Have Access To This Bank.
         CantTradeAccountItem = 129,// You Can't Trade An Item From The Warband Bank.
+        AccountMoneyLocked = 130,// You cannot withdraw or deposit gold from the warband bank currently; please try again later.
+        CharacterBankNotAccessible = 131,// This character does not have access to this bank.
+        CharacterBankNotConverted = 132,// Your character's bank has not been converted. Please try again later.
     }
 
     public enum BankType
@@ -1472,7 +1539,6 @@ namespace Framework.Constants
         // One-handed
         AxeMaceSword1H,
         Dagger,
-        Fist,
 
         Invalid
     }
@@ -1504,12 +1570,16 @@ namespace Framework.Constants
         PriorityJunk = 0x10,
         PriorityQuestItems = 0x20,
         ExcludeJunkSell = 0x40,
+        PriorityReagents = 0x80,
+        ExpansionCurrent = 0x100,
+        ExpansionLegacy = 0x200,
     }
 
     public enum LootStoreItemType
     {
-        Item        = 0,
-        Reference   = 1,
+        Item = 0,
+        Reference = 1,
         Currency = 2,
+        TrackingQuest = 3
     }
 }

@@ -26,7 +26,7 @@ namespace Game
 
                 // Send current home realm. Also there is no need to send it later in realm queries.
                 var currentRealm = Global.RealmMgr.GetCurrentRealm();
-                if(currentRealm != null)
+                if (currentRealm != null)
                 {
                     response.SuccessInfo.VirtualRealmAddress = currentRealm.Id.GetAddress();
                     response.SuccessInfo.VirtualRealms.Add(new VirtualRealmInfo(currentRealm.Id.GetAddress(), true, false, currentRealm.Name, currentRealm.NormalizedName));
@@ -90,7 +90,6 @@ namespace Game
             features.BpayStoreAvailable = false;
             features.BpayStoreDisabledByParentalControls = false;
             features.CharUndeleteEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemCharacterUndeleteEnabled);
-            features.BpayStoreEnabled = WorldConfig.GetBoolValue(WorldCfg.FeatureSystemBpayStoreEnabled);
             features.MaxCharactersOnThisRealm = WorldConfig.GetIntValue(WorldCfg.CharactersPerRealm);
             features.MinimumExpansionLevel = (int)Expansion.Classic;
             features.MaximumExpansionLevel = WorldConfig.GetIntValue(WorldCfg.Expansion);
@@ -105,9 +104,36 @@ namespace Game
             europaTicketConfig.ComplaintsEnabled = WorldConfig.GetBoolValue(WorldCfg.SupportComplaintsEnabled);
             europaTicketConfig.SuggestionsEnabled = WorldConfig.GetBoolValue(WorldCfg.SupportSuggestionsEnabled);
 
+            foreach (var (gameRule, value) in Global.WorldMgr.GetGameRules())
+            {
+                GameRuleValuePair rule = new();
+                rule.Rule = (int)gameRule;
+
+                if (value is float)
+                    rule.ValueF = (float)value;
+                else
+                    rule.Value = Convert.ToInt32(value);
+
+                features.GameRules.Add(rule);
+            }
+
             features.EuropaTicketSystemStatus = europaTicketConfig;
 
             SendPacket(features);
+
+            MirrorVarSingle[] vars =
+            {
+                new MirrorVarSingle("raidLockoutExtendEnabled", "1"),
+                new MirrorVarSingle("bypassItemLevelScalingCode", "0"),
+                new MirrorVarSingle("shop2Enabled", "0"),
+                new MirrorVarSingle("bpayStoreEnable", "0"),
+                new MirrorVarSingle("recentAlliesEnabledClient", "0"),
+                new MirrorVarSingle("browserEnabled", "0"),
+            };
+
+            MirrorVars variables = new();
+            variables.Variables = vars;
+            SendPacket(variables);
         }
     }
 }

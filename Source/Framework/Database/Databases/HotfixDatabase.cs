@@ -164,8 +164,9 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_AZERITE_UNLOCK_MAPPING, "SELECT ID, ItemLevel, ItemBonusListHead, ItemBonusListShoulders, ItemBonusListChest, " +
                 "AzeriteUnlockMappingSetID FROM azerite_unlock_mapping WHERE (`VerifiedBuild` > 0) = ?");
 
-            // BankBagSlotPrices.db2
-            PrepareStatement(HotfixStatements.SEL_BANK_BAG_SLOT_PRICES, "SELECT ID, Cost FROM bank_bag_slot_prices WHERE (`VerifiedBuild` > 0) = ?");
+            // BankTab.db2
+            PrepareStatement(HotfixStatements.SEL_BANK_TAB, "SELECT ID, Cost, BankType, OrderIndex, PlayerConditionID, PurchasePromptTitle, PurchasePromptBody, " +
+                "PurchasePromptConfirmation, TabCleanupConfirmation, TabNameEditBoxHeader FROM bank_tab WHERE (`VerifiedBuild` > 0) = ?");
 
             // BannedAddons.db2
             PrepareStatement(HotfixStatements.SEL_BANNED_ADDONS, "SELECT ID, Name, Version, Flags FROM banned_addons WHERE (`VerifiedBuild` > 0) = ?");
@@ -174,6 +175,12 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_BARBER_SHOP_STYLE, "SELECT ID, DisplayName, Description, Type, CostModifier, Race, Sex, Data FROM barber_shop_style" +
                 " WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_BARBER_SHOP_STYLE_LOCALE, "SELECT ID, DisplayName_lang, Description_lang FROM barber_shop_style_locale" +
+                " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
+
+            // BattlePetAbility.db2
+            PrepareStatement(HotfixStatements.SEL_BATTLE_PET_ABILITY, "SELECT ID, Name, Description, IconFileDataID, PetTypeEnum, Cooldown, BattlePetVisualID, Flags" +
+                " FROM battle_pet_ability WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_BATTLE_PET_ABILITY_LOCALE, "SELECT ID, Name_lang, Description_lang FROM battle_pet_ability_locale" +
                 " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // BattlePetBreedQuality.db2
@@ -195,7 +202,7 @@ namespace Framework.Database
                 " WHERE (`VerifiedBuild` > 0) = ?");
 
             // BattlemasterList.db2
-            PrepareStatement(HotfixStatements.SEL_BATTLEMASTER_LIST, "SELECT ID, Name, GameType, ShortDescription, LongDescription, InstanceType, MinLevel, MaxLevel, " +
+            PrepareStatement(HotfixStatements.SEL_BATTLEMASTER_LIST, "SELECT ID, Name, GameType, ShortDescription, LongDescription, PvpType, MinLevel, MaxLevel, " +
                 "RatedPlayers, MinPlayers, MaxPlayers, GroupsAllowed, MaxGroupSize, HolidayWorldState, Flags, IconFileDataID, RequiredPlayerConditionID" +
                 " FROM battlemaster_list WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_BATTLEMASTER_LIST_LOCALE, "SELECT ID, Name_lang, GameType_lang, ShortDescription_lang, LongDescription_lang" +
@@ -222,12 +229,13 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_CFG_CATEGORIES_LOCALE, "SELECT ID, Name_lang FROM cfg_categories_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // CfgRegions.db2
-            PrepareStatement(HotfixStatements.SEL_CFG_REGIONS, "SELECT ID, Tag, RegionID, Raidorigin, RegionGroupMask, ChallengeOrigin FROM cfg_regions" +
-                " WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_CFG_REGIONS, "SELECT ID, Tag, RegionID, Raidorigin, RegionGroupMask, ChallengeOrigin, TimeEventRegionGroupID" +
+                " FROM cfg_regions WHERE (`VerifiedBuild` > 0) = ?");
 
             // ChallengeModeItemBonusOverride.db2
             PrepareStatement(HotfixStatements.SEL_CHALLENGE_MODE_ITEM_BONUS_OVERRIDE, "SELECT ID, ItemBonusTreeGroupID, DstItemBonusTreeID, Value, " +
-                "RequiredTimeEventPassed, SrcItemBonusTreeID FROM challenge_mode_item_bonus_override WHERE (`VerifiedBuild` > 0) = ?");
+                "RequiredTimeEventPassed, RequiredTimeEventNotPassed, SrcItemBonusTreeID FROM challenge_mode_item_bonus_override" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
 
             // CharBaseInfo.db2
             PrepareStatement(HotfixStatements.SEL_CHAR_BASE_INFO, "SELECT ID, RaceID, ClassID, OtherFactionRaceID FROM char_base_info WHERE (`VerifiedBuild` > 0) = ?");
@@ -257,13 +265,13 @@ namespace Framework.Database
 
             // ChrClasses.db2
             PrepareStatement(HotfixStatements.SEL_CHR_CLASSES, "SELECT Name, Filename, NameMale, NameFemale, PetNameToken, Description, RoleInfoString, DisabledString, " +
-                "HyphenatedNameMale, HyphenatedNameFemale, ID, CreateScreenFileDataID, SelectScreenFileDataID, IconFileDataID, LowResScreenFileDataID, Flags, " +
-                "SpellTextureBlobFileDataID, ArmorTypeMask, CharStartKitUnknown901, MaleCharacterCreationVisualFallback, " +
+                "HyphenatedNameMale, HyphenatedNameFemale, CreateScreenFileDataID, SelectScreenFileDataID, IconFileDataID, LowResScreenFileDataID, Flags, " +
+                "StartingLevel, SpellTextureBlobFileDataID, ArmorTypeMask, CharStartKitUnknown901, MaleCharacterCreationVisualFallback, " +
                 "MaleCharacterCreationIdleVisualFallback, FemaleCharacterCreationVisualFallback, FemaleCharacterCreationIdleVisualFallback, " +
                 "CharacterCreationIdleGroundVisualFallback, CharacterCreationGroundVisualFallback, AlteredFormCharacterCreationIdleVisualFallback, " +
-                "CharacterCreationAnimLoopWaitTimeMsFallback, CinematicSequenceID, DefaultSpec, PrimaryStatPriority, DisplayPower, " +
-                "RangedAttackPowerPerAgility, AttackPowerPerAgility, AttackPowerPerStrength, SpellClassSet, ClassColorR, ClassColorG, ClassColorB, RolesMask" +
-                " FROM chr_classes WHERE (`VerifiedBuild` > 0) = ?");
+                "CharacterCreationAnimLoopWaitTimeMsFallback, CinematicSequenceID, DefaultSpec, ID, HasStrengthBonus, PrimaryStatPriority, DisplayPower, " +
+                "RangedAttackPowerPerAgility, AttackPowerPerAgility, AttackPowerPerStrength, SpellClassSet, ClassColorR, ClassColorG, ClassColorB, RolesMask, " +
+                "DamageBonusStat, HasRelicSlot FROM chr_classes WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CHR_CLASSES_LOCALE, "SELECT ID, Name_lang, NameMale_lang, NameFemale_lang, Description_lang, RoleInfoString_lang, " +
                 "DisabledString_lang, HyphenatedNameMale_lang, HyphenatedNameFemale_lang FROM chr_classes_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
@@ -297,8 +305,8 @@ namespace Framework.Database
                 " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // ChrCustomizationReq.db2
-            PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_REQ, "SELECT ID, RaceMask, ReqSource, Flags, ClassMask, AchievementID, QuestID, OverrideArchive, " +
-                "ItemModifiedAppearanceID FROM chr_customization_req WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_REQ, "SELECT ID, RaceMask, ReqSource, Flags, ClassMask, RegionGroupMask, AchievementID, QuestID, " +
+                "OverrideArchive, ItemModifiedAppearanceID FROM chr_customization_req WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CHR_CUSTOMIZATION_REQ_LOCALE, "SELECT ID, ReqSource_lang FROM chr_customization_req_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
 
@@ -319,15 +327,15 @@ namespace Framework.Database
             // ChrRaces.db2
             PrepareStatement(HotfixStatements.SEL_CHR_RACES, "SELECT ID, ClientPrefix, ClientFileString, Name, NameFemale, NameLowercase, NameFemaleLowercase, " +
                 "LoreName, LoreNameFemale, LoreNameLower, LoreNameLowerFemale, LoreDescription, ShortName, ShortNameFemale, ShortNameLower, " +
-                "ShortNameLowerFemale, Flags, FactionID, CinematicSequenceID, ResSicknessSpellID, SplashSoundID, Alliance, RaceRelated, " +
-                "UnalteredVisualRaceID, DefaultClassID, CreateScreenFileDataID, SelectScreenFileDataID, NeutralRaceID, LowResScreenFileDataID, " +
-                "AlteredFormStartVisualKitID1, AlteredFormStartVisualKitID2, AlteredFormStartVisualKitID3, AlteredFormFinishVisualKitID1, " +
-                "AlteredFormFinishVisualKitID2, AlteredFormFinishVisualKitID3, HeritageArmorAchievementID, StartingLevel, UiDisplayOrder, " +
-                "MaleModelFallbackRaceID, FemaleModelFallbackRaceID, MaleTextureFallbackRaceID, FemaleTextureFallbackRaceID, PlayableRaceBit, " +
-                "HelmetAnimScalingRaceID, TransmogrifyDisabledSlotMask, UnalteredVisualCustomizationRaceID, AlteredFormCustomizeOffsetFallback1, " +
-                "AlteredFormCustomizeOffsetFallback2, AlteredFormCustomizeOffsetFallback3, AlteredFormCustomizeRotationFallback, Unknown910_11, " +
-                "Unknown910_12, Unknown910_13, Unknown910_21, Unknown910_22, Unknown910_23, Unknown1000, BaseLanguage, CreatureType, MaleModelFallbackSex, " +
-                "FemaleModelFallbackSex, MaleTextureFallbackSex, FemaleTextureFallbackSex FROM chr_races WHERE (`VerifiedBuild` > 0) = ?");
+                "ShortNameLowerFemale, Flags, FactionID, CinematicSequenceID, ResSicknessSpellID, SplashSoundID, CreateScreenFileDataID, " +
+                "SelectScreenFileDataID, LowResScreenFileDataID, AlteredFormStartVisualKitID1, AlteredFormStartVisualKitID2, AlteredFormStartVisualKitID3, " +
+                "AlteredFormFinishVisualKitID1, AlteredFormFinishVisualKitID2, AlteredFormFinishVisualKitID3, HeritageArmorAchievementID, StartingLevel, " +
+                "UiDisplayOrder, PlayableRaceBit, TransmogrifyDisabledSlotMask, AlteredFormCustomizeOffsetFallback1, AlteredFormCustomizeOffsetFallback2, " +
+                "AlteredFormCustomizeOffsetFallback3, AlteredFormCustomizeRotationFallback, Unknown910_11, Unknown910_12, Unknown910_13, Unknown910_21, " +
+                "Unknown910_22, Unknown910_23, BaseLanguage, CreatureType, Alliance, RaceRelated, UnalteredVisualRaceID, DefaultClassID, NeutralRaceID, " +
+                "MaleModelFallbackRaceID, MaleModelFallbackSex, FemaleModelFallbackRaceID, FemaleModelFallbackSex, MaleTextureFallbackRaceID, " +
+                "MaleTextureFallbackSex, FemaleTextureFallbackRaceID, FemaleTextureFallbackSex, HelmetAnimScalingRaceID, UnalteredVisualCustomizationRaceID" +
+                " FROM chr_races WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CHR_RACES_LOCALE, "SELECT ID, Name_lang, NameFemale_lang, NameLowercase_lang, NameFemaleLowercase_lang, LoreName_lang, " +
                 "LoreNameFemale_lang, LoreNameLower_lang, LoreNameLowerFemale_lang, LoreDescription_lang, ShortName_lang, ShortNameFemale_lang, " +
                 "ShortNameLower_lang, ShortNameLowerFemale_lang FROM chr_races_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
@@ -356,9 +364,10 @@ namespace Framework.Database
                 " FROM conditional_content_tuning WHERE (`VerifiedBuild` > 0) = ?");
 
             // ContentTuning.db2
-            PrepareStatement(HotfixStatements.SEL_CONTENT_TUNING, "SELECT ID, Flags, ExpansionID, HealthItemLevelCurveID, DamageItemLevelCurveID, MinLevel, MaxLevel, " +
-                "MinLevelType, MaxLevelType, TargetLevelDelta, TargetLevelMaxDelta, TargetLevelMin, TargetLevelMax, MinItemLevel, QuestXpMultiplier" +
-                " FROM content_tuning WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_CONTENT_TUNING, "SELECT ID, Flags, ExpansionID, HealthItemLevelCurveID, DamageItemLevelCurveID, " +
+                "HealthPrimaryStatCurveID, DamagePrimaryStatCurveID, PrimaryStatScalingModPlayerDataElementCharacterID, " +
+                "PrimaryStatScalingModPlayerDataElementCharacterMultiplier, MinLevel, MaxLevel, MinLevelType, MaxLevelType, TargetLevelDelta, " +
+                "TargetLevelMaxDelta, TargetLevelMin, TargetLevelMax, MinItemLevel, QuestXpMultiplier FROM content_tuning WHERE (`VerifiedBuild` > 0) = ?");
 
             // ContentTuningXExpected.db2
             PrepareStatement(HotfixStatements.SEL_CONTENT_TUNING_X_EXPECTED, "SELECT ID, ExpectedStatModID, MinMythicPlusSeasonID, MaxMythicPlusSeasonID, " +
@@ -390,8 +399,11 @@ namespace Framework.Database
 
             // CreatureFamily.db2
             PrepareStatement(HotfixStatements.SEL_CREATURE_FAMILY, "SELECT ID, Name, MinScale, MinScaleLevel, MaxScale, MaxScaleLevel, PetFoodMask, PetTalentType, " +
-                "IconFileID, SkillLine1, SkillLine2 FROM creature_family WHERE (`VerifiedBuild` > 0) = ?");
+                "CategoryEnumID, IconFileID, SkillLine1, SkillLine2 FROM creature_family WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CREATURE_FAMILY_LOCALE, "SELECT ID, Name_lang FROM creature_family_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
+
+            // CreatureLabel.db2
+            PrepareStatement(HotfixStatements.SEL_CREATURE_LABEL, "SELECT ID, LabelID, CreatureDifficultyID FROM creature_label WHERE (`VerifiedBuild` > 0) = ?");
 
             // CreatureModelData.db2
             PrepareStatement(HotfixStatements.SEL_CREATURE_MODEL_DATA, "SELECT ID, GeoBox1, GeoBox2, GeoBox3, GeoBox4, GeoBox5, GeoBox6, Flags, FileDataID, WalkSpeed, " +
@@ -424,7 +436,7 @@ namespace Framework.Database
             // CurrencyTypes.db2
             PrepareStatement(HotfixStatements.SEL_CURRENCY_TYPES, "SELECT ID, Name, Description, CategoryID, InventoryIconFileID, SpellWeight, SpellCategory, MaxQty, " +
                 "MaxEarnablePerWeek, Quality, FactionID, ItemGroupSoundsID, XpQuestDifficulty, AwardConditionID, MaxQtyWorldStateID, " +
-                "RechargingAmountPerCycle, RechargingCycleDurationMS, AccountTransferPercentage, Flags1, Flags2 FROM currency_types WHERE (`VerifiedBuild` > 0) = ?");
+                "RechargingAmountPerCycle, RechargingCycleDurationMS, AccountTransferPercentage, OrderIndex, Flags1, Flags2 FROM currency_types WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_CURRENCY_TYPES_LOCALE, "SELECT ID, Name_lang, Description_lang FROM currency_types_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
 
@@ -450,7 +462,7 @@ namespace Framework.Database
 
             // DungeonEncounter.db2
             PrepareStatement(HotfixStatements.SEL_DUNGEON_ENCOUNTER, "SELECT Name, ID, MapID, DifficultyID, OrderIndex, CompleteWorldStateID, Bit, Flags, " +
-                "SpellIconFileID, Faction FROM dungeon_encounter WHERE (`VerifiedBuild` > 0) = ?");
+                "SpellIconFileID, Faction, Unknown1115 FROM dungeon_encounter WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_DUNGEON_ENCOUNTER_LOCALE, "SELECT ID, Name_lang FROM dungeon_encounter_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
 
@@ -478,7 +490,7 @@ namespace Framework.Database
 
             // ExpectedStat.db2
             PrepareStatement(HotfixStatements.SEL_EXPECTED_STAT, "SELECT ID, ExpansionID, CreatureHealth, PlayerHealth, CreatureAutoAttackDps, CreatureArmor, " +
-                "PlayerMana, PlayerPrimaryStat, PlayerSecondaryStat, ArmorConstant, CreatureSpellDamage, Lvl FROM expected_stat" +
+                "PlayerMana, PlayerPrimaryStat, PlayerSecondaryStat, ArmorConstant, CreatureSpellDamage, ContentSetID, Lvl FROM expected_stat" +
                 " WHERE (`VerifiedBuild` > 0) = ?");
 
             // ExpectedStatMod.db2
@@ -527,6 +539,9 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_GAMEOBJECT_DISPLAY_INFO, "SELECT ID, GeoBoxMinX, GeoBoxMinY, GeoBoxMinZ, GeoBoxMaxX, GeoBoxMaxY, GeoBoxMaxZ, " +
                 "FileDataID, ObjectEffectPackageID, OverrideLootEffectScale, OverrideNameScale, AlternateDisplayType, ClientCreatureDisplayInfoID, " +
                 "ClientItemID, Unknown1100 FROM gameobject_display_info WHERE (`VerifiedBuild` > 0) = ?");
+
+            // GameobjectLabel.db2
+            PrepareStatement(HotfixStatements.SEL_GAMEOBJECT_LABEL, "SELECT ID, LabelID, GameObjectID FROM gameobject_label WHERE (`VerifiedBuild` > 0) = ?");
 
             // Gameobjects.db2
             PrepareStatement(HotfixStatements.SEL_GAMEOBJECTS, "SELECT Name, PosX, PosY, PosZ, Rot1, Rot2, Rot3, Rot4, ID, OwnerID, DisplayID, Scale, TypeID, " +
@@ -625,7 +640,7 @@ namespace Framework.Database
             // GossipNpcOption.db2
             PrepareStatement(HotfixStatements.SEL_GOSSIP_NPC_OPTION, "SELECT ID, GossipNpcOption, LFGDungeonsID, TrainerID, GarrFollowerTypeID, CharShipmentID, " +
                 "GarrTalentTreeID, UiMapID, UiItemInteractionID, Unknown_1000_8, Unknown_1000_9, CovenantID, GossipOptionID, TraitTreeID, ProfessionID, " +
-                "Unknown_1002_14 FROM gossip_npc_option WHERE (`VerifiedBuild` > 0) = ?");
+                "Unknown_1002_14, SkillLineID FROM gossip_npc_option WHERE (`VerifiedBuild` > 0) = ?");
 
             // GuildColorBackground.db2
             PrepareStatement(HotfixStatements.SEL_GUILD_COLOR_BACKGROUND, "SELECT ID, Red, Blue, Green FROM guild_color_background WHERE (`VerifiedBuild` > 0) = ?");
@@ -708,8 +723,8 @@ namespace Framework.Database
 
             // ItemBonusTreeNode.db2
             PrepareStatement(HotfixStatements.SEL_ITEM_BONUS_TREE_NODE, "SELECT ID, ItemContext, ChildItemBonusTreeID, ChildItemBonusListID, ChildItemLevelSelectorID, " +
-                "ChildItemBonusListGroupID, IblGroupPointsModSetID, MinMythicPlusLevel, MaxMythicPlusLevel, ParentItemBonusTreeID FROM item_bonus_tree_node" +
-                " WHERE (`VerifiedBuild` > 0) = ?");
+                "ChildItemBonusListGroupID, IblGroupPointsModSetID, MinMythicPlusLevel, MaxMythicPlusLevel, ItemCreationContextGroupID, Flags, " +
+                "ParentItemBonusTreeID FROM item_bonus_tree_node WHERE (`VerifiedBuild` > 0) = ?");
 
             // ItemChildEquipment.db2
             PrepareStatement(HotfixStatements.SEL_ITEM_CHILD_EQUIPMENT, "SELECT ID, ParentItemID, ChildItemID, ChildItemEquipSlot FROM item_child_equipment" +
@@ -722,6 +737,10 @@ namespace Framework.Database
             // ItemContextPickerEntry.db2
             PrepareStatement(HotfixStatements.SEL_ITEM_CONTEXT_PICKER_ENTRY, "SELECT ID, ItemCreationContext, OrderIndex, PVal, LabelID, Flags, PlayerConditionID, " +
                 "ItemContextPickerID FROM item_context_picker_entry WHERE (`VerifiedBuild` > 0) = ?");
+
+            // ItemCreationContext.db2
+            PrepareStatement(HotfixStatements.SEL_ITEM_CREATION_CONTEXT, "SELECT ID, ItemContext, ItemCreationContextGroupID FROM item_creation_context" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
 
             // ItemCurrencyCost.db2
             PrepareStatement(HotfixStatements.SEL_ITEM_CURRENCY_COST, "SELECT ID, ItemID FROM item_currency_cost WHERE (`VerifiedBuild` > 0) = ?");
@@ -794,8 +813,15 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_ITEM_NAME_DESCRIPTION_LOCALE, "SELECT ID, Description_lang FROM item_name_description_locale" +
                 " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
+            // ItemOffsetCurve.db2
+            PrepareStatement(HotfixStatements.SEL_ITEM_OFFSET_CURVE, "SELECT ID, CurveID, `Offset` FROM item_offset_curve WHERE (`VerifiedBuild` > 0) = ?");
+
             // ItemPriceBase.db2
             PrepareStatement(HotfixStatements.SEL_ITEM_PRICE_BASE, "SELECT ID, ItemLevel, Armor, Weapon FROM item_price_base WHERE (`VerifiedBuild` > 0) = ?");
+
+            // ItemScalingConfig.db2
+            PrepareStatement(HotfixStatements.SEL_ITEM_SCALING_CONFIG, "SELECT ID, ItemOffsetCurveID, ItemLevel, RequiredLevel, Unknown1125 FROM item_scaling_config" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
 
             // ItemSearchName.db2
             PrepareStatement(HotfixStatements.SEL_ITEM_SEARCH_NAME, "SELECT ID, AllowableRace, Display, OverallQualityID, ExpansionID, MinFactionID, MinReputation, " +
@@ -811,7 +837,7 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_ITEM_SET_LOCALE, "SELECT ID, Name_lang FROM item_set_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // ItemSetSpell.db2
-            PrepareStatement(HotfixStatements.SEL_ITEM_SET_SPELL, "SELECT ID, ChrSpecID, SpellID, Threshold, ItemSetID FROM item_set_spell" +
+            PrepareStatement(HotfixStatements.SEL_ITEM_SET_SPELL, "SELECT ID, ChrSpecID, SpellID, TraitSubTreeID, Threshold, ItemSetID FROM item_set_spell" +
                 " WHERE (`VerifiedBuild` > 0) = ?");
 
             // ItemSparse.db2
@@ -823,12 +849,12 @@ namespace Framework.Database
                 "StatPercentEditor10, StatModifierBonusStat1, StatModifierBonusStat2, StatModifierBonusStat3, StatModifierBonusStat4, StatModifierBonusStat5, " +
                 "StatModifierBonusStat6, StatModifierBonusStat7, StatModifierBonusStat8, StatModifierBonusStat9, StatModifierBonusStat10, Stackable, " +
                 "MaxCount, MinReputation, RequiredAbility, SellPrice, BuyPrice, VendorStackCount, PriceVariance, PriceRandomValue, Flags1, Flags2, Flags3, " +
-                "Flags4, Flags5, FactionRelated, ModifiedCraftingReagentItemID, ContentTuningID, PlayerLevelToItemLevelCurveID, ItemNameDescriptionID, " +
-                "RequiredTransmogHoliday, RequiredHoliday, GemProperties, SocketMatchEnchantmentId, TotemCategoryID, InstanceBound, ZoneBound1, ZoneBound2, " +
-                "ItemSet, LockID, PageID, ItemDelay, MinFactionID, RequiredSkillRank, RequiredSkill, ItemLevel, AllowableClass, ArtifactID, SpellWeight, " +
-                "SpellWeightCategory, SocketType1, SocketType2, SocketType3, SheatheType, Material, PageMaterialID, Bonding, DamageDamageType, " +
-                "ContainerSlots, RequiredPVPMedal, RequiredPVPRank, RequiredLevel, InventoryType, OverallQualityID FROM item_sparse" +
-                " WHERE (`VerifiedBuild` > 0) = ?");
+                "Flags4, Flags5, FactionRelated, ModifiedCraftingReagentItemID, ContentTuningID, PlayerLevelToItemLevelCurveID, ItemLevelOffsetCurveID, " +
+                "ItemLevelOffsetItemLevel, ItemNameDescriptionID, RequiredTransmogHoliday, RequiredHoliday, GemProperties, SocketMatchEnchantmentId, " +
+                "TotemCategoryID, InstanceBound, ZoneBound1, ZoneBound2, ItemSet, LockID, PageID, ItemDelay, MinFactionID, RequiredSkillRank, RequiredSkill, " +
+                "ItemLevel, AllowableClass, ArtifactID, SpellWeight, SpellWeightCategory, SocketType1, SocketType2, SocketType3, SheatheType, Material, " +
+                "PageMaterialID, Bonding, DamageDamageType, ContainerSlots, RequiredPVPMedal, RequiredPVPRank, RequiredLevel, InventoryType, " +
+                "OverallQualityID FROM item_sparse WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_ITEM_SPARSE_LOCALE, "SELECT ID, Description_lang, Display3_lang, Display2_lang, Display1_lang, Display_lang" +
                 " FROM item_sparse_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
@@ -860,7 +886,7 @@ namespace Framework.Database
 
             // JournalInstance.db2
             PrepareStatement(HotfixStatements.SEL_JOURNAL_INSTANCE, "SELECT ID, Name, Description, MapID, BackgroundFileDataID, ButtonFileDataID, " +
-                "ButtonSmallFileDataID, LoreFileDataID, Flags, AreaID FROM journal_instance WHERE (`VerifiedBuild` > 0) = ?");
+                "ButtonSmallFileDataID, LoreFileDataID, Flags, AreaID, CovenantID FROM journal_instance WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_JOURNAL_INSTANCE_LOCALE, "SELECT ID, Name_lang, Description_lang FROM journal_instance_locale" +
                 " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
@@ -889,8 +915,9 @@ namespace Framework.Database
             // LfgDungeons.db2
             PrepareStatement(HotfixStatements.SEL_LFG_DUNGEONS, "SELECT ID, Name, Description, TypeID, Subtype, Faction, IconTextureFileID, RewardsBgTextureFileID, " +
                 "PopupBgTextureFileID, ExpansionLevel, MapID, DifficultyID, MinGear, GroupID, OrderIndex, RequiredPlayerConditionId, RandomID, ScenarioID, " +
-                "FinalEncounterID, CountTank, CountHealer, CountDamage, MinCountTank, MinCountHealer, MinCountDamage, BonusReputationAmount, MentorItemLevel, " +
-                "MentorCharLevel, MaxPremadeGroupSize, ContentTuningID, Flags1, Flags2 FROM lfg_dungeons WHERE (`VerifiedBuild` > 0) = ?");
+                "FinalEncounterID, CountTank, CountHealer, CountDamage, MinCountTank, MinCountHealer, MinCountDamage, MaxPremadeCountTank, " +
+                "MaxPremadeCountHealer, MaxPremadeCountDamage, BonusReputationAmount, MentorItemLevel, MentorCharLevel, MaxPremadeGroupSize, ContentTuningID, " +
+                "Flags1, Flags2 FROM lfg_dungeons WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_LFG_DUNGEONS_LOCALE, "SELECT ID, Name_lang, Description_lang FROM lfg_dungeons_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
 
@@ -929,12 +956,14 @@ namespace Framework.Database
 
             // MapChallengeMode.db2
             PrepareStatement(HotfixStatements.SEL_MAP_CHALLENGE_MODE, "SELECT Name, ID, MapID, Flags, ExpansionLevel, RequiredWorldStateID, CriteriaCount1, " +
-                "CriteriaCount2, CriteriaCount3 FROM map_challenge_mode WHERE (`VerifiedBuild` > 0) = ?");
+                "CriteriaCount2, CriteriaCount3, FirstRewardQuestID1, FirstRewardQuestID2, FirstRewardQuestID3, FirstRewardQuestID4, FirstRewardQuestID5, " +
+                "FirstRewardQuestID6, RewardQuestID1, RewardQuestID2, RewardQuestID3, RewardQuestID4, RewardQuestID5, RewardQuestID6 FROM map_challenge_mode" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_MAP_CHALLENGE_MODE_LOCALE, "SELECT ID, Name_lang FROM map_challenge_mode_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
 
             // MapDifficulty.db2
-            PrepareStatement(HotfixStatements.SEL_MAP_DIFFICULTY, "SELECT ID, Message, DifficultyID, LockID, ResetInterval, MaxPlayers, ItemContext, " +
+            PrepareStatement(HotfixStatements.SEL_MAP_DIFFICULTY, "SELECT Message, ID, DifficultyID, LockID, ResetInterval, MaxPlayers, ItemContext, " +
                 "ItemContextPickerID, Flags, ContentTuningID, WorldStateExpressionID, MapID FROM map_difficulty WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_MAP_DIFFICULTY_LOCALE, "SELECT ID, Message_lang FROM map_difficulty_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
@@ -960,7 +989,11 @@ namespace Framework.Database
 
             // MountCapability.db2
             PrepareStatement(HotfixStatements.SEL_MOUNT_CAPABILITY, "SELECT ID, Flags, ReqRidingSkill, ReqAreaID, ReqSpellAuraID, ReqSpellKnownID, ModSpellAuraID, " +
-                "ReqMapID, PlayerConditionID, FlightCapabilityID FROM mount_capability WHERE (`VerifiedBuild` > 0) = ?");
+                "ReqMapID, PlayerConditionID, FlightCapabilityID, DriveCapabilityID FROM mount_capability WHERE (`VerifiedBuild` > 0) = ?");
+
+            // MountEquipment.db2
+            PrepareStatement(HotfixStatements.SEL_MOUNT_EQUIPMENT, "SELECT ID, Item, BuffSpell, Unknown820, LearnedBySpell FROM mount_equipment" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
 
             // MountTypeXCapability.db2
             PrepareStatement(HotfixStatements.SEL_MOUNT_TYPE_X_CAPABILITY, "SELECT ID, MountTypeID, MountCapabilityID, OrderIndex FROM mount_type_x_capability" +
@@ -991,8 +1024,8 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_NAMES_RESERVED_LOCALE, "SELECT ID, Name, LocaleMask FROM names_reserved_locale WHERE (`VerifiedBuild` > 0) = ?");
 
             // NumTalentsAtLevel.db2
-            PrepareStatement(HotfixStatements.SEL_NUM_TALENTS_AT_LEVEL, "SELECT ID, NumTalents, NumTalentsDeathKnight, NumTalentsDemonHunter FROM num_talents_at_level" +
-                " WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_NUM_TALENTS_AT_LEVEL, "SELECT ID, NumTalents, NumTalentsDeathKnight, NumTalentsDemonHunter, Unknown1115" +
+                " FROM num_talents_at_level WHERE (`VerifiedBuild` > 0) = ?");
 
             // OverrideSpellData.db2
             PrepareStatement(HotfixStatements.SEL_OVERRIDE_SPELL_DATA, "SELECT ID, Spells1, Spells2, Spells3, Spells4, Spells5, Spells6, Spells7, Spells8, Spells9, " +
@@ -1011,6 +1044,12 @@ namespace Framework.Database
             // PathProperty.db2
             PrepareStatement(HotfixStatements.SEL_PATH_PROPERTY, "SELECT ID, PathID, PropertyIndex, Value FROM path_property WHERE (`VerifiedBuild` > 0) = ?");
 
+            // PerksActivity.db2
+            PrepareStatement(HotfixStatements.SEL_PERKS_ACTIVITY, "SELECT ActivityName, Description, ID, CriteriaTreeID, ThresholdContributionAmount, Supersedes, " +
+                "Priority FROM perks_activity WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_PERKS_ACTIVITY_LOCALE, "SELECT ID, ActivityName_lang, Description_lang FROM perks_activity_locale" +
+                " WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
+
             // Phase.db2
             PrepareStatement(HotfixStatements.SEL_PHASE, "SELECT ID, Flags FROM phase WHERE (`VerifiedBuild` > 0) = ?");
 
@@ -1018,8 +1057,8 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_PHASE_X_PHASE_GROUP, "SELECT ID, PhaseID, PhaseGroupID FROM phase_x_phase_group WHERE (`VerifiedBuild` > 0) = ?");
 
             // PlayerCondition.db2
-            PrepareStatement(HotfixStatements.SEL_PLAYER_CONDITION, "SELECT ID, RaceMask, FailureDescription, ClassMask, SkillLogic, LanguageID, MinLanguage, " +
-                "MaxLanguage, MaxFactionID, MaxReputation, ReputationLogic, CurrentPvpFaction, PvpMedal, PrevQuestLogic, CurrQuestLogic, " +
+            PrepareStatement(HotfixStatements.SEL_PLAYER_CONDITION, "SELECT ID, RaceMask, FailureDescription, MinLevel, MaxLevel, ClassMask, SkillLogic, LanguageID, " +
+                "MinLanguage, MaxLanguage, MaxFactionID, MaxReputation, ReputationLogic, CurrentPvpFaction, PvpMedal, PrevQuestLogic, CurrQuestLogic, " +
                 "CurrentCompletedQuestLogic, SpellLogic, ItemLogic, ItemFlags, AuraSpellLogic, WorldStateExpressionID, WeatherID, PartyStatus, " +
                 "LifetimeMaxPVPRank, AchievementLogic, Gender, NativeGender, AreaLogic, LfgLogic, CurrencyLogic, QuestKillID, QuestKillLogic, " +
                 "MinExpansionLevel, MaxExpansionLevel, MinAvgItemLevel, MaxAvgItemLevel, MinAvgEquippedItemLevel, MaxAvgEquippedItemLevel, PhaseUseFlags, " +
@@ -1039,6 +1078,22 @@ namespace Framework.Database
                 "TraitNodeEntryMaxRank4 FROM player_condition WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_PLAYER_CONDITION_LOCALE, "SELECT ID, FailureDescription_lang FROM player_condition_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
+
+            // PlayerDataElementAccount.db2
+            PrepareStatement(HotfixStatements.SEL_PLAYER_DATA_ELEMENT_ACCOUNT, "SELECT ID, StorageIndex, Type, Unknown1125 FROM player_data_element_account" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
+
+            // PlayerDataElementCharacter.db2
+            PrepareStatement(HotfixStatements.SEL_PLAYER_DATA_ELEMENT_CHARACTER, "SELECT ID, StorageIndex, Type, Unknown1125 FROM player_data_element_character" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
+
+            // PlayerDataFlagAccount.db2
+            PrepareStatement(HotfixStatements.SEL_PLAYER_DATA_FLAG_ACCOUNT, "SELECT ID, StorageIndex, Unknown1107, Unknown1125 FROM player_data_flag_account" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
+
+            // PlayerDataFlagCharacter.db2
+            PrepareStatement(HotfixStatements.SEL_PLAYER_DATA_FLAG_CHARACTER, "SELECT ID, StorageIndex, Unknown1107, Unknown1125 FROM player_data_flag_character" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
 
             // PowerDisplay.db2
             PrepareStatement(HotfixStatements.SEL_POWER_DISPLAY, "SELECT ID, GlobalStringBaseTag, ActualType, Red, Green, Blue FROM power_display" +
@@ -1094,7 +1149,7 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_QUEST_INFO_LOCALE, "SELECT ID, InfoName_lang FROM quest_info_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // QuestLineXQuest.db2
-            PrepareStatement(HotfixStatements.SEL_QUEST_LINE_X_QUEST, "SELECT ID, QuestLineID, QuestID, OrderIndex, Flags FROM quest_line_x_quest" +
+            PrepareStatement(HotfixStatements.SEL_QUEST_LINE_X_QUEST, "SELECT ID, QuestLineID, QuestID, OrderIndex, Flags, Unknown1110 FROM quest_line_x_quest" +
                 " WHERE (`VerifiedBuild` > 0) = ?");
 
             // QuestMoneyReward.db2
@@ -1379,8 +1434,9 @@ namespace Framework.Database
                 " FROM spell_visual_effect_name WHERE (`VerifiedBuild` > 0) = ?");
 
             // SpellVisualKit.db2
-            PrepareStatement(HotfixStatements.SEL_SPELL_VISUAL_KIT, "SELECT ID, ClutterLevel, FallbackSpellVisualKitId, DelayMin, DelayMax, Flags1, Flags2" +
-                " FROM spell_visual_kit WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_SPELL_VISUAL_KIT, "SELECT ID, ClutterLevel, FallbackSpellVisualKitId, DelayMin, DelayMax, " +
+                "MinimumSpellVisualDensityFilterType, MinimumSpellVisualDensityFilterParam, ReducedSpellVisualDensityFilterType, " +
+                "ReducedSpellVisualDensityFilterParam, Flags1, Flags2 FROM spell_visual_kit WHERE (`VerifiedBuild` > 0) = ?");
 
             // SpellVisualMissile.db2
             PrepareStatement(HotfixStatements.SEL_SPELL_VISUAL_MISSILE, "SELECT CastOffset1, CastOffset2, CastOffset3, ImpactOffset1, ImpactOffset2, ImpactOffset3, ID, " +
@@ -1402,8 +1458,10 @@ namespace Framework.Database
                 "Key16 FROM tact_key WHERE (`VerifiedBuild` > 0) = ?");
 
             // Talent.db2
-            PrepareStatement(HotfixStatements.SEL_TALENT, "SELECT ID, Description, TierID, Flags, ColumnIndex, ClassID, SpecID, SpellID, OverridesSpellID, " +
-                "CategoryMask1, CategoryMask2 FROM talent WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_TALENT, "SELECT ID, Description, TierID, Flags, ColumnIndex, TabID, ClassID, SpecID, SpellID, OverridesSpellID, " +
+                "RequiredSpellID, CategoryMask1, CategoryMask2, SpellRank1, SpellRank2, SpellRank3, SpellRank4, SpellRank5, SpellRank6, SpellRank7, " +
+                "SpellRank8, SpellRank9, PrereqTalent1, PrereqTalent2, PrereqTalent3, PrereqRank1, PrereqRank2, PrereqRank3 FROM talent" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_TALENT_LOCALE, "SELECT ID, Description_lang FROM talent_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
 
             // TaxiNodes.db2
@@ -1437,10 +1495,11 @@ namespace Framework.Database
                 "TraitCondAccountElementID FROM trait_cond WHERE (`VerifiedBuild` > 0) = ?");
 
             // TraitCost.db2
-            PrepareStatement(HotfixStatements.SEL_TRAIT_COST, "SELECT InternalName, ID, Amount, TraitCurrencyID FROM trait_cost WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_TRAIT_COST, "SELECT InternalName, ID, Amount, TraitCurrencyID, CurveID FROM trait_cost WHERE (`VerifiedBuild` > 0) = ?");
 
             // TraitCurrency.db2
-            PrepareStatement(HotfixStatements.SEL_TRAIT_CURRENCY, "SELECT ID, Type, CurrencyTypesID, Flags, Icon FROM trait_currency WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_TRAIT_CURRENCY, "SELECT ID, Type, CurrencyTypesID, Flags, Icon, PlayerDataElementAccountID, " +
+                "PlayerDataElementCharacterID FROM trait_currency WHERE (`VerifiedBuild` > 0) = ?");
 
             // TraitCurrencySource.db2
             PrepareStatement(HotfixStatements.SEL_TRAIT_CURRENCY_SOURCE, "SELECT Requirement, ID, TraitCurrencyID, Amount, QuestID, AchievementID, PlayerLevel, " +
@@ -1511,6 +1570,10 @@ namespace Framework.Database
             PrepareStatement(HotfixStatements.SEL_TRAIT_SUB_TREE_LOCALE, "SELECT ID, Name_lang, Description_lang FROM trait_sub_tree_locale WHERE (`VerifiedBuild` > 0) = ?" +
                 " AND locale = ?");
 
+            // TraitSystem.db2
+            PrepareStatement(HotfixStatements.SEL_TRAIT_SYSTEM, "SELECT ID, Flags, WidgetSetID, TraitChangeSpell, ItemID, VariationType FROM trait_system" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
+
             // TraitTree.db2
             PrepareStatement(HotfixStatements.SEL_TRAIT_TREE, "SELECT ID, TraitSystemID, Unused1000_1, FirstTraitNodeID, PlayerConditionID, Flags, Unused1000_2, " +
                 "Unused1000_3 FROM trait_tree WHERE (`VerifiedBuild` > 0) = ?");
@@ -1565,7 +1628,8 @@ namespace Framework.Database
 
             // UiMapAssignment.db2
             PrepareStatement(HotfixStatements.SEL_UI_MAP_ASSIGNMENT, "SELECT UiMinX, UiMinY, UiMaxX, UiMaxY, Region1X, Region1Y, Region1Z, Region2X, Region2Y, " +
-                "Region2Z, ID, UiMapID, OrderIndex, MapID, AreaID, WmoDoodadPlacementID, WmoGroupID FROM ui_map_assignment WHERE (`VerifiedBuild` > 0) = ?");
+                "Region2Z, ID, UiMapID, OrderIndex, MapID, AreaID, WmoDoodadPlacementID, WmoGroupID, Unknown1125 FROM ui_map_assignment" +
+                " WHERE (`VerifiedBuild` > 0) = ?");
 
             // UiMapLink.db2
             PrepareStatement(HotfixStatements.SEL_UI_MAP_LINK, "SELECT UiMinX, UiMinY, UiMaxX, UiMaxY, ID, ParentUiMapID, OrderIndex, ChildUiMapID, PlayerConditionID, " +
@@ -1614,8 +1678,14 @@ namespace Framework.Database
 
             // Vignette.db2
             PrepareStatement(HotfixStatements.SEL_VIGNETTE, "SELECT ID, Name, PlayerConditionID, VisibleTrackingQuestID, QuestFeedbackEffectID, Flags, MaxHeight, " +
-                "MinHeight, VignetteType, RewardQuestID, UiWidgetSetID FROM vignette WHERE (`VerifiedBuild` > 0) = ?");
+                "MinHeight, VignetteType, RewardQuestID, UiWidgetSetID, UiMapPinInfoID, ObjectiveType FROM vignette WHERE (`VerifiedBuild` > 0) = ?");
             PrepareStatement(HotfixStatements.SEL_VIGNETTE_LOCALE, "SELECT ID, Name_lang FROM vignette_locale WHERE (`VerifiedBuild` > 0) = ? AND locale = ?");
+
+            // WarbandScene.db2
+            PrepareStatement(HotfixStatements.SEL_WARBAND_SCENE, "SELECT Name, Description, PositionX, PositionY, PositionZ, LookAtX, LookAtY, LookAtZ, ID, MapID, Fov, " +
+                "TimeOfDay, Flags, SoundAmbienceID, Quality, TextureKit, DefaultScenePriority FROM warband_scene WHERE (`VerifiedBuild` > 0) = ?");
+            PrepareStatement(HotfixStatements.SEL_WARBAND_SCENE_LOCALE, "SELECT ID, Name_lang, Description_lang FROM warband_scene_locale WHERE (`VerifiedBuild` > 0) = ?" +
+                " AND locale = ?");
 
             // WmoAreaTable.db2
             PrepareStatement(HotfixStatements.SEL_WMO_AREA_TABLE, "SELECT AreaName, ID, WmoID, NameSetID, WmoGroupID, SoundProviderPref, SoundProviderPrefUnderwater, " +
@@ -1722,12 +1792,15 @@ namespace Framework.Database
 
         SEL_AZERITE_UNLOCK_MAPPING,
 
-        SEL_BANK_BAG_SLOT_PRICES,
+        SEL_BANK_TAB,
 
         SEL_BANNED_ADDONS,
 
         SEL_BARBER_SHOP_STYLE,
         SEL_BARBER_SHOP_STYLE_LOCALE,
+
+        SEL_BATTLE_PET_ABILITY,
+        SEL_BATTLE_PET_ABILITY_LOCALE,
 
         SEL_BATTLE_PET_BREED_QUALITY,
 
@@ -1824,6 +1897,8 @@ namespace Framework.Database
         SEL_CREATURE_FAMILY,
         SEL_CREATURE_FAMILY_LOCALE,
 
+        SEL_CREATURE_LABEL,
+
         SEL_CREATURE_MODEL_DATA,
 
         SEL_CREATURE_TYPE,
@@ -1882,6 +1957,8 @@ namespace Framework.Database
         SEL_GAMEOBJECT_ART_KIT,
 
         SEL_GAMEOBJECT_DISPLAY_INFO,
+
+        SEL_GAMEOBJECT_LABEL,
 
         SEL_GAMEOBJECTS,
         SEL_GAMEOBJECTS_LOCALE,
@@ -1981,6 +2058,8 @@ namespace Framework.Database
 
         SEL_ITEM_CONTEXT_PICKER_ENTRY,
 
+        SEL_ITEM_CREATION_CONTEXT,
+
         SEL_ITEM_CURRENCY_COST,
 
         SEL_ITEM_DAMAGE_AMMO,
@@ -2017,7 +2096,11 @@ namespace Framework.Database
         SEL_ITEM_NAME_DESCRIPTION,
         SEL_ITEM_NAME_DESCRIPTION_LOCALE,
 
+        SEL_ITEM_OFFSET_CURVE,
+
         SEL_ITEM_PRICE_BASE,
+
+        SEL_ITEM_SCALING_CONFIG,
 
         SEL_ITEM_SEARCH_NAME,
         SEL_ITEM_SEARCH_NAME_LOCALE,
@@ -2095,6 +2178,8 @@ namespace Framework.Database
 
         SEL_MOUNT_CAPABILITY,
 
+        SEL_MOUNT_EQUIPMENT,
+
         SEL_MOUNT_TYPE_X_CAPABILITY,
 
         SEL_MOUNT_X_DISPLAY,
@@ -2123,12 +2208,23 @@ namespace Framework.Database
 
         SEL_PATH_PROPERTY,
 
+        SEL_PERKS_ACTIVITY,
+        SEL_PERKS_ACTIVITY_LOCALE,
+
         SEL_PHASE,
 
         SEL_PHASE_X_PHASE_GROUP,
 
         SEL_PLAYER_CONDITION,
         SEL_PLAYER_CONDITION_LOCALE,
+
+        SEL_PLAYER_DATA_ELEMENT_ACCOUNT,
+
+        SEL_PLAYER_DATA_ELEMENT_CHARACTER,
+
+        SEL_PLAYER_DATA_FLAG_ACCOUNT,
+
+        SEL_PLAYER_DATA_FLAG_CHARACTER,
 
         SEL_POWER_DISPLAY,
 
@@ -2369,6 +2465,8 @@ namespace Framework.Database
         SEL_TRAIT_SUB_TREE,
         SEL_TRAIT_SUB_TREE_LOCALE,
 
+        SEL_TRAIT_SYSTEM,
+
         SEL_TRAIT_TREE,
 
         SEL_TRAIT_TREE_LOADOUT,
@@ -2416,6 +2514,9 @@ namespace Framework.Database
 
         SEL_VIGNETTE,
         SEL_VIGNETTE_LOCALE,
+
+        SEL_WARBAND_SCENE,
+        SEL_WARBAND_SCENE_LOCALE,
 
         SEL_WMO_AREA_TABLE,
         SEL_WMO_AREA_TABLE_LOCALE,

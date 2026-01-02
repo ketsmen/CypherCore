@@ -172,7 +172,6 @@ namespace Game.Entities
             SetGoState(goinfo.MoTransport.allowstopping == 0 ? GameObjectState.Ready : GameObjectState.Active);
             SetGoType(GameObjectTypes.MapObjTransport);
             SetGoAnimProgress(255);
-            SetUpdateFieldValue(m_values.ModifyValue(m_gameObjectData).ModifyValue(m_gameObjectData.SpawnTrackingStateAnimID), Global.DB2Mgr.GetEmptyAnimStateID());
             SetName(goinfo.name);
             SetLocalRotation(0.0f, 0.0f, 0.0f, 1.0f);
             SetParentRotation(Quaternion.Identity);
@@ -242,7 +241,7 @@ namespace Game.Entities
 
             if (eventToTriggerIndex != -1)
             {
-                while (eventToTriggerIndex < _transportInfo.Events.Count && _transportInfo.Events[eventToTriggerIndex].Timestamp < timer)
+                while (eventToTriggerIndex < _transportInfo.Events.Count && _transportInfo.Events[eventToTriggerIndex].Timestamp <= timer)
                 {
                     TransportPathLeg leg = _transportInfo.GetLegForTime(_transportInfo.Events[eventToTriggerIndex].Timestamp);
                     if (leg != null)
@@ -767,7 +766,7 @@ namespace Game.Entities
         public uint GetTransportPeriod() { return m_gameObjectData.Level; }
         public void SetPeriod(uint period) { SetLevel(period); }
         public uint GetTimer() { return _pathProgress; }
-        public bool IsStopRequested() { return _requestStopTimestamp.HasValue; }
+        public uint? GetNextStopTimestamp() { return _requestStopTimestamp; }
         public bool IsStopped()
         {
             return HasDynamicFlag(GameObjectDynamicLowFlags.Stopped);

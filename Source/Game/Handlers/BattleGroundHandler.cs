@@ -86,7 +86,7 @@ namespace Game
 
             GroupJoinBattlegroundResult err = GroupJoinBattlegroundResult.None;
 
-            Group grp = _player.GetGroup();
+            Group group = _player.GetGroup();
 
             Team getQueueTeam()
             {
@@ -105,7 +105,7 @@ namespace Game
 
             BattlefieldStatusFailed battlefieldStatusFailed;
             // check queue conditions
-            if (grp == null)
+            if (group == null)
             {
                 if (GetPlayer().IsUsingLfg())
                 {
@@ -177,12 +177,12 @@ namespace Game
             }
             else
             {
-                if (grp.GetLeaderGUID() != GetPlayer().GetGUID())
+                if (group.GetLeaderGUID() != GetPlayer().GetGUID())
                     return;
 
                 ObjectGuid errorGuid;
-                err = grp.CanJoinBattlegroundQueue(bgTemplate, bgQueueTypeId, 0, bgTemplate.GetMaxPlayersPerTeam(), false, 0, out errorGuid);
-                isPremade = (grp.GetMembersCount() >= bgTemplate.GetMinPlayersPerTeam());
+                err = group.CanJoinBattlegroundQueue(bgTemplate, bgQueueTypeId, 0, bgTemplate.GetMaxPlayersPerTeam(), false, 0, out errorGuid);
+                isPremade = (group.GetMembersCount() >= bgTemplate.GetMinPlayersPerTeam());
 
                 BattlegroundQueue bgQueue = Global.BattlegroundMgr.GetBattlegroundQueue(bgQueueTypeId);
                 GroupQueueInfo ginfo = null;
@@ -191,16 +191,13 @@ namespace Game
                 if (err == 0)
                 {
                     Log.outDebug(LogFilter.Battleground, "Battleground: the following players are joining as group:");
-                    ginfo = bgQueue.AddGroup(GetPlayer(), grp, getQueueTeam(), bracketEntry, isPremade, 0, 0);
+                    ginfo = bgQueue.AddGroup(GetPlayer(), group, getQueueTeam(), bracketEntry, isPremade, 0, 0);
                     avgTime = bgQueue.GetAverageQueueWaitTime(ginfo, bracketEntry.GetBracketId());
                 }
 
-                for (GroupReference refe = grp.GetFirstMember(); refe != null; refe = refe.Next())
+                foreach (GroupReference groupRef in group.GetMembers())
                 {
-                    Player member = refe.GetSource();
-                    if (member == null)
-                        continue;   // this should never happen
-
+                    Player member = groupRef.GetSource();
                     if (err != 0)
                     {
                         BattlefieldStatusFailed battlefieldStatus;
@@ -459,7 +456,7 @@ namespace Game
                         continue;
 
                     BattlefieldStatusNeedConfirmation battlefieldStatus;
-                    Global.BattlegroundMgr.BuildBattlegroundStatusNeedConfirmation(out battlefieldStatus, bg, GetPlayer(), i, GetPlayer().GetBattlegroundQueueJoinTime(bgQueueTypeId), Time.GetMSTimeDiff(Time.GetMSTime(), ginfo.RemoveInviteTime), bgQueueTypeId);
+                    Global.BattlegroundMgr.BuildBattlegroundStatusNeedConfirmation(out battlefieldStatus, bg, GetPlayer(), i, GetPlayer().GetBattlegroundQueueJoinTime(bgQueueTypeId), Time.GetMSTimeDiff(GameTime.GetGameTimeMS(), ginfo.RemoveInviteTime), bgQueueTypeId);
                     SendPacket(battlefieldStatus);
                 }
                 else
@@ -482,7 +479,7 @@ namespace Game
         }
 
         [WorldPacketHandler(ClientOpcodes.BattlemasterJoinArena)]
-        void HandleBattlemasterJoinArena(BattlemasterJoinArena packet)
+        public void HandleBattlemasterJoinArena(BattlemasterJoinArena packet)
         {
             // ignore if we already in BG or BG queue
             if (GetPlayer().InBattleground())
@@ -510,11 +507,18 @@ namespace Game
             if (bracketEntry == null)
                 return;
 
-            Group grp = GetPlayer().GetGroup();
+            Group group = GetPlayer().GetGroup();
+            if (group == null)
+            {
+                group = new Group();
+                group.Create(_player);
+            }
+
             // no group found, error
-            if (grp == null)
+            if (group == null)
                 return;
-            if (grp.GetLeaderGUID() != GetPlayer().GetGUID())
+
+            if (group.GetLeaderGUID() != GetPlayer().GetGUID())
                 return;
 
             uint ateamId = GetPlayer().GetArenaTeamId(packet.TeamSizeIndex);
@@ -525,7 +529,7 @@ namespace Game
 
             // get the team rating for queuing
             uint arenaRating = at.GetRating();
-            uint matchmakerRating = at.GetAverageMMR(grp);
+            uint matchmakerRating = at.GetAverageMMR(group);
             // the arenateam id must match for everyone in the group
 
             if (arenaRating <= 0)
@@ -536,22 +540,21 @@ namespace Game
             uint avgTime = 0;
             GroupQueueInfo ginfo = null;
 
-            ObjectGuid errorGuid;
-            var err = grp.CanJoinBattlegroundQueue(bgTemplate, bgQueueTypeId, (uint)arenatype, (uint)arenatype, true, packet.TeamSizeIndex, out errorGuid);
+            ObjectGuid errorGuid = ObjectGuid.Empty;
+            GroupJoinBattlegroundResult err = GroupJoinBattlegroundResult.None;
+            if (!Global.BattlegroundMgr.IsArenaTesting())
+                err = group.CanJoinBattlegroundQueue(bgTemplate, bgQueueTypeId, (uint)arenatype, (uint)arenatype, true, packet.TeamSizeIndex, out errorGuid);
             if (err == 0)
             {
                 Log.outDebug(LogFilter.Battleground, "Battleground: arena team id {0}, leader {1} queued with matchmaker rating {2} for type {3}", GetPlayer().GetArenaTeamId(packet.TeamSizeIndex), GetPlayer().GetName(), matchmakerRating, arenatype);
 
-                ginfo = bgQueue.AddGroup(GetPlayer(), grp, _player.GetTeam(), bracketEntry, false, arenaRating, matchmakerRating, ateamId);
+                ginfo = bgQueue.AddGroup(GetPlayer(), group, _player.GetTeam(), bracketEntry, false, arenaRating, matchmakerRating, ateamId);
                 avgTime = bgQueue.GetAverageQueueWaitTime(ginfo, bracketEntry.GetBracketId());
             }
 
-            for (GroupReference refe = grp.GetFirstMember(); refe != null; refe = refe.Next())
+            foreach (GroupReference groupRef in group.GetMembers())
             {
-                Player member = refe.GetSource();
-                if (member == null)
-                    continue;
-
+                Player member = groupRef.GetSource();
                 if (err != 0)
                 {
                     BattlefieldStatusFailed battlefieldStatus;

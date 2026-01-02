@@ -167,7 +167,7 @@ namespace Game.Networking.Packets
             Ticket.Write(_worldPacket);
 
             _worldPacket.WriteUInt8(SubType);
-            _worldPacket.WriteUInt8(Reason);
+            _worldPacket.WriteUInt32(Reason);
             _worldPacket.WriteInt32(Slots.Count);
             _worldPacket.WriteUInt8(RequestedRoles);
             _worldPacket.WriteInt32(SuspendedPlayers.Count);
@@ -190,7 +190,7 @@ namespace Game.Networking.Packets
 
         public RideTicket Ticket = new();
         public byte SubType;
-        public byte Reason;
+        public uint Reason;
         public List<uint> Slots = new();
         public byte RequestedRoles;
         public List<ObjectGuid> SuspendedPlayers = new();
@@ -265,7 +265,7 @@ namespace Game.Networking.Packets
         {
             Ticket.Write(_worldPacket);
 
-            _worldPacket.WriteUInt8(Result);
+            _worldPacket.WriteInt32(Result);
             _worldPacket.WriteUInt8(ResultDetail);
             _worldPacket.WriteInt32(BlackList.Count);
             _worldPacket.WriteInt32(BlackListNames.Count);
@@ -282,7 +282,7 @@ namespace Game.Networking.Packets
         }
 
         public RideTicket Ticket = new();
-        public byte Result;
+        public int Result;
         public byte ResultDetail;
         public List<LFGBlackListPkt> BlackList = new();
         public List<string> BlackListNames = new();
@@ -704,7 +704,7 @@ namespace Game.Networking.Packets
             data.WriteBit(VotePassed);
             data.WriteBit(MyVoteCompleted);
             data.WriteBit(MyVote);
-            data.WriteBits(Reason.GetByteCount(), 8);
+            data.WriteBits(Reason.GetByteCount(), 9);
             data.WritePackedGuid(Target);
             data.WriteUInt32(TotalVotes);
             data.WriteUInt32(BootVotes);

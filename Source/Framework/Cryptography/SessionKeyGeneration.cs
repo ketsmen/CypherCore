@@ -5,16 +5,16 @@ using System.Security.Cryptography;
 
 namespace Framework.Cryptography
 {
-    public class SessionKeyGenerator256
+    public class SessionKeyGenerator512
     {
-        public SessionKeyGenerator256(byte[] buff, int size = 0)
+        public SessionKeyGenerator512(byte[] buff, int size = 0)
         {
             if (size == 0)
                 size = buff.Length;
 
             int halfSize = size / 2;
 
-            sh = SHA256.Create();
+            sh = SHA512.Create();
             sh.TransformFinalBlock(buff, 0, halfSize);
             o1 = sh.Hash;
 
@@ -29,7 +29,7 @@ namespace Framework.Cryptography
         {
             for (uint i = 0; i < sz; ++i)
             {
-                if (taken == 32)
+                if (taken == 64)
                     FillUp();
 
                 buf[i] = o0[taken];
@@ -40,19 +40,19 @@ namespace Framework.Cryptography
         void FillUp()
         {
             sh.Initialize();
-            sh.TransformBlock(o1, 0, 32, o1, 0);
-            sh.TransformBlock(o0, 0, 32, o0, 0);
-            sh.TransformFinalBlock(o2, 0, 32);
+            sh.TransformBlock(o1, 0, 64, o1, 0);
+            sh.TransformBlock(o0, 0, 64, o0, 0);
+            sh.TransformFinalBlock(o2, 0, 64);
             o0 = sh.Hash;
 
             taken = 0;
         }
 
-        SHA256 sh;        
+        SHA512 sh;        
         uint taken;
-        byte[] o0 = new byte[32];
-        byte[] o1 = new byte[32];
-        byte[] o2 = new byte[32];
+        byte[] o0 = new byte[64];
+        byte[] o1 = new byte[64];
+        byte[] o2 = new byte[64];
     }
 
     public class SessionKeyGenerator

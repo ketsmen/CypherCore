@@ -47,11 +47,13 @@ namespace Framework.Constants
         RacialForThePurposeOfTemporaryRaceChange = 0x8000,
     }
 
-    public enum AbilityLearnType : int
+    public enum SkillLineAbilityAcquireMethod : int
     {
-        OnSkillValue = 1, // Spell state will update depending on skill value
-        OnSkillLearn = 2, // Spell will be learned/removed together with entire skill
-        RewardedFromQuest = 4 // Learned as quest reward, also re-learned if missing
+        Learned = 0,
+        AutomaticSkillRank = 1, // Spell state will update depending on skill value
+        AutomaticCharLevel = 2, // Spell will be learned/removed together with entire skill
+        NeverLearned = 3,
+        LearnedOrAutomaticCharLevel = 4,
     }
 
     [Flags]
@@ -965,7 +967,7 @@ namespace Framework.Constants
         SuppressConditionError = 0x40, // NYI
         NotTriggeredbyCaster = 0x80,
         CreatorsPartyOnly = 0x100,
-        DontRunOnLeaveWhenExpiring = 0x200, // NYI
+        DontRunOnLeaveWhenExpiring = 0x200,
         CanAffectUninteractible = 0x400,
         DontDespawnWithCreator = 0x800, // NYI
         CanAffectBeastmaster = 0x1000, // Can affect GMs
@@ -1101,6 +1103,13 @@ namespace Framework.Constants
         DontDisplayIfZero = 0x20, // NYI
         ScaleMaxQuantityBySeasonWeeks = 0x40, // NYI
         ScaleMaxQuantityByWeeksSinceStart = 0x80, // NYI
+        ForceMaxQuantityOnConversion = 0x100, // NYI
+    }
+
+    public enum BattlemasterType
+    {
+        Battleground = 0,
+        Arena = 1,
     }
 
     [Flags]
@@ -1267,7 +1276,7 @@ namespace Framework.Constants
     public enum ContentTuningFlag
     {
         DisabledForItem = 0x04,
-        Horde = 0x8,
+        Horde = 0x08,
         Alliance = 0x10
     }
 
@@ -1699,6 +1708,45 @@ namespace Framework.Constants
         OneshotWathreaten = 1015,
         Artoffloop = 1016,
         StateReadyspellomniNosheath = 1017,
+        OneshotAttackunarmedVar1 = 1019,
+        StateSitChairMedEatLoop = 1021,
+        OneshotTalkFrustrated = 1022,
+        StateWalean03 = 1023,
+        StateShovelWithShovel = 1024,
+        StateHold = 1027,
+        StateWa2hidle = 1029,
+        OneshotFlyattackunarmedVar0 = 1031,
+        StateBartendemotetalk = 1033,
+        StateTalkSubdued = 1034,
+        StateReadyweapon = 1035,
+        StateReadyweaponAllowMovement = 1036,
+        OneshotFlycombatcritical = 1040,
+        OneshotFlybattleroar = 1041,
+        StateWorkHammerSound = 1043,
+        StateWorkHammer = 1044,
+        StateTalkExclamation = 1048,
+        StateMountCrouch = 1049,
+        StateWorkHerbalismScyte = 1050,
+        StateWorkCookFryingPan = 1051,
+        StateWorkLeatherworkingKnife = 1052,
+        StateStandVar1 = 1054,
+        StateStandVar2 = 1055,
+        StateStandVar3 = 1056,
+        StateStandVar4 = 1057,
+        StateBarserverstand = 1058,
+        OneshotBarserverEmotetalk = 1059,
+        StateStandVar4Forcevarianttest = 1060,
+        Wadarttargetstand = 1062,
+        OneshotThousandfists = 1068,
+        OneshotOfferStart = 1069,
+        OneshotOfferEnd = 1070,
+        StateOfferLoop = 1071,
+        OneshotDanceVar2 = 1075,
+        StateKneelInteractInterrupt = 1081,
+        StateWa2hidleUnsheath = 1082,
+        StateLean = 1084,
+        OneshotWalean01Var1 = 1093,
+        OneshotWalean01Var0 = 1094,
     }
 
     public enum GlyphSlotType
@@ -1841,7 +1889,20 @@ namespace Framework.Constants
         DragonIslesSkinning25 = 181,
         DragonIslesTailoring25 = 182,
         OpenKneelingPlant = 186,
-        DragonIslesMining = 188
+        DragonIslesMining = 188,
+        KhazAlgarMining = 193,
+        KhazAlgarHerbalism = 194,
+        KhazAlgarAlchemy25 = 195,
+        KhazAlgarBlacksmithing25 = 196,
+        KhazAlgarEnchanting25 = 197,
+        KhazAlgarEngineering25 = 198,
+        KhazAlgarHerbalism25 = 199,
+        KhazAlgarInscription25 = 200,
+        KhazAlgarJewelcrafting25 = 201,
+        KhazAlgarLeatherworking25 = 202,
+        KhazAlgarMining25 = 203,
+        KhazAlgarSkinning25 = 204,
+        KhazAlgarTailoring25 = 205
     }
 
     public enum MapTypes : byte
@@ -1889,11 +1950,19 @@ namespace Framework.Constants
 
     public enum MountFlags : int
     {
-        SelfMount = 0x02,                   // Player becomes the mount himself
-        FactionSpecific = 0x04,
-        PreferredSwimming = 0x10,
-        PreferredWaterWalking = 0x20,
-        HideIfUnknown = 0x40
+        ServerOnly = 0x01,
+        IsSelfMount = 0x02,
+        ExcludeFromJournalIfFactionDoesntMatch = 0x04,
+        AllowMountedCombat = 0x08,
+        SummonRandomFavorWhileUnderwater = 0x10,
+        SummonRandomFavorWhileAtWaterSurface = 0x20,
+        ExcludeFromJournalIfNotLearned = 0x40,
+        SummonRandomDoNotFavorWhenGrounded = 0x80,
+        ShowInSpellbook = 0x100,
+        AddToActionBarOnLearn = 0x200,
+        NotForUseAsATaxi = 0x400,
+        MountEquipmentEffectsSuppressed = 0x800,
+        DisablePlayerMountPreview = 0x1000,
     }
 
     public enum PathPropertyIndex
@@ -1950,6 +2019,12 @@ namespace Framework.Constants
         VoteKickCount = 6,
         BootCount = 7,
         GearDiff = 8
+    }
+
+    public enum PlayerDataElementType
+    {
+        Int64 = 0,
+        Float = 1
     }
 
     public enum PlayerInteractionType
@@ -2023,6 +2098,15 @@ namespace Framework.Constants
         ForgeMaster = 66,
         CharacterBanker = 67,
         AccountBanker = 68,
+        ProfessionRespec = 69,
+        PlaceholderType71 = 70,
+        PlaceholderType72 = 71,
+        PlaceholderType73 = 72,
+        PlaceholderType74 = 73,
+        PlaceholderType75 = 74,
+        PlaceholderType76 = 75,
+        GuildRename = 76,
+        PlaceholderType77 = 77,
     }
 
     [Flags]
@@ -2075,7 +2159,8 @@ namespace Framework.Constants
     {
         CooldownScalesWithWeaponSpeed = 0x01, // unused
         CooldownStartsOnEvent = 0x04,
-        CooldownExpiresAtDailyReset = 0x08
+        CooldownExpiresAtDailyReset = 0x08,
+        IgnoreForModTimeRate = 0x40
     }
 
     [Flags]
@@ -2114,7 +2199,8 @@ namespace Framework.Constants
         Spec = 4,
         Race = 5,
         ItemLevel = 6,
-        Battleground = 7
+        Battleground = 7,
+        Aura = 8
     }
 
     public enum SpellShapeshiftFormFlags
@@ -2183,9 +2269,12 @@ namespace Framework.Constants
         ShowOnMapBorder = 0x04,
         ShowIfClientPassesCondition = 0x08,
         UsePlayerFavoriteMount = 0x10,
-        EndPointPnly = 0x20,
+        EndPointOnly = 0x20,
         IgnoreForFindNearest = 0x40,
         DoNotShowInWorldMapUI = 0x80,
+        ShowNpcMinimapAtlasIfClientPassesCondition = 0x100,
+        MapLayerTransition = 0x200,
+        NotAccountWide = 0x400
     }
 
     [Flags]
@@ -2463,6 +2552,8 @@ namespace Framework.Constants
         Huzzah = 624,
         Impressed = 625,
         Magnificent = 626,
+        Quack = 627,
+        Lean = 628,
     }
 
     public enum ExpectedStatType : byte
@@ -2518,7 +2609,8 @@ namespace Framework.Constants
     {
         Gold = 0,
         CurrencyTypesBased = 1,
-        TraitSourced = 2
+        TraitSourced = 2,
+        TraitSourcedPlayerDataElement = 3,
     }
 
     public enum TraitEdgeType
@@ -2542,7 +2634,8 @@ namespace Framework.Constants
         SpendDiamond = 6,
         ProfPath = 7,
         ProfPerk = 8,
-        ProfPathUnlock = 9
+        ProfPathUnlock = 9,
+        SpendInfinite = 10
     }
 
     [Flags]
@@ -2565,6 +2658,12 @@ namespace Framework.Constants
         None = -1,
         Set = 0,
         Multiply = 1
+    }
+
+    public enum TraitSystemVariationType
+    {
+        None = 0,
+        Spec = 1
     }
 
     [Flags]
@@ -2852,6 +2951,107 @@ namespace Framework.Constants
         NoRepGainModifiers = 0x10
     }
 
+    public enum GameRule
+    {
+        NoDebuffLimit = 1,
+        CharNameReservationEnabled = 2,
+        MaxCharReservationsPerRealm = 3,
+        MaxAccountCharReservationsPerContentset = 4,
+        EtaRealmLaunchTime = 5,
+        TrivialGroupXPPercent = 7,
+        CharReservationsPerRealmReopenThreshold = 8,
+        DisablePct = 9,
+        HardcoreRuleset = 10,
+        ReplaceAbsentGmSeconds = 11,
+        ReplaceGmRankLastOnlineSeconds = 12,
+        GameMode = 13,
+        CharacterlessLogin = 14,
+        NoMultiboxing = 15,
+        VanillaNpcKnockback = 16,
+        Runecarving = 17,
+        TalentRespecCostMin = 18,
+        TalentRespecCostMax = 19,
+        TalentRespecCostStep = 20,
+        VanillaRageGenerationModifier = 21,
+        SelfFoundAllowed = 22,
+        DisableHonorDecay = 23,
+        MaxLootDropLevel = 25,
+        MicrobarScale = 26,
+        MaxUnitNameDistance = 27,
+        MaxNameplateDistance = 28,
+        UserAddonsDisabled = 29,
+        UserScriptsDisabled = 30,
+        NonPlayerNameplateScale = 31,
+        ForcedPartyFrameScale = 32,
+        CustomActionbarOverlayHeightOffset = 33,
+        ForcedChatLanguage = 34,
+        LandingPageFactionID = 35,
+        CollectionsPanelDisabled = 36,
+        CharacterPanelDisabled = 37,
+        SpellbookPanelDisabled = 38,
+        TalentsPanelDisabled = 39,
+        AchievementsPanelDisabled = 40,
+        CommunitiesPanelDisabled = 41,
+        EncounterJournalDisabled = 42,
+        FinderPanelDisabled = 43,
+        StoreDisabled = 44,
+        HelpPanelDisabled = 45,
+        GuildsDisabled = 46,
+        QuestLogMicrobuttonDisabled = 47,
+        MapPlunderstormCircle = 48,
+        AfterDeathSpectatingUI = 49,
+        FrontEndChat = 50,
+        UniversalNameplateOcclusion = 51,
+        FastAreaTriggerTick = 52,
+        AllPlayersAreFastMovers = 53,
+        IgnoreChrclassDisabledFlag = 54,
+        CharacterCreateUseFixedBackgroundModel = 55,
+        ForceAlteredFormsOn = 56,
+        PlayerNameplateDifficultyIcon = 57,
+        PlayerNameplateAlternateHealthColor = 58,
+        AlwaysAllowAlliedRaces = 59,
+        ActionbarIconIntroDisabled = 60,
+        ReleaseSpiritGhostDisabled = 61,
+        DeleteItemConfirmationDisabled = 62,
+        ChatLinkLevelToastsDisabled = 63,
+        BagsUIDisabled = 64,
+        PetBattlesDisabled = 65,
+        PerksProgramActivityTrackingDisabled = 66,
+        MaximizeWorldMapDisabled = 67,
+        WorldMapTrackingOptionsDisabled = 68,
+        WorldMapTrackingPinDisabled = 69,
+        WorldMapHelpPlateDisabled = 70,
+        QuestLogPanelDisabled = 71,
+        QuestLogSuperTrackingDisabled = 72,
+        TutorialFrameDisabled = 73,
+        IngameMailNotificationDisabled = 74,
+        IngameCalendarDisabled = 75,
+        IngameTrackingDisabled = 76,
+        IngameWhoListDisabled = 77,
+        RaceAlteredFormsDisabled = 78,
+        IngameFriendsListDisabled = 79,
+        MacrosDisabled = 80,
+        CompactRaidFrameManagerDisabled = 81,
+        EditModeDisabled = 82,
+        InstanceDifficultyBannerDisabled = 83,
+        FullCharacterCreateDisabled = 84,
+        TargetFrameBuffsDisabled = 85,
+        UnitFramePvPContextualDisabled = 86,
+        BlockWhileSheathedAllowed = 88,
+        VanillaAccountMailInstant = 91,
+        ClearMailOnRealmTransfer = 92,
+        PremadeGroupFinderStyle = 93,
+        PlunderstormAreaSelection = 94,
+        GroupFinderCapabilities = 98,
+        WorldMapLegendDisabled = 99,
+        WorldMapFrameStrata = 100,
+        MerchantFilterDisabled = 101,
+        SummoningStones = 108,
+        TransmogEnabled = 109,
+        MailGameRule = 132,
+        LootMethodStyle = 157,
+    }
+
     public enum GlobalCurve
     {
         CritDiminishing = 0,
@@ -2870,6 +3070,14 @@ namespace Framework.Constants
         ContentTuningPvpItemLevelHealthScaling = 13,
         ContentTuningPvpLevelDamageScaling = 14,
         ContentTuningPvpItemLevelDamageScaling = 15,
+
+        ArmorItemLevelDiminishing = 18,
+
+        ChallengeModeHealth = 21,
+        ChallengeModeDamage = 22,
+        MythicPlusEndOfRunGearSequenceLevel = 23,
+
+        SpellAreaEffectWarningRadius = 26,  // ground spell effect warning circle radius (based on spell radius)
     }
 
     public enum BattlePetSpeciesFlags : int

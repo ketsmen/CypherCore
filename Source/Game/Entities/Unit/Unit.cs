@@ -655,9 +655,9 @@ namespace Game.Entities
                     break;
             }
 
-            GetSpellHistory().ResetCooldowns(pair =>
+            GetSpellHistory().ResetCooldowns(cooldown =>
             {
-                SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(pair.Key, Difficulty.None);
+                SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(cooldown.SpellId, Difficulty.None);
                 return spellInfo.HasAttribute(SpellAttr10.ResetCooldownOnEncounterEnd);
             }, true);
         }
@@ -856,7 +856,7 @@ namespace Game.Entities
 
         public void RemoveAreaTrigger(AuraEffect aurEff)
         {
-            foreach (AreaTrigger areaTrigger in m_areaTrigger)
+            foreach (AreaTrigger areaTrigger in m_areaTrigger.ToList())
             {
                 if (areaTrigger.GetAuraEffect() == aurEff)
                 {
@@ -866,11 +866,34 @@ namespace Game.Entities
             }
         }
 
-        public void RemoveAllAreaTriggers()
+        public void RemoveAllAreaTriggers(AreaTriggerRemoveReason reason = AreaTriggerRemoveReason.Default)
         {
-            while (!m_areaTrigger.Empty())
-                m_areaTrigger.Last()?.Remove();
+            foreach (AreaTrigger at in m_areaTrigger.ToList())
+            {
+                if (reason == AreaTriggerRemoveReason.UnitDespawn && at.GetTemplate().ActionSetFlags.HasFlag(AreaTriggerActionSetFlag.DontDespawnWithCreator))
+                    continue;
+
+                at.Remove();
+            }
         }
+
+        public void EnterAreaTrigger(AreaTrigger areaTrigger)
+        {
+            m_insideAreaTriggers.Add(areaTrigger);
+        }
+
+        public void ExitAreaTrigger(AreaTrigger areaTrigger)
+        {
+            m_insideAreaTriggers.Remove(areaTrigger);
+        }
+
+        public void ExitAllAreaTriggers()
+        {
+            foreach (AreaTrigger at in m_insideAreaTriggers.ToList())
+                at.HandleUnitExit(this);
+        }
+
+        public List<AreaTrigger> GetInsideAreaTriggers() { return m_insideAreaTriggers; }
 
         public NPCFlags GetNpcFlags() { return (NPCFlags)m_unitData.NpcFlags.GetValue(); }
         public bool HasNpcFlag(NPCFlags flags) { return (m_unitData.NpcFlags & (uint)flags) != 0; }
@@ -1224,7 +1247,7 @@ namespace Game.Entities
             RemoveAurasWithInterruptFlags(SpellAuraInterruptFlags2.AbandonVehicle);
         }
 
-        public void SendPlaySpellVisual(Unit target, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
+        public void SendPlaySpellVisual(Unit target, uint spellVisualId, byte missReason, byte reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
         {
             PlaySpellVisual playSpellVisual = new();
             playSpellVisual.Source = GetGUID();
@@ -1239,7 +1262,7 @@ namespace Game.Entities
             SendMessageToSet(playSpellVisual, true);
         }
 
-        public void SendPlaySpellVisual(Position targetPosition, uint spellVisualId, ushort missReason, ushort reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
+        public void SendPlaySpellVisual(Position targetPosition, uint spellVisualId, byte missReason, byte reflectStatus, float travelSpeed, bool speedAsTime = false, float launchDelay = 0f)
         {
             PlaySpellVisual playSpellVisual = new();
             playSpellVisual.Source = GetGUID();
@@ -1488,6 +1511,7 @@ namespace Game.Entities
                         case ShapeShiftForm.AquaticForm:
                             useRandom = HasAura(344338);
                             break; // Glyph of the Aquatic Chameleon
+                        case ShapeShiftForm.DireBearForm:
                         case ShapeShiftForm.BearForm:
                             useRandom = HasAura(107059);
                             break; // Glyph of the Ursol Chameleon
@@ -1645,6 +1669,41 @@ namespace Game.Entities
             SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ShapeshiftForm), (byte)form);
         }
 
+        void CancelTravelShapeshiftForm(AuraRemoveMode removeMode = AuraRemoveMode.Default, bool force = false) { CancelShapeshiftForm(true, removeMode, force); }
+
+        void CancelShapeshiftForm(bool onlyTravelShapeshiftForm = false, AuraRemoveMode removeMode = AuraRemoveMode.Default, bool force = false)
+        {
+            ShapeShiftForm form = GetShapeshiftForm();
+            if (form == ShapeShiftForm.None)
+                return;
+
+            bool isTravelShapeshiftForm()
+            {
+                var shapeInfo = CliDB.SpellShapeshiftFormStorage.LookupByKey(form);
+                if (shapeInfo != null)
+                {
+                    if (shapeInfo.MountTypeID != 0)
+                        return true;
+
+                    if (shapeInfo.Id == (uint)ShapeShiftForm.TravelForm || shapeInfo.Id == (uint)ShapeShiftForm.AquaticForm)
+                        return true;
+                }
+
+                return false;
+            }
+
+            if (onlyTravelShapeshiftForm && !isTravelShapeshiftForm())
+                return;
+
+            var shapeshifts = GetAuraEffectsByType(AuraType.ModShapeshift);
+            foreach (AuraEffect aurEff in shapeshifts)
+            {
+                SpellInfo spellInfo = aurEff.GetBase().GetSpellInfo();
+                if (force || (!spellInfo.HasAttribute(SpellAttr0.NoAuraCancel) && spellInfo.IsPositive() && !spellInfo.IsPassive()))
+                    aurEff.GetBase().Remove(removeMode);
+            }
+        }
+
         // creates aura application instance and registers it in lists
         // aura application effects are handled separately to prevent aura list corruption
         public AuraApplication _CreateAuraApplication(Aura aura, uint effMask)
@@ -1743,6 +1802,7 @@ namespace Game.Entities
                     displayPower = PowerType.Energy;
                     break;
                 case ShapeShiftForm.BearForm:
+                case ShapeShiftForm.DireBearForm:
                     displayPower = PowerType.Rage;
                     break;
                 case ShapeShiftForm.TravelForm:
@@ -2416,7 +2476,7 @@ namespace Game.Entities
             {
                 SetAnimTier setAnimTier = new();
                 setAnimTier.Unit = GetGUID();
-                setAnimTier.Tier = (int)animTier;
+                setAnimTier.Tier = (byte)animTier;
                 SendMessageToSet(setAnimTier, true);
             }
         }
@@ -2442,6 +2502,13 @@ namespace Game.Entities
             int index = m_unitData.ChannelObjects.FindIndex(guid);
             if (index >= 0)
                 RemoveDynamicUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ChannelObjects), index);
+        }
+
+        public void SetChannelSpellData(uint startTimeMs, uint durationMs)
+        {
+            UnitChannel channelData = m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.ChannelData);
+            SetUpdateFieldValue(ref channelData.StartTimeMs, startTimeMs);
+            SetUpdateFieldValue(ref channelData.Duration, durationMs);
         }
 
         public sbyte GetSpellEmpowerStage() { return m_unitData.SpellEmpowerStage; }
@@ -2661,16 +2728,6 @@ namespace Game.Entities
                 }
             }
 
-            // Rage from Damage made (only from direct weapon damage)
-            if (attacker != null && cleanDamage != null && (cleanDamage.attackType == WeaponAttackType.BaseAttack || cleanDamage.attackType == WeaponAttackType.OffAttack) && damagetype == DamageEffectType.Direct && attacker != victim && attacker.GetPowerType() == PowerType.Rage)
-            {
-                uint rage = (uint)(attacker.GetBaseAttackTime(cleanDamage.attackType) / 1000.0f * 1.75f);
-                if (cleanDamage.attackType == WeaponAttackType.OffAttack)
-                    rage /= 2;
-
-                attacker.RewardRage(rage);
-            }
-
             if (damageDone == 0)
                 return 0;
 
@@ -2883,7 +2940,8 @@ namespace Game.Entities
                                         return true;
 
                                     return false;
-                                };
+                                }
+                                ;
 
                                 bool isCastDelayed()
                                 {
@@ -2911,7 +2969,7 @@ namespace Game.Entities
                     {
                         Spell spell1 = victim.GetCurrentSpell(CurrentSpellTypes.Channeled);
                         if (spell1 != null)
-                            if (spell1.GetState() == SpellState.Casting && spell1.m_spellInfo.HasChannelInterruptFlag(SpellAuraInterruptFlags.DamageChannelDuration))
+                            if (spell1.GetState() == SpellState.Channeling && spell1.m_spellInfo.HasChannelInterruptFlag(SpellAuraInterruptFlags.DamageChannelDuration))
                                 spell1.DelayedChannel();
                     }
                 }
@@ -3284,7 +3342,7 @@ namespace Game.Entities
             }
         }
 
-        public void RewardRage(uint baseRage)
+        public int RewardRage(uint baseRage)
         {
             float addRage = baseRage;
 
@@ -3293,7 +3351,7 @@ namespace Game.Entities
 
             addRage *= WorldConfig.GetFloatValue(WorldCfg.RatePowerRageIncome);
 
-            ModifyPower(PowerType.Rage, (int)(addRage * 10));
+            return ModifyPower(PowerType.Rage, (int)(addRage * 10), false);
         }
 
         public float GetPPMProcChance(uint WeaponSpeed, float PPM, SpellInfo spellProto)
@@ -3342,21 +3400,18 @@ namespace Game.Entities
             List<Unit> nearMembers = new();
             // reserve place for players and pets because resizing vector every unit push is unefficient (vector is reallocated then)
 
-            for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
+            foreach (GroupReference groupRef in group.GetMembers())
             {
-                Player target = refe.GetSource();
-                if (target != null)
-                {
-                    // IsHostileTo check duel and controlled by enemy
-                    if (target != this && IsWithinDistInMap(target, radius) && target.IsAlive() && !IsHostileTo(target))
-                        nearMembers.Add(target);
+                Player target = groupRef.GetSource();
+                // IsHostileTo check duel and controlled by enemy
+                if (target != this && IsWithinDistInMap(target, radius) && target.IsAlive() && !IsHostileTo(target))
+                    nearMembers.Add(target);
 
-                    // Push player's pet to vector
-                    Unit pet = target.GetGuardianPet();
-                    if (pet != null)
-                        if (pet != this && IsWithinDistInMap(pet, radius) && pet.IsAlive() && !IsHostileTo(pet))
-                            nearMembers.Add(pet);
-                }
+                // Push player's pet to vector
+                Unit pet = target.GetGuardianPet();
+                if (pet != null)
+                    if (pet != this && IsWithinDistInMap(pet, radius) && pet.IsAlive() && !IsHostileTo(pet))
+                        nearMembers.Add(pet);
             }
 
             if (nearMembers.Empty())
@@ -3513,7 +3568,7 @@ namespace Game.Entities
             if (spell != null)
                 spell.CallScriptOnResistAbsorbCalculateHandlers(damageInfo, ref resistedDamage, ref absorbIgnoringDamage);
 
-            damageInfo.ResistDamage(resistedDamage);
+            damageInfo.ResistDamage(ref resistedDamage);
 
             // We're going to call functions which can modify content of the list during iteration over it's elements
             // Let's copy the list so we can prevent iterator invalidation
@@ -3553,9 +3608,10 @@ namespace Game.Entities
                     // absorb must be smaller than the damage itself
                     currentAbsorb = MathFunctions.RoundToInterval(ref currentAbsorb, 0, damageInfo.GetDamage());
 
-                    damageInfo.AbsorbDamage((uint)currentAbsorb);
+                    uint temp = (uint)currentAbsorb;
+                    damageInfo.AbsorbDamage(ref temp);
+                    tempAbsorb = temp;
 
-                    tempAbsorb = (uint)currentAbsorb;
                     absorbAurEff.GetBase().CallScriptEffectAfterAbsorbHandlers(absorbAurEff, aurApp, damageInfo, ref tempAbsorb);
 
                     // Check if our aura is using amount to count heal
@@ -3570,7 +3626,7 @@ namespace Game.Entities
                 }
 
                 if (!absorbAurEff.GetSpellInfo().HasAttribute(SpellAttr6.AbsorbCannotBeIgnore))
-                    damageInfo.ModifyDamage(absorbIgnoringDamage);
+                    damageInfo.ModifyDamage(ref absorbIgnoringDamage);
 
                 if (currentAbsorb != 0)
                 {
@@ -3860,15 +3916,32 @@ namespace Game.Entities
             if (MathFunctions.fuzzyLe(armor, 0.0f))
                 return damage;
 
-            Class attackerClass = Class.Warrior;
+            Class attackerClass = Class.None;
+            float? attackerItemLevel = null;
             if (attacker != null)
             {
                 attackerLevel = attacker.GetLevelForTarget(victim);
-                attackerClass = attacker.GetClass();
+                Player ownerPlayer = attacker.GetCharmerOrOwnerPlayerOrPlayerItself();
+                if (ownerPlayer != null)
+                    attackerItemLevel = ownerPlayer.m_playerData.AvgItemLevel[(int)AvgItemLevelCategory.EquippedBase];
+                else
+                    attackerClass = attacker.GetClass();
             }
 
             // Expansion and ContentTuningID necessary? Does Player get a ContentTuningID too ?
             float armorConstant = Global.DB2Mgr.EvaluateExpectedStat(ExpectedStatType.ArmorConstant, attackerLevel, -2, 0, attackerClass, 0);
+            if (attackerItemLevel.HasValue)
+            {
+                uint maxLevelForExpansion = Global.ObjectMgr.GetMaxLevelForExpansion((Expansion)WorldConfig.GetUIntValue(WorldCfg.Expansion));
+                if (attackerLevel == maxLevelForExpansion)
+                {
+                    float itemLevelDelta = attackerItemLevel.Value - CliDB.ItemLevelByLevelTable.GetRow(maxLevelForExpansion).ItemLevel;
+                    uint curveId = Global.DB2Mgr.GetGlobalCurveId(GlobalCurve.ArmorItemLevelDiminishing);
+                    if (curveId != 0)
+                        armorConstant *= Global.DB2Mgr.GetCurveValueAt(curveId, itemLevelDelta);
+                }
+            }
+
             if ((armor + armorConstant) == 0)
                 return damage;
 
@@ -3876,7 +3949,7 @@ namespace Game.Entities
             return (uint)Math.Max(damage * (1.0f - mitigation), 0.0f);
         }
 
-        public int MeleeDamageBonusDone(Unit victim, int damage, WeaponAttackType attType, DamageEffectType damagetype, SpellInfo spellProto = null, Mechanics mechanic = default, SpellSchoolMask damageSchoolMask = SpellSchoolMask.Normal, Spell spell = null, AuraEffect aurEff = null)
+        public int MeleeDamageBonusDone(Unit victim, int damage, WeaponAttackType attType, DamageEffectType damagetype, SpellInfo spellProto = null, SpellEffectInfo spellEffectInfo = null, Mechanics mechanic = default, SpellSchoolMask damageSchoolMask = SpellSchoolMask.Normal, Spell spell = null, AuraEffect aurEff = null)
         {
             if (victim == null || damage == 0)
                 return 0;
@@ -3976,7 +4049,7 @@ namespace Game.Entities
                 MathFunctions.AddPct(ref DoneTotalMod, GetTotalAuraModifierByMiscValue(AuraType.ModDamageDoneForMechanic, (int)spellProto.Mechanic));
 
             if (spell != null)
-                spell.CallScriptCalcDamageHandlers(victim, ref damage, ref DoneFlatBenefit, ref DoneTotalMod);
+                spell.CallScriptCalcDamageHandlers(spellEffectInfo, victim, ref damage, ref DoneFlatBenefit, ref DoneTotalMod);
             else if (aurEff != null)
                 aurEff.GetBase().CallScriptCalcDamageAndHealingHandlers(aurEff, aurEff.GetBase().GetApplicationOfTarget(victim.GetGUID()), victim, ref damage, ref DoneFlatBenefit, ref DoneTotalMod);
 

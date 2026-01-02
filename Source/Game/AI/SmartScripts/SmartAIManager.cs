@@ -497,7 +497,11 @@ namespace Game.AI
                     TC_SAI_IS_BOOLEAN_VALID(e, e.Target.farthest.isInLos);
                     break;
                 case SmartTargets.ClosestCreature:
-                    TC_SAI_IS_BOOLEAN_VALID(e, e.Target.unitClosest.dead);
+                    if (e.Target.unitClosest.findCreatureAliveState < (uint)FindCreatureAliveState.Alive || e.Target.unitClosest.findCreatureAliveState >= (uint)FindCreatureAliveState.Max)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} has invalid alive state {e.Target.unitClosest.findCreatureAliveState}");
+                        return false;
+                    }
                     break;
                 case SmartTargets.ClosestEnemy:
                     TC_SAI_IS_BOOLEAN_VALID(e, e.Target.closestAttackable.playerOnly);
@@ -624,6 +628,8 @@ namespace Game.AI
                 SmartEvents.OnSpellCast => Marshal.SizeOf(typeof(SmartEvent.SpellCast)),
                 SmartEvents.OnSpellFailed => Marshal.SizeOf(typeof(SmartEvent.SpellCast)),
                 SmartEvents.OnSpellStart => Marshal.SizeOf(typeof(SmartEvent.SpellCast)),
+                SmartEvents.OnAuraApplied => Marshal.SizeOf(typeof(SmartEvent.SpellCast)),
+                SmartEvents.OnAuraRemoved => Marshal.SizeOf(typeof(SmartEvent.SpellCast)),
                 SmartEvents.OnDespawn => 0,
                 SmartEvents.SendEventTrigger => 0,
                 SmartEvents.AreatriggerExit => 0,
@@ -817,6 +823,10 @@ namespace Game.AI
                 SmartActions.DoAction => Marshal.SizeOf(typeof(SmartAction.DoAction)),
                 SmartActions.CompleteQuest => Marshal.SizeOf(typeof(SmartAction.Quest)),
                 SmartActions.CreditQuestObjectiveTalkTo => 0,
+                SmartActions.DestroyConversation => Marshal.SizeOf(typeof(SmartAction.DestroyConversation)),
+                SmartActions.EnterVehicle => Marshal.SizeOf(typeof(SmartAction.EnterVehicle)),
+                SmartActions.BoardPassenger => Marshal.SizeOf(typeof(SmartAction.EnterVehicle)),
+                SmartActions.ExitVehicle => 0,
                 _ => Marshal.SizeOf(typeof(SmartAction.Raw)),
             };
 
@@ -863,7 +873,7 @@ namespace Game.AI
                 }
 
                 return false;
-            };
+            }
 
             if (!actionUsesStringParam() && !e.Action.param_string.IsEmpty())
                 Log.outWarn(LogFilter.Sql, $"SmartAIMgr: {e} has unused action_param_string with value {e.Action.param_string}, it should be NULL.");
@@ -1048,6 +1058,8 @@ namespace Game.AI
                     case SmartEvents.OnSpellCast:
                     case SmartEvents.OnSpellFailed:
                     case SmartEvents.OnSpellStart:
+                    case SmartEvents.OnAuraApplied:
+                    case SmartEvents.OnAuraRemoved:
                     {
                         if (!IsSpellValid(e, e.Event.spellCast.spell))
                             return false;
@@ -1625,7 +1637,22 @@ namespace Game.AI
                         return false;
                     }
 
-                    TC_SAI_IS_BOOLEAN_VALID(e, e.Action.summonCreature.attackInvoker);
+                    if (e.Action.summonCreature.createdBySpell != 0)
+                    {
+                        if (!IsSpellValid(e, e.Action.summonCreature.createdBySpell))
+                            return false;
+
+                        bool propertiesFound = Global.SpellMgr.GetSpellInfo(e.Action.summonCreature.createdBySpell, Difficulty.None).GetEffects().Any(spellEffectInfo =>
+                        {
+                            return spellEffectInfo.IsEffect(SpellEffectName.Summon) && CliDB.SummonPropertiesStorage.HasRecord((uint)spellEffectInfo.MiscValueB);
+                        });
+
+                        if (!propertiesFound)
+                        {
+                            Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} Spell {e.Action.summonCreature.createdBySpell} is not a summon creature spell.");
+                            return false;
+                        }
+                    }
                     break;
                 case SmartActions.CallKilledmonster:
                     if (!IsCreatureValid(e, e.Action.killedMonster.creature))
@@ -1797,7 +1824,7 @@ namespace Game.AI
                         }
 
                         return true;
-                    };
+                    }
 
                     if (e.Action.equip.slot1 != 0 && !isValidEquipmentSlot(e.Action.equip.slot1, 0))
                         return false;
@@ -2174,6 +2201,7 @@ namespace Game.AI
                 case SmartActions.SpawnSpawngroup:
                 case SmartActions.AddToStoredTargetList:
                 case SmartActions.DoAction:
+                case SmartActions.ExitVehicle:
                     break;
                 case SmartActions.BecomePersonalCloneForPlayer:
                 {
@@ -2214,6 +2242,27 @@ namespace Game.AI
                         Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} uses non-valid SourceType (only valid for SourceType {SmartScriptType.Creature}), skipped.");
                         return false;
                     }
+                    break;
+                }
+                case SmartActions.EnterVehicle:
+                case SmartActions.BoardPassenger:
+                {
+                    if (e.Action.enterVehicle.seatId >= SharedConst.MaxVehicleSeats)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: {e} uses incorrect seat id (out of range 0 - {SharedConst.MaxVehicleSeats - 1}), skipped.");
+                        return false;
+                    }
+                    break;
+                }
+                case SmartActions.DestroyConversation:
+                {
+                    if (Global.ConversationDataStorage.GetConversationTemplate(e.Action.destroyConversation.id) == null)
+                    {
+                        Log.outError(LogFilter.Sql, $"SmartAIMgr: SMART_ACTION_DESTROY_CONVERSATION {e} uses invalid entry {e.Action.destroyConversation.id}, skipped.");
+                        return false;
+                    }
+
+                    TC_SAI_IS_BOOLEAN_VALID(e, e.Action.destroyConversation.isPrivate);
                     break;
                 }
                 // No longer supported
@@ -2542,6 +2591,8 @@ namespace Game.AI
                 SmartEvents.OnDespawn => SmartScriptTypeMaskId.Creature,
                 SmartEvents.SendEventTrigger => SmartScriptTypeMaskId.Event,
                 SmartEvents.AreatriggerExit => SmartScriptTypeMaskId.Areatrigger + SmartScriptTypeMaskId.AreatrigggerEntity,
+                SmartEvents.OnAuraApplied => SmartScriptTypeMaskId.Creature,
+                SmartEvents.OnAuraRemoved => SmartScriptTypeMaskId.Creature,
                 _ => 0,
             };
 
@@ -3259,6 +3310,12 @@ namespace Game.AI
         public DoAction doAction;
 
         [FieldOffset(4)]
+        public DestroyConversation destroyConversation;
+
+        [FieldOffset(4)]
+        public EnterVehicle enterVehicle;
+
+        [FieldOffset(4)]
         public Raw raw;
 
         [FieldOffset(32)]
@@ -3340,10 +3397,10 @@ namespace Game.AI
             public uint creature;
             public uint type;
             public uint duration;
-            public uint storageID;
-            public uint attackInvoker;
+            public uint storedTargetId;
             public uint flags; // SmartActionSummonCreatureFlags
             public uint count;
+            public uint createdBySpell;
         }
         public struct ThreatPCT
         {
@@ -3476,6 +3533,7 @@ namespace Game.AI
             public uint entry;
             public uint despawnTime;
             public uint summonType;
+            public uint storedTargetId;
         }
         public struct Active
         {
@@ -3650,6 +3708,7 @@ namespace Game.AI
         {
             public uint group;
             public uint attackInvoker;
+            public uint storedTargetId;
         }
         public struct Power
         {
@@ -3812,6 +3871,16 @@ namespace Game.AI
         {
             public uint actionId;
         }
+        public struct DestroyConversation
+        {
+            public uint id;
+            public uint isPrivate;
+            public uint range;
+        }
+        public struct EnterVehicle
+        {
+            public uint seatId;
+        }
         public struct Raw
         {
             public uint param1;
@@ -3969,7 +4038,7 @@ namespace Game.AI
         {
             public uint entry;
             public uint dist;
-            public uint dead;
+            public uint findCreatureAliveState;
         }
         public struct GoClosest
         {

@@ -467,6 +467,19 @@ namespace Game.Conditions
                     }
                     break;
                 }
+                case ConditionTypes.Label:
+                {
+                    Creature creature = obj.ToCreature();
+                    if (creature != null)
+                        condMeets = creature.HasLabel((int)ConditionValue1);
+                    else
+                    {
+                        GameObject go = obj.ToGameObject();
+                        if (go != null)
+                            condMeets = go.HasLabel((int)ConditionValue1);
+                    }
+                    break;
+                }
                 default:
                     break;
             }
@@ -591,6 +604,12 @@ namespace Game.Conditions
                 case ConditionTypes.PrivateObject:
                     mask |= GridMapTypeMask.All & ~GridMapTypeMask.Player;
                     break;
+                case ConditionTypes.StringId:
+                    mask |= GridMapTypeMask.Creature | GridMapTypeMask.GameObject;
+                    break;
+                case ConditionTypes.Label:
+                    mask |= GridMapTypeMask.Creature | GridMapTypeMask.GameObject;
+                    break;
                 default:
                     Cypher.Assert(false, "Condition.GetSearcherTypeMaskForCondition - missing condition handling!");
                     break;
@@ -618,6 +637,7 @@ namespace Game.Conditions
                 case ConditionSourceType.SmartEvent:
                 case ConditionSourceType.NpcVendor:
                 case ConditionSourceType.SpellProc:
+                case ConditionSourceType.ObjectIdVisibility:
                     return 2;
                 default:
                     return 1;
@@ -719,30 +739,22 @@ namespace Game.Conditions
 
     public class ConditionSourceInfo
     {
-        public ConditionSourceInfo(WorldObject target0, WorldObject target1 = null, WorldObject target2 = null)
-        {
-            mConditionTargets[0] = target0;
-            mConditionTargets[1] = target1;
-            mConditionTargets[2] = target2;
-            if (target0 != null)
-                mConditionMap = target0.GetMap();
-            else if (target1 != null)
-                mConditionMap = target1.GetMap();
-            else if (target2 != null)
-                mConditionMap = target2.GetMap();
-            else
-                mConditionMap = null;
-            mLastFailedCondition = null;
-        }
-
-        public ConditionSourceInfo(Map map)
-        {
-            mConditionMap = map;
-            mLastFailedCondition = null;
-        }
-
         public WorldObject[] mConditionTargets = new WorldObject[SharedConst.MaxConditionTargets]; // an array of targets available for conditions
         public Map mConditionMap;
         public Condition mLastFailedCondition;
+
+        public ConditionSourceInfo(WorldObject target0, WorldObject target1 = null, WorldObject target2 = null)
+        {
+            mConditionTargets = [target0, target1, target2];
+
+            var target = target0 ?? target1 ?? target2;
+            if (target != null)
+                mConditionMap = target.GetMap();
+        }
+
+        public ConditionSourceInfo(Map map) 
+        {
+            mConditionMap = map;
+        }
     }
 }

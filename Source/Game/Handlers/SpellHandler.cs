@@ -492,7 +492,9 @@ namespace Game
             {
                 MirrorImageComponentedData mirrorImageComponentedData = new();
                 mirrorImageComponentedData.UnitGUID = guid;
-                mirrorImageComponentedData.DisplayID = (int)creator.GetDisplayId();
+                var chrModel = Global.DB2Mgr.GetChrModel(creator.GetRace(), creator.GetGender());
+                if (chrModel != null)
+                    mirrorImageComponentedData.ChrModelID = (int)chrModel.Id;
                 mirrorImageComponentedData.RaceID = (byte)creator.GetRace();
                 mirrorImageComponentedData.Gender = (byte)creator.GetGender();
                 mirrorImageComponentedData.ClassID = (byte)creator.GetClass();
@@ -599,6 +601,43 @@ namespace Game
                 recvPacket.SetOpcode(CMSG_MOVE_STOP); // always set to CMSG_MOVE_STOP in client SetOpcode
                 //HandleMovementOpcodes(recvPacket);*/
             }
+        }
+
+        [WorldPacketHandler(ClientOpcodes.UpdateSpellVisual, Processing = PacketProcessing.Inplace)]
+        void HandleUpdateAuraVisual(UpdateAuraVisual updateAuraVisual)
+        {
+            Unit target = Global.ObjAccessor.GetUnit(_player, updateAuraVisual.TargetGUID);
+            if (target == null)
+                return;
+
+            SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(updateAuraVisual.SpellID, _player.GetMap().GetDifficultyID());
+            if (spellInfo == null)
+                return;
+
+            uint spellXspellVisualId = _player.GetCastSpellXSpellVisualId(spellInfo);
+            foreach (var (_, auraApp) in target.GetAppliedAuras().Where(p => p.Key == spellInfo.Id))
+                if (auraApp.GetBase().GetCasterGUID() == _player.GetGUID())
+                    auraApp.GetBase().SetSpellVisual(new SpellCastVisual() { SpellXSpellVisualID = spellXspellVisualId });
+
+            if (_player.GetChannelSpellId() == spellInfo.Id)
+                _player.SetChannelVisual(new SpellCastVisualField() { SpellXSpellVisualID = spellXspellVisualId });
+        }
+
+        [WorldPacketHandler(ClientOpcodes.UpdateAreaTriggerVisual, Processing = PacketProcessing.Inplace)]
+        void HandleUpdateAreaTriggerVisual(UpdateAreaTriggerVisual updateAreaTriggerVisual)
+        {
+            AreaTrigger target = ObjectAccessor.GetAreaTrigger(_player, updateAreaTriggerVisual.TargetGUID);
+            if (target == null)
+                return;
+
+            if (target.GetCasterGUID() != _player.GetGUID())
+                return;
+
+            SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(target.m_areaTriggerData.SpellForVisuals, _player.GetMap().GetDifficultyID());
+            if (spellInfo == null)
+                return;
+
+            target.SetSpellVisual(new SpellCastVisual(_player.GetCastSpellXSpellVisualId(spellInfo), 0));
         }
 
         [WorldPacketHandler(ClientOpcodes.KeyboundOverride, Processing = PacketProcessing.ThreadSafe)]

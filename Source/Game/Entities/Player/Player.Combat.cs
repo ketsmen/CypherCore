@@ -40,12 +40,9 @@ namespace Game.Entities
             Group group = GetGroup();
             if (group != null)
             {
-                for (GroupReference refe = group.GetFirstMember(); refe != null; refe = refe.Next())
+                foreach (GroupReference groupRef in group.GetMembers())
                 {
-                    Player player = refe.GetSource();
-                    if (player == null)
-                        continue;
-
+                    Player player = groupRef.GetSource();
                     if (!player.IsAtGroupRewardDistance(pRewardSource))
                         continue;                               // member (alive or dead) or his corpse at req. distance
 
@@ -475,13 +472,13 @@ namespace Game.Entities
                     opponent.UpdateCriteria(CriteriaType.WinDuel, 1);
 
                     // Credit for quest Death's Challenge
-                    if (GetClass() == Class.Deathknight && opponent.GetQuestStatus(12733) == QuestStatus.Incomplete)
+                    if (GetClass() == Class.DeathKnight && opponent.GetQuestStatus(12733) == QuestStatus.Incomplete)
                         opponent.CastSpell(duel.Opponent, 52994, true);
 
                     // Honor points after duel (the winner) - ImpConfig
                     int amount = WorldConfig.GetIntValue(WorldCfg.HonorAfterDuel);
                     if (amount != 0)
-                        opponent.RewardHonor(null, 1, amount);
+                        opponent.RewardHonor(null, 1, amount, HonorGainSource.Kill);
 
                     break;
                 default:

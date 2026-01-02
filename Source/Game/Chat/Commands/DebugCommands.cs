@@ -51,9 +51,19 @@ namespace Game.Chat
         }
 
         [Command("arena", RBACPermissions.CommandDebug, true)]
-        static bool HandleDebugArenaCommand(CommandHandler handler)
+        static bool HandleDebugArenaCommand(CommandHandler handler, uint battlemasterListId)
         {
-            Global.BattlegroundMgr.ToggleArenaTesting();
+            bool successful = Global.BattlegroundMgr.ToggleArenaTesting(battlemasterListId);
+            if (!successful)
+            {
+                handler.SendSysMessage("BattlemasterListId %u does not exist or is not an arena.", battlemasterListId);
+                return true;
+            }
+
+            if (battlemasterListId == 0 || handler == null || handler.GetSession() == null)
+                return true;
+
+            BattlegroundManager.QueuePlayerForArena(handler.GetSession().GetPlayer(), 0, (byte)LfgRoles.Damage);
             return true;
         }
 
@@ -142,7 +152,7 @@ namespace Game.Chat
                 var check = new AllCreaturesOfEntryInRange(handler.GetPlayer(), entry, 20.0f);
                 var searcher = new CreatureSearcher(handler.GetPlayer(), check);
                 Cell.VisitAllObjects(handler.GetPlayer(), searcher, 30.0f);
-                var passenger = searcher.GetTarget();
+                var passenger = searcher.GetResult();
                 if (passenger == null || passenger == target)
                     return false;
                 passenger.EnterVehicle(target, seatId);
@@ -440,7 +450,7 @@ namespace Game.Chat
         }
 
         [Command("instancespawn", RBACPermissions.CommandDebug)]
-        static bool HandleDebugInstanceSpawns(CommandHandler handler, [VariantArg<uint, string>] object optArg)
+        static bool HandleDebugInstanceSpawns(CommandHandler handler, VariantArg<uint, string> optArg)
         {
             Player player = handler.GetPlayer();
             if (player == null)
@@ -448,10 +458,10 @@ namespace Game.Chat
 
             bool explain = false;
             uint groupID = 0;
-            if (optArg is string && (optArg as string).Equals("explain", StringComparison.OrdinalIgnoreCase))
+            if (optArg.Is<string>() && ((string)optArg).Equals("explain", StringComparison.OrdinalIgnoreCase))
                 explain = true;
             else
-                groupID = (uint)optArg;
+                groupID = optArg;
 
             if (groupID != 0 && Global.ObjectMgr.GetSpawnGroupData(groupID) == null)
             {
@@ -560,7 +570,7 @@ namespace Game.Chat
         }
 
         [Command("loadcells", RBACPermissions.CommandDebug, true)]
-        static bool HandleDebugLoadCellsCommand(CommandHandler handler, uint? mapId, uint? tileX, uint? tileY)
+        static bool HandleDebugLoadCellsCommand(CommandHandler handler, OptionalArg<uint> mapId, OptionalArg<uint> tileX, OptionalArg<uint> tileY)
         {
             if (mapId.HasValue)
             {
@@ -578,7 +588,7 @@ namespace Game.Chat
             return false;
         }
 
-        static bool HandleDebugLoadCellsCommandHelper(CommandHandler handler, Map map, uint? tileX, uint? tileY)
+        static bool HandleDebugLoadCellsCommandHelper(CommandHandler handler, Map map, OptionalArg<uint> tileX, OptionalArg<uint> tileY)
         {
             if (map == null)
                 return false;
@@ -640,7 +650,7 @@ namespace Game.Chat
         }
 
         [Command("moveflags", RBACPermissions.CommandDebug)]
-        static bool HandleDebugMoveflagsCommand(CommandHandler handler, uint? moveFlags, uint? moveFlagsExtra)
+        static bool HandleDebugMoveflagsCommand(CommandHandler handler, OptionalArg<uint> moveFlags, OptionalArg<uint> moveFlagsExtra, OptionalArg<uint> moveFlagsExtra2)
         {
             Unit target = handler.GetSelectedUnit();
             if (target == null)
@@ -653,12 +663,13 @@ namespace Game.Chat
             }
             else
             {
-                // @fixme: port master's HandleDebugMoveflagsCommand; flags need different handling
-
-                target.SetUnitMovementFlags((MovementFlag)moveFlags);
+                target.SetUnitMovementFlags((MovementFlag)moveFlags.Value);
 
                 if (moveFlagsExtra.HasValue)
-                    target.SetUnitMovementFlags2((MovementFlag2)moveFlagsExtra);
+                    target.SetUnitMovementFlags2((MovementFlag2)moveFlagsExtra.Value);
+
+                if (moveFlagsExtra2.HasValue)
+                    target.SetExtraUnitMovementFlags2((MovementFlags3)moveFlagsExtra2.Value);
 
                 if (!target.IsTypeId(TypeId.Player))
                     target.DestroyForNearbyPlayers();  // Force new SMSG_UPDATE_OBJECT:CreateObject
@@ -720,7 +731,7 @@ namespace Game.Chat
         }
 
         [Command("objectcount", RBACPermissions.CommandDebug, true)]
-        static bool HandleDebugObjectCountCommand(CommandHandler handler, uint? mapId)
+        static bool HandleDebugObjectCountCommand(CommandHandler handler, OptionalArg<uint> mapId)
         {
             void HandleDebugObjectCountMap(Map map)
             {
@@ -741,8 +752,8 @@ namespace Game.Chat
                 var orderedCreatures = creatureIds.OrderBy(p => p.Value).Where(p => p.Value > 5);
 
                 handler.SendSysMessage("Top Creatures count:");
-                foreach (var p in orderedCreatures)
-                    handler.SendSysMessage($"Entry: {p.Key} Count: {p.Value}");
+                foreach (var (creatureId, count) in orderedCreatures)
+                    handler.SendSysMessage($"Entry: {creatureId} Count: {count}");
             }
 
             if (mapId.HasValue)
@@ -791,7 +802,7 @@ namespace Game.Chat
         }
 
         [Command("pvp warmode", RBACPermissions.CommandDebug, true)]
-        static bool HandleDebugWarModeBalanceCommand(CommandHandler handler, string command, int? rewardValue)
+        static bool HandleDebugWarModeBalanceCommand(CommandHandler handler, string command, OptionalArg<int> rewardValue)
         {
             // USAGE: .debug pvp fb <alliance|horde|neutral|off> [pct]
             // neutral     Sets faction balance off.
@@ -887,7 +898,7 @@ namespace Game.Chat
         }
 
         [Command("setaurastate", RBACPermissions.CommandDebug)]
-        static bool HandleDebugSetAuraStateCommand(CommandHandler handler, AuraStateType? state, bool apply)
+        static bool HandleDebugSetAuraStateCommand(CommandHandler handler, OptionalArg<AuraStateType> state, bool apply)
         {
             Unit unit = handler.GetSelectedUnit();
             if (unit == null)
@@ -1229,7 +1240,7 @@ namespace Game.Chat
             }
 
             [Command("objectsound", RBACPermissions.CommandDebug)]
-            static bool HandleDebugPlayObjectSoundCommand(CommandHandler handler, uint soundKitId, int? broadcastTextId)
+            static bool HandleDebugPlayObjectSoundCommand(CommandHandler handler, uint soundKitId, OptionalArg<int> broadcastTextId)
             {
                 if (!CliDB.SoundKitStorage.ContainsKey(soundKitId))
                 {
@@ -1408,7 +1419,7 @@ namespace Game.Chat
             }
 
             [Command("spellfail", RBACPermissions.CommandDebug)]
-            static bool HandleDebugSendSpellFailCommand(CommandHandler handler, SpellCastResult result, int? failArg1, int? failArg2)
+            static bool HandleDebugSendSpellFailCommand(CommandHandler handler, SpellCastResult result, OptionalArg<int> failArg1, OptionalArg<int> failArg2)
             {
                 CastFailed castFailed = new();
                 castFailed.CastID = ObjectGuid.Empty;
@@ -1446,7 +1457,7 @@ namespace Game.Chat
 
         static void HandleDebugGuidLimitsMap(CommandHandler handler, Map map)
         {
-            handler.SendSysMessage($"Map Id: {map.GetId()} Name: '{map.GetMapName()}' Instance Id: {map.GetInstanceId()} Highest Guid Creature: {map.GenerateLowGuid(HighGuid.Creature)} GameObject: {map.GetMaxLowGuid(HighGuid.GameObject)}");
+            handler.SendSysMessage($"Map Id: {map.GetId()} Name: '{map.GetMapName()}' Instance Id: {map.GetInstanceId()} Highest Guid Creature: {map.GetMaxLowGuid(HighGuid.Creature)} GameObject: {map.GetMaxLowGuid(HighGuid.GameObject)}");
         }
     }
 }

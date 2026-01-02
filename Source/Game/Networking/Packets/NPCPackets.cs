@@ -58,15 +58,15 @@ namespace Game.Networking.Packets
             _worldPacket.WriteInt32(FriendshipFactionID);
             _worldPacket.WriteInt32(GossipOptions.Count);
             _worldPacket.WriteInt32(GossipText.Count);
-            _worldPacket.WriteBit(TextID.HasValue);
+            _worldPacket.WriteBit(RandomTextID.HasValue);
             _worldPacket.WriteBit(BroadcastTextID.HasValue);
             _worldPacket.FlushBits();
 
             foreach (ClientGossipOptions options in GossipOptions)
                 options.Write(_worldPacket);
 
-            if (TextID.HasValue)
-                _worldPacket.WriteInt32(TextID.Value);
+            if (RandomTextID.HasValue)
+                _worldPacket.WriteInt32(RandomTextID.Value);
 
             if (BroadcastTextID.HasValue)
                 _worldPacket.WriteInt32(BroadcastTextID.Value);
@@ -79,7 +79,7 @@ namespace Game.Networking.Packets
         public int FriendshipFactionID;
         public ObjectGuid GossipGUID;
         public List<ClientGossipText> GossipText = new();
-        public int? TextID; // in classic variants this still holds npc_text id
+        public int? RandomTextID; // in classic variants this still holds npc_text id
         public int? BroadcastTextID;
         public uint GossipID;
         public uint LfgDungeonsID;
@@ -164,7 +164,7 @@ namespace Game.Networking.Packets
         public override void Write()
         {
             _worldPacket.WritePackedGuid(TrainerGUID);
-            _worldPacket.WriteInt32(TrainerType);
+            _worldPacket.WriteInt8(TrainerType);
             _worldPacket.WriteInt32(TrainerID);
 
             _worldPacket.WriteInt32(Spells.Count);
@@ -188,7 +188,7 @@ namespace Game.Networking.Packets
         }
 
         public ObjectGuid TrainerGUID;
-        public int TrainerType;
+        public sbyte TrainerType;
         public int TrainerID = 1;
         public List<TrainerListSpell> Spells = new();
         public string Greeting;
@@ -339,8 +339,8 @@ namespace Game.Networking.Packets
     {
         public int GossipOptionID;
         public GossipOptionNpc OptionNPC;
-        public byte OptionFlags;
-        public int OptionCost;
+        public int OptionFlags;
+        public ulong OptionCost;
         public uint OptionLanguage;
         public GossipOptionFlags Flags;
         public int OrderIndex;
@@ -355,9 +355,9 @@ namespace Game.Networking.Packets
         public void Write(WorldPacket data)
         {
             data.WriteInt32(GossipOptionID);
-            data.WriteUInt8((byte)OptionNPC);
+            data.WriteUInt32((uint)OptionNPC);
             data.WriteInt8((sbyte)OptionFlags);
-            data.WriteInt32(OptionCost);
+            data.WriteUInt64(OptionCost);
             data.WriteUInt32(OptionLanguage);
             data.WriteInt32((int)Flags);
             data.WriteInt32(OrderIndex);
@@ -399,6 +399,7 @@ namespace Game.Networking.Packets
         public uint QuestFlags;
         public uint QuestFlagsEx;
         public uint QuestFlagsEx2;
+        public uint QuestFlagsEx3;
 
         public void Write(WorldPacket data)
         {
@@ -409,6 +410,7 @@ namespace Game.Networking.Packets
             data.WriteUInt32(QuestFlags);
             data.WriteUInt32(QuestFlagsEx);
             data.WriteUInt32(QuestFlagsEx2);
+            data.WriteUInt32(QuestFlagsEx3);
 
             data.WriteBit(Repeatable);
             data.WriteBit(ResetByScheduler);

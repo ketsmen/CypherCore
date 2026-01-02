@@ -915,15 +915,18 @@ namespace Game.Entities
                 SendMessageToSet(packet, true);
             }
 
-            if (IsAlive())
+            if (GetVehicle() == null)
             {
-                if (IsGravityDisabled() || IsHovering())
-                    SetPlayHoverAnim(true);
-                else
-                    SetPlayHoverAnim(false);
+                if (IsAlive())
+                {
+                    if (IsGravityDisabled() || IsHovering())
+                        SetPlayHoverAnim(true);
+                    else
+                        SetPlayHoverAnim(false);
+                }
+                else if (IsPlayer()) // To update player who dies while flying/hovering
+                    SetPlayHoverAnim(false, false);
             }
-            else if (IsPlayer()) // To update player who dies while flying/hovering
-                SetPlayHoverAnim(false, false);
 
             if (IsCreature() && updateAnimTier && IsAlive() && !HasUnitState(UnitState.Root))
             {
@@ -936,6 +939,18 @@ namespace Game.Entities
             }
 
             return true;
+        }
+
+        void CancelMountAura(bool force)
+        {
+            if (!HasAuraType(AuraType.Mounted))
+                return;
+
+            RemoveAurasByType(AuraType.Mounted, aurApp =>
+            {
+                SpellInfo spellInfo = aurApp.GetBase().GetSpellInfo();
+                return force || (!spellInfo.HasAttribute(SpellAttr0.NoAuraCancel) && spellInfo.IsPositive() && !spellInfo.IsPassive());
+            });
         }
 
         public MountCapabilityRecord GetMountCapability(uint mountType)
@@ -1043,6 +1058,14 @@ namespace Game.Entities
             if (IsLoading())
                 return;
 
+            var spellShapeshiftForm = CliDB.SpellShapeshiftFormStorage.LookupByKey(GetShapeshiftForm());
+            if (spellShapeshiftForm != null)
+            {
+                uint mountType = spellShapeshiftForm.MountTypeID;
+                if (mountType != 0 && GetMountCapability(mountType) == null)
+                    CancelTravelShapeshiftForm(AuraRemoveMode.Interrupt);
+            }
+
             var mounts = GetAuraEffectsByType(AuraType.Mounted);
             foreach (AuraEffect aurEff in mounts.ToArray())
             {
@@ -1067,6 +1090,7 @@ namespace Game.Entities
             ZLiquidStatus oldLiquidStatus = GetLiquidStatus();
             base.ProcessPositionDataChanged(data);
             ProcessTerrainStatusUpdate(oldLiquidStatus, data.LiquidInfo);
+            SetUpdateFieldValue(m_values.ModifyValue(m_unitData).ModifyValue(m_unitData.CurrentAreaID), data.AreaId);
         }
 
         public virtual void ProcessTerrainStatusUpdate(ZLiquidStatus oldLiquidStatus, LiquidData newLiquidData)
@@ -1527,22 +1551,19 @@ namespace Game.Entities
             }
         }
 
-        public void SetRooted(bool apply, bool packetOnly = false)
+        public void SetRooted(bool apply)
         {
-            if (!packetOnly)
+            if (apply)
             {
-                if (apply)
-                {
-                    // MOVEMENTFLAG_ROOT cannot be used in conjunction with MOVEMENTFLAG_MASK_MOVING (tested 3.3.5a)
-                    // this will freeze clients. That's why we remove MOVEMENTFLAG_MASK_MOVING before
-                    // setting MOVEMENTFLAG_ROOT
-                    RemoveUnitMovementFlag(MovementFlag.MaskMoving);
-                    AddUnitMovementFlag(MovementFlag.Root);
-                    StopMoving();
-                }
-                else
-                    RemoveUnitMovementFlag(MovementFlag.Root);
+                // MOVEMENTFLAG_ROOT cannot be used in conjunction with MOVEMENTFLAG_MASK_MOVING (tested 3.3.5a)
+                // this will freeze clients. That's why we remove MOVEMENTFLAG_MASK_MOVING before
+                // setting MOVEMENTFLAG_ROOT
+                RemoveUnitMovementFlag(MovementFlag.MaskMoving);
+                AddUnitMovementFlag(MovementFlag.Root);
+                StopMoving();
             }
+            else
+                RemoveUnitMovementFlag(MovementFlag.Root);
 
             Player playerMover = GetUnitBeingMoved()?.ToPlayer();// unit controlled by a player.
             if (playerMover != null)

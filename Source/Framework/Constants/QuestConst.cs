@@ -63,6 +63,10 @@ namespace Framework.Constants
         Spell = 5,
         Unlock = 6,
         Companion = 7,
+        QuestlineUnlock = 8,
+        QuestlineReward = 9,
+        QuestlineUnlockPart = 10,
+
         Max
     }
 
@@ -165,7 +169,19 @@ namespace Framework.Constants
         ThreatEmissaryQuest = 270,
         CallingQuest = 271,
         VenthyrPartyQuest = 272,
-        MawSoulSpawnTracker = 273
+        MawSoulSpawnTracker = 273,
+        PvpEliteWorldquest = 278,
+        ForbiddenReachEnvoyTask = 279,
+        DragonriderRacing = 281,
+        ImportantQuest = 282,
+        BonusObjectiveWithCompletionToast = 283,
+        MetaQuest = 284,
+        CapstoneWorldQuest = 286,
+        CapstoneBlocker = 287,
+        Delve = 288,
+        WorldBoss = 289,
+        Hidden = 291,
+        ImportantQuestNoAbandon = 292
     }
 
     public enum QuestSort
@@ -315,6 +331,44 @@ namespace Framework.Constants
         CovenantAssaults = 604,
         ProtoformSynthesis = 606,
         Ch6SymbolTracking = 607,
+        TempestUnleashed = 608,
+        DragonscaleExpedition = 609,
+        PrimalistStorm = 610,
+        IskaaraTuskarr = 611,
+        MaruukCentaur = 612,
+        ValdrakkenAccord = 613,
+        Evoker = 614,
+        Tradingpost = 615,
+        EngineOfInnovation = 616,
+        ArtisansConsortium = 617,
+        SufussionCamps = 618,
+        EnvoyTasks = 620,
+        ResearchersUnderFire = 622,
+        AzerothianArchives = 623,
+        TrialOfStyle = 624,
+        Systems = 625,
+        TimeRifts = 626,
+        LittleScalesDaycare = 627,
+        Dreamsurge = 628,
+        DreamWardens = 629,
+        GilneasReclamation = 630,
+        KalimdorCup = 631,
+        EasternKingdomsCup = 632,
+        OutlandCup = 633,
+        NorthrendCup = 634,
+        PandariaCup = 635,
+        BrokenIslesCup = 636,
+        TheHarbringer = 637,
+        HearthstoneAnniversary = 638,
+        Timerunning = 639,
+        Earthen = 640,
+        UpgradeSystem = 642,
+        Warbands = 643,
+        MetaQuests = 645,
+        SecretsOfAzeroth = 646,
+        Lorewalking = 647,
+        DastardlyDuos = 651,
+        Delves = 652,
     }
 
     public enum QuestFailedReasons
@@ -464,6 +518,8 @@ namespace Framework.Constants
         LegendaryRewardCompletePOI = 0x100000000000,
         ImportantQuestRewardCompleteNoPOI = 0x200000000000,
         ImportantQuestRewardCompletePOI = 0x400000000000,
+
+        FutureMask = Future | FutureJourneyQuest | FutureLegendaryQuest | FutureImportantQuest
     }
 
     [Flags]
@@ -620,5 +676,13 @@ namespace Framework.Constants
         None = 0x0,
         FirstCompletionBonus = 0x1,
         RepeatCompletionBonus = 0x2
+    }
+
+    public enum SpawnTrackingState
+    {
+        None = 0,
+        Active = 1,
+        Complete = 2,
+        Max
     }
 }

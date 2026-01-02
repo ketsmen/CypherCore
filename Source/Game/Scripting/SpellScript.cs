@@ -30,7 +30,7 @@ namespace Game.Scripting
             return true;
         }
 
-        public bool ValidateSpellInfo(params uint[] spellIds)
+        public static bool ValidateSpellInfo(params uint[] spellIds)
         {
             bool allValid = true;
             foreach (uint spellId in spellIds)
@@ -45,7 +45,7 @@ namespace Game.Scripting
             return allValid;
         }
 
-        public bool ValidateSpellEffect(params (uint spellId, uint effectIndex)[] pairs)
+        public static bool ValidateSpellEffect(params (uint spellId, uint effectIndex)[] pairs)
         {
             bool allValid = true;
             foreach (var (spellId, effectIndex) in pairs)
@@ -56,7 +56,7 @@ namespace Game.Scripting
             return allValid;
         }
 
-        public bool ValidateSpellEffect(uint spellId, uint effectIndex)
+        public static bool ValidateSpellEffect(uint spellId, uint effectIndex)
         {
             SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(spellId, Difficulty.None);
             if (spellInfo == null)
@@ -112,7 +112,7 @@ namespace Game.Scripting
                 uint mask = 0;
                 if (_effIndex == SpellConst.EffectAll || _effIndex == SpellConst.EffectFirstFound)
                 {
-                    for (byte i = 0; i < SpellConst.MaxEffects; ++i)
+                    for (byte i = 0; i < spellInfo.GetEffects().Count; ++i)
                     {
                         if (_effIndex == SpellConst.EffectFirstFound && mask != 0)
                             return mask;
@@ -164,7 +164,7 @@ namespace Game.Scripting
         // internal use classes & functions
         // DO NOT OVERRIDE THESE IN SCRIPTS
         public delegate SpellCastResult SpellCheckCastFnType();
-        public delegate void DamageAndHealingCalcFnType(Unit victim, ref int damageOrHealing, ref int flatMod, ref float pctMod);
+        public delegate void DamageAndHealingCalcFnType(SpellEffectInfo spellEffectInfo, Unit victim, ref int damageOrHealing, ref int flatMod, ref float pctMod);
         public delegate void SpellOnResistAbsorbCalculateFnType(DamageInfo damageInfo, ref uint resistAmount, ref int absorbAmount);
         public delegate void SpellEffectFnType(uint index);
         public delegate void SpellBeforeHitFnType(SpellMissInfo missInfo);
@@ -212,9 +212,9 @@ namespace Game.Scripting
                 _callImpl = handler;
             }
 
-            public void Call(Unit victim, ref int damageOrHealing, ref int flatMod, ref float pctMod)
+            public void Call(SpellEffectInfo spellEffectInfo, Unit victim, ref int damageOrHealing, ref int flatMod, ref float pctMod)
             {
-                _callImpl(victim, ref damageOrHealing, ref flatMod, ref pctMod);
+                _callImpl(spellEffectInfo, victim, ref damageOrHealing, ref flatMod, ref pctMod);
             }
         }
 
@@ -926,7 +926,7 @@ namespace Game.Scripting
         }
 
         // returns current spell hit target aura
-        public Aura GetHitAura(bool dynObjAura = false)
+        public Aura GetHitAura(bool dynObjAura = false, bool withRemoved = false)
         {
             if (!IsInTargetHook())
             {
@@ -938,7 +938,7 @@ namespace Game.Scripting
             if (dynObjAura)
                 aura = m_spell.dynObjAura;
 
-            if (aura == null || aura.IsRemoved())
+            if (aura == null || (aura.IsRemoved() && !withRemoved))
                 return null;
 
             return aura;
@@ -1093,7 +1093,7 @@ namespace Game.Scripting
             var tempTargets = targets.Select<WorldObject, (WorldObject, int)>(target =>
             {
                 int negativePoints = 0;
-                if (prioritizeGroupMembersOf != null && (!target.IsUnit() || target.ToUnit().IsInRaidWith(prioritizeGroupMembersOf)))
+                if (prioritizeGroupMembersOf != null && (!target.IsUnit() || !target.ToUnit().IsInRaidWith(prioritizeGroupMembersOf)))
                     negativePoints |= 1 << NOT_GROUPED;
 
                 if (prioritizePlayers && !target.IsPlayer() && (!target.IsCreature() || !target.ToCreature().IsTreatedAsRaidUnit()))
@@ -1126,6 +1126,72 @@ namespace Game.Scripting
             targets.Clear();
             targets.AddRange(tempTargets.Select(pair => pair.Item1));
             targets.Resize(maxTargets);
+        }
+
+        public void SortTargetsWithPriorityRules(List<WorldObject> targets, int maxTargets, List<TargetPriorityRule> rules)
+        {
+            if (targets.Count <= maxTargets)
+                return;
+
+            List<(WorldObject, int)> prioritizedTargets = new();
+
+            // score each target based on how many rules they satisfy.
+            foreach (WorldObject target in targets)
+            {
+                int score = 0;
+                for (int i = 0; i < rules.Count; ++i)
+                    if (rules[i].Rule(target))
+                        score |= 1 << (rules.Count - 1 - i);
+
+                prioritizedTargets.Add((target, score));
+            }
+
+            // the higher the value, the higher the priority is.
+            prioritizedTargets.OrderBy(pair => pair.Item2);
+
+            int tieScore = prioritizedTargets[maxTargets - 1].Item2;
+
+            // if there are ties at the cutoff, shuffle them to avoid selection bias.
+            if (prioritizedTargets[maxTargets].Item2 == tieScore)
+            {
+                bool isTieScore((WorldObject, int) entry) { return entry.Item2 == tieScore; }
+
+                // scan backwards to include tied entries before the cutoff.
+                int tieStart = (maxTargets - 1);
+                while (tieStart > 0 && isTieScore(prioritizedTargets[tieStart - 1]))
+                    --tieStart;
+
+                // scan forward to include tied entries after the cutoff.
+                int tieEnd = maxTargets;
+                while (tieEnd < prioritizedTargets.Count && isTieScore(prioritizedTargets[tieEnd]))
+                    ++tieEnd;
+
+                // shuffle only the tied range to randomize final selection.
+                prioritizedTargets.RandomShuffle(tieStart, tieStart - tieEnd);
+            }
+
+            targets.Clear();
+
+            for (int i = 0; i < maxTargets; ++i)
+                targets.Add(prioritizedTargets[i].Item1);
+        }
+    }
+
+    public struct TargetPriorityRule
+    {
+        public Func<WorldObject, bool> Rule;
+
+        public TargetPriorityRule(Func<WorldObject, bool> func)
+        {
+            Rule = (WorldObject target) => func(target);
+        }
+        public TargetPriorityRule(Func<Unit, bool> func)
+        {
+            Rule = (WorldObject target) => target.IsUnit() && func(target.ToUnit());
+        }
+        public TargetPriorityRule(Func<Player, bool> func)
+        {
+            Rule = (WorldObject target) => target.IsPlayer() && func(target.ToPlayer());
         }
     }
 

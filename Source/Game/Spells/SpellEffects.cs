@@ -309,11 +309,12 @@ namespace Game.Spells
                 targets.Update(caster); // refresh pointers stored in targets
 
                 // original caster guid only for GO cast
-                CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
+                CastSpellExtraArgs args = new(TriggerCastFlags.FullMask & ~(TriggerCastFlags.IgnorePowerCost | TriggerCastFlags.IgnoreReagentCost));
                 args.SetOriginalCaster(originalCaster);
                 args.OriginalCastId = originalCastId;
                 args.OriginalCastItemLevel = itemLevel;
-                if (!castItemGuid.IsEmpty() && Global.SpellMgr.GetSpellInfo(triggerSpell, caster.GetMap().GetDifficultyID()).HasAttribute(SpellAttr2.RetainItemCast))
+                SpellInfo spellInfo = Global.SpellMgr.GetSpellInfo(triggerSpell, caster.GetMap().GetDifficultyID());
+                if (!castItemGuid.IsEmpty() && spellInfo.HasAttribute(SpellAttr2.RetainItemCast))
                 {
                     Player triggeringAuraCaster = caster?.ToPlayer();
                     if (triggeringAuraCaster != null)
@@ -322,7 +323,7 @@ namespace Game.Spells
 
                 // set basepoints for trigger with value effect
                 if (effect == SpellEffectName.TriggerSpellWithValue)
-                    for (int i = 0; i < SpellConst.MaxEffects; ++i)
+                    for (int i = 0; i < spellInfo.GetEffects().Count; ++i)
                         args.AddSpellMod(SpellValueMod.BasePoint0 + i, value);
 
                 if (targetCount.HasValue)
@@ -389,13 +390,13 @@ namespace Game.Spells
                 }
             }
 
-            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
+            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask & ~(TriggerCastFlags.IgnorePowerCost | TriggerCastFlags.IgnoreReagentCost));
             args.SetOriginalCaster(m_originalCasterGUID);
             args.SetTriggeringSpell(this);
             args.SetCustomArg(m_customArg);
             // set basepoints for trigger with value effect
             if (effectInfo.Effect == SpellEffectName.TriggerMissileSpellWithValue)
-                for (int i = 0; i < SpellConst.MaxEffects; ++i)
+                for (int i = 0; i < spellInfo.GetEffects().Count; ++i)
                     args.AddSpellMod(SpellValueMod.BasePoint0 + i, damage);
 
             if (targetCount.HasValue)
@@ -410,10 +411,9 @@ namespace Game.Spells
 
         [SpellEffectHandler(SpellEffectName.ForceCast)]
         [SpellEffectHandler(SpellEffectName.ForceCastWithValue)]
-        [SpellEffectHandler(SpellEffectName.ForceCast2)]
         void EffectForceCast()
         {
-            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+            if (effectHandleMode != SpellEffectHandleMode.LaunchTarget)
                 return;
 
             if (unitTarget == null)
@@ -447,7 +447,6 @@ namespace Game.Spells
                     {
                         CastSpellExtraArgs args1 = new(TriggerCastFlags.FullMask);
                         args1.SetOriginalCaster(m_originalCasterGUID);
-                        args1.SetTriggeringSpell(this);
                         args1.AddSpellMod(SpellValueMod.BasePoint0, damage);
                         unitTarget.CastSpell(unitTarget, spellInfo.Id, args1);
                         return;
@@ -459,19 +458,60 @@ namespace Game.Spells
             {
                 case 72298: // Malleable Goo Summon
                     unitTarget.CastSpell(unitTarget, spellInfo.Id, new CastSpellExtraArgs(TriggerCastFlags.FullMask)
-                        .SetOriginalCaster(m_originalCasterGUID)
-                        .SetTriggeringSpell(this));
+                        .SetOriginalCaster(m_originalCasterGUID));
                     return;
             }
 
-            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask);
-            args.SetTriggeringSpell(this);
+            CastSpellExtraArgs args = new(TriggerCastFlags.FullMask & ~(TriggerCastFlags.IgnorePowerCost | TriggerCastFlags.CastDirectly | TriggerCastFlags.IgnoreReagentCost));
             // set basepoints for trigger with value effect
             if (effectInfo.Effect == SpellEffectName.ForceCastWithValue)
-                for (int i = 0; i < SpellConst.MaxEffects; ++i)
+                for (int i = 0; i < spellInfo.GetEffects().Count; ++i)
                     args.AddSpellMod(SpellValueMod.BasePoint0 + i, damage);
 
             unitTarget.CastSpell(m_caster, spellInfo.Id, args);
+        }
+
+        [SpellEffectHandler(SpellEffectName.ForceCast2)]
+        void EffectForceCast2()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.LaunchTarget)
+                return;
+
+            if (unitTarget == null)
+                return;
+
+            uint triggered_spell_id = effectInfo.TriggerSpell;
+            if (triggered_spell_id == 0)
+            {
+                Log.outWarn(LogFilter.Spells, $"Spell::EffectForceCast2: Spell {m_spellInfo.Id} [EffectIndex: {effectInfo.EffectIndex}] does not have triggered spell.");
+                return;
+            }
+
+            // normal case
+            if (!Global.SpellMgr.HasSpellInfo(triggered_spell_id, GetCastDifficulty()))
+            {
+                Log.outError(LogFilter.Spells, $"Spell::EffectForceCast2 of spell {m_spellInfo.Id}: triggering unknown spell id {triggered_spell_id}.");
+                return;
+            }
+
+            // Start the cast during next update tick
+            // This is neccessary to preserve proper SMSG_SPELL_START and SMSG_SPELL_GO packet sequence
+            // (if packet sequence is not preserved then client cast bar in UI bugs and doesn't stop when the spell is interrupted)
+            // Triggered spells from effects handled during launch phase (such as SPELL_EFFECT_TRIGGER_SPELL)
+            // normally have their SMSG_SPELL_GO sent before parent spell SMSG_SPELL_GO
+            // SPELL_EFFECT_FORCE_CAST_2 requires these packets to be sent after parent spell
+            // but also needs to be handled during launch phase as well
+            var target = new CastSpellTargetArg(m_caster);
+            var caster = unitTarget;
+            unitTarget.m_Events.AddEventAtOffset(() =>
+            {
+                if (target.Targets == null)
+                    return;
+
+                target.Targets.Update(caster);
+
+                caster.CastSpell(target, triggered_spell_id);
+            }, TimeSpan.Zero);
         }
 
         [SpellEffectHandler(SpellEffectName.TriggerSpell2)]
@@ -676,7 +716,7 @@ namespace Game.Spells
             if (effectHandleMode != SpellEffectHandleMode.HitTarget)
                 return;
 
-            if (spellAura == null || unitTarget == null)
+            if (spellAura == null || spellAura.IsRemoved() || unitTarget == null)
                 return;
 
             // register target/effect on aura
@@ -684,7 +724,7 @@ namespace Game.Spells
             if (aurApp == null)
                 aurApp = unitTarget._CreateAuraApplication(spellAura, 1u << (int)effectInfo.EffectIndex);
             else
-                aurApp.UpdateApplyEffectMask(aurApp.GetEffectsToApply() | 1u << (int)effectInfo.EffectIndex, false);
+                aurApp.AddEffectToApplyEffectMask(effectInfo.EffectIndex);
         }
 
         [SpellEffectHandler(SpellEffectName.UnlearnSpecialization)]
@@ -1100,6 +1140,10 @@ namespace Game.Spells
             if (unitCaster == null)
                 return;
 
+            // Caster not in world, might be spell triggered from aura removal
+            if (!unitCaster.IsInWorld)
+                return;
+
             // only handle at last effect
             for (uint i = effectInfo.EffectIndex + 1; i < m_spellInfo.GetEffects().Count; ++i)
                 if (m_spellInfo.GetEffect(i).IsEffect(SpellEffectName.PersistentAreaAura))
@@ -1107,11 +1151,13 @@ namespace Game.Spells
 
             Cypher.Assert(dynObjAura == null);
 
-            float radius = effectInfo.CalcRadius(unitCaster);
-
-            // Caster not in world, might be spell triggered from aura removal
-            if (!unitCaster.IsInWorld)
-                return;
+            float radius = 0.0f;
+            for (uint i = 0; i <= effectInfo.EffectIndex; ++i)
+            {
+                SpellEffectInfo spellEffectInfo = m_spellInfo.GetEffect(i);
+                if (spellEffectInfo.IsEffect(SpellEffectName.PersistentAreaAura))
+                    radius = Math.Max(radius, spellEffectInfo.CalcRadius(unitCaster));
+            }
 
             DynamicObject dynObj = new(false);
             if (!dynObj.CreateDynamicObject(unitCaster.GetMap().GenerateLowGuid(HighGuid.DynamicObject), unitCaster, m_spellInfo, destTarget, radius, DynamicObjectType.AreaSpell, m_SpellVisual))
@@ -1135,7 +1181,12 @@ namespace Game.Spells
                 return;
 
             Cypher.Assert(dynObjAura.GetDynobjOwner() != null);
-            dynObjAura._ApplyEffectForTargets(effectInfo.EffectIndex);
+            for (uint i = 0; i < m_spellInfo.GetEffects().Count; ++i)
+                if (m_spellInfo.GetEffect(i).IsEffect(SpellEffectName.PersistentAreaAura))
+                    dynObjAura._ApplyEffectForTargets(i);
+
+            if (m_spellInfo.IsChanneled())
+                unitCaster.AddChannelObject(dynObj.GetGUID());
         }
 
         [SpellEffectHandler(SpellEffectName.Energize)]
@@ -1270,7 +1321,7 @@ namespace Game.Spells
             }
 
             if (gameObjTarget != null)
-                gameObjTarget.Use(player);
+                gameObjTarget.Use(player, true);
             else if (itemTarget != null)
             {
                 itemTarget.SetItemFlag(ItemFieldFlags.Unlocked);
@@ -1795,7 +1846,10 @@ namespace Game.Spells
 
             CallScriptSuccessfulDispel(effectInfo.EffectIndex);
 
-            m_hitMask |= ProcFlagsHit.Dispel;
+            Unit.ProcSkillsAndAuras(GetUnitCasterForEffectHandlers(), unitTarget, new ProcFlagsInit(ProcFlags.None, ProcFlags2.SuccessfulDispel), new ProcFlagsInit(ProcFlags.None),
+                ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.Hit, ProcFlagsHit.None, null, null, null);
+
+            m_UniqueTargetInfo.Find(p => p.TargetGUID == unitTarget.GetGUID()).ProcHitMask |= ProcFlagsHit.Dispel;
         }
 
         [SpellEffectHandler(SpellEffectName.DualWield)]
@@ -2386,8 +2440,12 @@ namespace Game.Spells
             // multiple weapon dmg effect workaround
             // execute only the last weapon damage
             // and handle all effects at once
+            uint effectMask = m_UniqueTargetInfo.Find(p => p.TargetGUID == unitTarget.GetGUID()).EffectMask;
             for (var j = effectInfo.EffectIndex + 1; j < m_spellInfo.GetEffects().Count; ++j)
             {
+                if ((effectMask & (1 << (int)j)) == 0)
+                    continue;
+
                 switch (m_spellInfo.GetEffect(j).Effect)
                 {
                     case SpellEffectName.WeaponDamage:
@@ -2420,6 +2478,9 @@ namespace Game.Spells
             float weaponDamagePercentMod = 1.0f;
             foreach (var spellEffectInfo in m_spellInfo.GetEffects())
             {
+                if ((effectMask & (1 << (int)spellEffectInfo.EffectIndex)) == 0)
+                    continue;
+
                 switch (spellEffectInfo.Effect)
                 {
                     case SpellEffectName.WeaponDamage:
@@ -2471,6 +2532,9 @@ namespace Game.Spells
             // Sequence is important
             foreach (var spellEffectInfo in m_spellInfo.GetEffects())
             {
+                if ((effectMask & (1 << (int)spellEffectInfo.EffectIndex)) == 0)
+                    continue;
+
                 // We assume that a spell have at most one fixed_bonus
                 // and at most one weaponDamagePercentMod
                 switch (spellEffectInfo.Effect)
@@ -2498,7 +2562,7 @@ namespace Game.Spells
             weaponDamage = Math.Max(weaponDamage, 0);
 
             // Add melee damage bonuses (also check for negative)
-            weaponDamage = (uint)unitCaster.MeleeDamageBonusDone(unitTarget, (int)weaponDamage, m_attackType, DamageEffectType.SpellDirect, m_spellInfo, mechanic, m_spellSchoolMask, this);
+            weaponDamage = (uint)unitCaster.MeleeDamageBonusDone(unitTarget, (int)weaponDamage, m_attackType, DamageEffectType.SpellDirect, m_spellInfo, effectInfo, mechanic, m_spellSchoolMask, this);
             m_damage += unitTarget.MeleeDamageBonusTaken(unitCaster, (int)weaponDamage, m_attackType, DamageEffectType.SpellDirect, m_spellInfo);
         }
 
@@ -2564,14 +2628,14 @@ namespace Game.Spells
                 {
                     SpellInfo curSpellInfo = spell.m_spellInfo;
                     // check if we can interrupt spell
-                    if ((spell.GetState() == SpellState.Casting
+                    if ((spell.GetState() == SpellState.Channeling
                         || (spell.GetState() == SpellState.Preparing && spell.GetCastTime() > 0.0f))
                         && curSpellInfo.CanBeInterrupted(m_caster, unitTarget))
                     {
                         int duration = m_spellInfo.GetDuration();
                         duration = unitTarget.ModSpellDuration(m_spellInfo, unitTarget, duration, false, 1u << (int)effectInfo.EffectIndex);
                         unitTarget.GetSpellHistory().LockSpellSchool(curSpellInfo.GetSchoolMask(), TimeSpan.FromMilliseconds(duration));
-                        m_hitMask |= ProcFlagsHit.Interrupt;
+                        m_UniqueTargetInfo.Find(p => p.TargetGUID == unitTarget.GetGUID()).ProcHitMask |= ProcFlagsHit.Interrupt;
                         SendSpellInterruptLog(unitTarget, curSpellInfo.Id);
                         unitTarget.InterruptSpell(i, false);
                     }
@@ -3721,26 +3785,21 @@ namespace Game.Spells
             if (oldStatus == QuestStatus.None)
                 return;
 
+            player.RemoveActiveQuest(quest_id, false);
+
             // remove all quest entries for 'entry' from quest log
-            for (byte slot = 0; slot < SharedConst.MaxQuestLogSize; ++slot)
+            if (oldStatus != QuestStatus.Rewarded)
             {
-                uint logQuest = player.GetQuestSlotQuestId(slot);
-                if (logQuest == quest_id)
+                // we ignore unequippable quest items in this case, it's still be equipped
+                player.TakeQuestSourceItem(quest_id, false);
+
+                if (quest.HasFlag(QuestFlags.Pvp))
                 {
-                    player.SetQuestSlot(slot, 0);
-
-                    // we ignore unequippable quest items in this case, it's still be equipped
-                    player.TakeQuestSourceItem(logQuest, false);
-
-                    if (quest.HasFlag(QuestFlags.Pvp))
-                    {
-                        player.pvpInfo.IsHostile = player.pvpInfo.IsInHostileArea || player.HasPvPForcingQuest();
-                        player.UpdatePvPState();
-                    }
+                    player.pvpInfo.IsHostile = player.pvpInfo.IsInHostileArea || player.HasPvPForcingQuest();
+                    player.UpdatePvPState();
                 }
             }
 
-            player.RemoveActiveQuest(quest_id, false);
             player.RemoveRewardedQuest(quest_id);
             player.DespawnPersonalSummonsForQuest(quest_id);
 
@@ -3882,7 +3941,12 @@ namespace Game.Spells
                 dispel_list.RemoveAt(0);
             }
 
-            m_hitMask |= ProcFlagsHit.Dispel;
+            CallScriptSuccessfulDispel(effectInfo.EffectIndex);
+
+            Unit.ProcSkillsAndAuras(GetUnitCasterForEffectHandlers(), unitTarget, new ProcFlagsInit(ProcFlags.None, ProcFlags2.SuccessfulDispel), new ProcFlagsInit(ProcFlags.None),
+                ProcFlagsSpellType.MaskAll, ProcFlagsSpellPhase.Hit, ProcFlagsHit.None, null, null, null);
+
+            m_UniqueTargetInfo.Find(p => p.TargetGUID == unitTarget.GetGUID()).ProcHitMask |= ProcFlagsHit.Dispel;
         }
 
         [SpellEffectHandler(SpellEffectName.ResurrectPet)]
@@ -4444,7 +4508,7 @@ namespace Game.Spells
             }
             m_caster.SendMessageToSet(spellDispellLog, true);
 
-            m_hitMask |= ProcFlagsHit.Dispel;
+            m_UniqueTargetInfo.Find(p => p.TargetGUID == unitTarget.GetGUID()).ProcHitMask |= ProcFlagsHit.Dispel;
         }
 
         [SpellEffectHandler(SpellEffectName.KillCredit)]
@@ -4471,6 +4535,20 @@ namespace Game.Spells
             int creatureEntry = effectInfo.MiscValue;
             if (creatureEntry != 0)
                 unitTarget.ToPlayer().RewardPlayerAndGroupAtEvent((uint)creatureEntry, unitTarget);
+        }
+
+        [SpellEffectHandler(SpellEffectName.KillCreditLabel1)]
+        [SpellEffectHandler(SpellEffectName.KillCreditLabel2)]
+        void EffectKillCreditLabel()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player playerTarget = unitTarget?.ToPlayer();
+            if (playerTarget == null)
+                return;
+
+            playerTarget.UpdateQuestObjectiveProgress(QuestObjectiveType.KillWithLabel, effectInfo.MiscValue, Math.Max(1, effectInfo.MiscValueB));
         }
 
         [SpellEffectHandler(SpellEffectName.QuestFail)]
@@ -4874,8 +4952,7 @@ namespace Game.Spells
             if (item != null)
             {
                 foreach (ItemEffectRecord itemEffect in item.GetEffects())
-                    if (itemEffect.LegacySlotIndex <= item.m_itemData.SpellCharges.GetSize())
-                        item.SetSpellCharges(itemEffect.LegacySlotIndex, itemEffect.Charges);
+                    item.SetSpellCharges(itemEffect, itemEffect.Charges);
 
                 item.SetState(ItemUpdateState.Changed, player);
             }
@@ -5162,17 +5239,15 @@ namespace Game.Spells
             if (unitTarget == null)
                 return;
 
-            List<WorldObject> objs = new();
-            ObjectEntryAndPrivateOwnerIfExistsCheck check = new(unitTarget.GetGUID(), (uint)effectInfo.MiscValue);
-            WorldObjectListSearcher checker = new(unitTarget, objs, check, GridMapTypeMask.Conversation);
-            Cell.VisitGridObjects(unitTarget, checker, 100.0f);
-
-            foreach (WorldObject obj in objs)
+            var check = new ObjectEntryAndPrivateOwnerIfExistsCheck(unitTarget.GetGUID(), (uint)effectInfo.MiscValue);
+            IDoWork<Conversation> work = conversation =>
             {
-                Conversation convo = obj.ToConversation();
-                if (convo != null)
-                    convo.Remove();
-            }
+                if (check.Invoke(conversation))
+                    conversation.Remove();
+            };
+
+            ConversationWorker worker = new(unitTarget, work);
+            Cell.VisitGridObjects(unitTarget, worker, 100.0f);
         }
 
         [SpellEffectHandler(SpellEffectName.AddGarrisonFollower)]
@@ -5593,10 +5668,11 @@ namespace Game.Spells
                 facing = target;
 
             JumpArrivalCastArgs arrivalCast = null;
-            if (effectInfo.TriggerSpell != 0)
+            if (effectInfo.TriggerSpell != 0 || jumpParams.TriggerSpellId.HasValue)
             {
                 arrivalCast = new();
-                arrivalCast.SpellId = effectInfo.TriggerSpell;
+                arrivalCast.SpellId = jumpParams.TriggerSpellId.HasValue ? jumpParams.TriggerSpellId.Value : effectInfo.TriggerSpell;
+                arrivalCast.Target = unitTarget != null ? unitTarget.GetGUID() : ObjectGuid.Empty;
             }
 
             SpellEffectExtraData effectExtra = null;
@@ -5679,6 +5755,43 @@ namespace Game.Spells
                 return;
 
             Conversation.CreateConversation((uint)effectInfo.MiscValue, unitTarget, destTarget.GetPosition(), unitTarget.GetGUID(), GetSpellInfo());
+        }
+
+        [SpellEffectHandler(SpellEffectName.ApplyMountEquipment)]
+        void EffectApplyMountEquipment()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.LaunchTarget)
+                return;
+
+            Player playerTarget = unitTarget.ToPlayer();
+            if (playerTarget == null)
+                return;
+
+            foreach (var (_, mountEquipment) in CliDB.MountEquipmentStorage)
+            {
+                if (mountEquipment.LearnedBySpell == effectInfo.TriggerSpell)
+                {
+                    playerTarget.LearnSpell(mountEquipment.LearnedBySpell, false, 0, true);
+                    var mountAuras = playerTarget.GetAuraEffectsByType(AuraType.Mounted);
+                    if (!mountAuras.Empty())
+                    {
+                        var mountEntry = Global.DB2Mgr.GetMount(mountAuras.FirstOrDefault().GetId());
+                        if (mountEntry != null && !mountEntry.HasFlag(MountFlags.MountEquipmentEffectsSuppressed))
+                            playerTarget.CastSpell(playerTarget, (uint)mountEquipment.BuffSpell, true);
+                    }
+                }
+                else
+                {
+                    playerTarget.RemoveOwnedAura((uint)mountEquipment.BuffSpell);
+                    playerTarget.RemoveSpell(mountEquipment.LearnedBySpell, false, false, true);
+                }
+            }
+
+            ApplyMountEquipmentResult applyMountEquipmentResult = new();
+            applyMountEquipmentResult.ItemGUID = m_castItemGUID;
+            applyMountEquipmentResult.ItemID = m_castItemEntry;
+            applyMountEquipmentResult.Result = ApplyMountEquipmentResult.ApplyResult.Success;
+            playerTarget.SendPacket(applyMountEquipmentResult);
         }
 
         [SpellEffectHandler(SpellEffectName.SendChatMessage)]
@@ -5770,9 +5883,9 @@ namespace Game.Spells
             if (effectHandleMode != SpellEffectHandleMode.HitTarget)
                 return;
 
-            unitTarget.GetSpellHistory().ModifyCoooldowns(itr =>
+            unitTarget.GetSpellHistory().ModifyCoooldowns(cooldown =>
             {
-                SpellInfo spellOnCooldown = Global.SpellMgr.GetSpellInfo(itr.SpellId, Difficulty.None);
+                SpellInfo spellOnCooldown = Global.SpellMgr.GetSpellInfo(cooldown.SpellId, Difficulty.None);
                 if ((int)spellOnCooldown.SpellFamilyName != effectInfo.MiscValue)
                     return false;
 
@@ -5780,9 +5893,7 @@ namespace Game.Spells
                 if (bitIndex < 0 || bitIndex >= sizeof(uint) * 8)
                     return false;
 
-                FlagArray128 reqFlag = new();
-                reqFlag[bitIndex / 32] = 1u << (bitIndex % 32);
-                return (spellOnCooldown.SpellFamilyFlags & reqFlag);
+                return (spellOnCooldown.SpellFamilyFlags[bitIndex / 32] & 1u << (bitIndex % 32)) != 0;
             }, TimeSpan.FromMilliseconds(damage));
         }
 
@@ -5792,7 +5903,7 @@ namespace Game.Spells
             if (effectHandleMode != SpellEffectHandleMode.HitTarget)
                 return;
 
-            unitTarget.GetSpellHistory().ModifyCoooldowns(itr => Global.SpellMgr.GetSpellInfo(itr.SpellId, Difficulty.None).CategoryId == effectInfo.MiscValue, TimeSpan.FromMilliseconds(damage));
+            unitTarget.GetSpellHistory().ModifyCoooldowns(cooldown => Global.SpellMgr.GetSpellInfo(cooldown.SpellId, Difficulty.None).CategoryId == effectInfo.MiscValue, TimeSpan.FromMilliseconds(damage));
         }
 
         [SpellEffectHandler(SpellEffectName.ModifyCharges)]
@@ -5824,13 +5935,29 @@ namespace Game.Spells
                 return;
 
             newConfig.TraitSystemID = CliDB.TraitTreeStorage.LookupByKey(effectInfo.MiscValue).TraitSystemID;
-            int existingConfigForSystem = target.m_activePlayerData.TraitConfigs.FindIndexIf(config =>
+            TraitSystemRecord traitSystem = CliDB.TraitSystemStorage.LookupByKey(newConfig.TraitSystemID);
+            if (traitSystem == null)
+                return;
+
+            switch (traitSystem.GetVariationType())
+            {
+                case TraitSystemVariationType.None:
+                    newConfig.VariationID = 0;
+                    break;
+                case TraitSystemVariationType.Spec:
+                    newConfig.VariationID = (int)target.GetPrimarySpecialization();
+                    break;
+                default:
+                    return;
+            }
+
+            int existingConfigIdForSystem = target.m_activePlayerData.TraitConfigs.FindIf(config =>
             {
                 return config.Type == (int)TraitConfigType.Generic
                     && config.TraitSystemID == newConfig.TraitSystemID;
-            });
+            }).Item1;
 
-            if (existingConfigForSystem < 0)
+            if (existingConfigIdForSystem == 0)
                 target.CreateTraitConfig(newConfig);
         }
 
@@ -5857,6 +5984,84 @@ namespace Game.Spells
                 return;
 
             unitTarget.ToPlayer()?.RepopAtGraveyard();
+        }
+
+        [SpellEffectHandler(SpellEffectName.UpdateInteractions)]
+        void EffectUpdateInteractions()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            target.UpdateVisibleObjectInteractions(true, false, true, true);
+        }
+
+        [SpellEffectHandler(SpellEffectName.LearnWarbanScene)]
+        void EffectLearnWarbandScene()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            target.GetSession().GetCollectionMgr().AddWarbandScene((uint)effectInfo.MiscValue);
+        }
+
+        [SpellEffectHandler(SpellEffectName.SetPlayerDataElementAccount)]
+        void EffectSetPlayerDataElementAccount()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            target.SetDataElementAccount((uint)effectInfo.MiscValue, (long)damage);
+        }
+
+        [SpellEffectHandler(SpellEffectName.SetPlayerDataElementCharacter)]
+        void EffectSetPlayerDataElementCharacter()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            target.SetDataElementCharacter((uint)effectInfo.MiscValue, (long)damage);
+        }
+
+        [SpellEffectHandler(SpellEffectName.SetPlayerDataFlagAccount)]
+        void EffectSetPlayerDataFlagAccount()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            target.SetDataFlagAccount((uint)effectInfo.MiscValue, damage != 0);
+        }
+
+        [SpellEffectHandler(SpellEffectName.SetPlayerDataFlagCharacter)]
+        void EffectSetPlayerDataFlagCharacter()
+        {
+            if (effectHandleMode != SpellEffectHandleMode.HitTarget)
+                return;
+
+            Player target = unitTarget?.ToPlayer();
+            if (target == null)
+                return;
+
+            target.SetDataFlagCharacter((uint)effectInfo.MiscValue, damage != 0);
         }
     }
 

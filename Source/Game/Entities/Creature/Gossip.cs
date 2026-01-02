@@ -8,6 +8,7 @@ using Game.DataStorage;
 using Game.Entities;
 using Game.Networking.Packets;
 using Game.Spells;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -17,7 +18,7 @@ namespace Game.Misc
     public class GossipMenu
     {
         public uint AddMenuItem(int gossipOptionId, int orderIndex, GossipOptionNpc optionNpc, string optionText, uint language,
-            GossipOptionFlags flags, int? gossipNpcOptionId, uint actionMenuId, uint actionPoiId, bool boxCoded, uint boxMoney,
+            GossipOptionFlags flags, int? gossipNpcOptionId, uint actionMenuId, uint actionPoiId, bool boxCoded, ulong boxMoney,
             string boxText, int? spellId, int? overrideIconId, uint sender, uint action)
         {
             Cypher.Assert(_menuItems.Count <= SharedConst.MaxGossipMenuItems);
@@ -35,15 +36,12 @@ namespace Game.Misc
                         orderIndex = (int)(itr.OrderIndex + 1);
                 }
 
-                if (!_menuItems.Empty())
+                foreach (var (_, _menuItem) in _menuItems)
                 {
-                    foreach (var pair in _menuItems)
-                    {
-                        if (pair.Value.OrderIndex > orderIndex)
-                            break;
+                    if (_menuItem.OrderIndex > orderIndex)
+                        break;
 
-                        orderIndex = (int)pair.Value.OrderIndex + 1;
-                    }
+                    orderIndex = (int)_menuItem.OrderIndex + 1;
                 }
             }
 
@@ -208,15 +206,52 @@ namespace Game.Misc
 
     public class InteractionData
     {
+        public ObjectGuid SourceGuid;
+        public PlayerInteractionType InteractionType;
+        public bool IsLaunchedByQuest;
+
+        ushort _playerChoiceResponseIdentifierGenerator = 0; // not reset between interactions
+        TrainerData trainerData;
+        PlayerChoiceData playerChoiceData;
+
+        public void StartInteraction(ObjectGuid target, PlayerInteractionType type)
+        {
+            SourceGuid = target;
+            InteractionType = type;
+            IsLaunchedByQuest = false;
+            switch (type)
+            {
+                case PlayerInteractionType.Trainer:
+                    trainerData = new();
+                    break;
+                case PlayerInteractionType.PlayerChoice:
+                    playerChoiceData = new();
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        public bool IsInteractingWith(ObjectGuid target, PlayerInteractionType type) { return SourceGuid == target && InteractionType == type; }
+
         public void Reset()
         {
             SourceGuid.Clear();
-            TrainerId = 0;
+            InteractionType = PlayerInteractionType.None;
+            IsLaunchedByQuest = false;
+            trainerData = null;
+            playerChoiceData = null;
         }
 
-        public ObjectGuid SourceGuid;
-        public uint TrainerId;
-        public uint PlayerChoiceId;
+        public TrainerData GetTrainer() { return trainerData; }
+
+        public PlayerChoiceData GetPlayerChoice() { return playerChoiceData; }
+
+        public ushort AddPlayerChoiceResponse(uint responseId)
+        {
+            playerChoiceData.AddResponse(responseId, ++_playerChoiceResponseIdentifierGenerator);
+            return _playerChoiceResponseIdentifierGenerator;
+        }
     }
 
     public class PlayerMenu
@@ -236,8 +271,7 @@ namespace Game.Misc
 
         public void SendGossipMenu(uint titleTextId, ObjectGuid objectGUID)
         {
-            _interactionData.Reset();
-            _interactionData.SourceGuid = objectGUID;
+            _interactionData.StartInteraction(objectGUID, PlayerInteractionType.Gossip);
 
             GossipMessagePkt packet = new();
             packet.GossipGUID = objectGUID;
@@ -249,7 +283,7 @@ namespace Game.Misc
                 packet.FriendshipFactionID = addon.FriendshipFactionID;
                 packet.LfgDungeonsID = addon.LfgDungeonsID;
             }
-            
+
             NpcText text = Global.ObjectMgr.GetNpcText(titleTextId);
             if (text != null)
                 packet.BroadcastTextID = (int)text.Data.SelectRandomElementByWeight(data => data.Probability).BroadcastTextID;
@@ -260,7 +294,7 @@ namespace Game.Misc
                 opt.GossipOptionID = item.GossipOptionID;
                 opt.OptionNPC = item.OptionNpc;
                 opt.OptionFlags = (byte)(item.BoxCoded ? 1 : 0);     // makes pop up box password
-                opt.OptionCost = (int)item.BoxMoney;     // money required to open menu, 2.0.3
+                opt.OptionCost = item.BoxMoney;     // money required to open menu, 2.0.3
                 opt.OptionLanguage = item.Language;
                 opt.Flags = item.Flags;
                 opt.OrderIndex = (int)item.OrderIndex;
@@ -286,6 +320,7 @@ namespace Game.Misc
                     gossipText.QuestFlags = (uint)quest.Flags;
                     gossipText.QuestFlagsEx = (uint)quest.FlagsEx;
                     gossipText.QuestFlagsEx2 = (uint)quest.FlagsEx2;
+                    gossipText.QuestFlagsEx3 = quest.FlagsEx3;
                     gossipText.Repeatable = quest.IsTurnIn() && quest.IsRepeatable() && !quest.IsDailyOrWeekly() && !quest.IsMonthly();
                     gossipText.ResetByScheduler = quest.IsResetByScheduler();
                     gossipText.Important = quest.IsImportant();
@@ -347,6 +382,9 @@ namespace Game.Misc
         public void SendQuestGiverQuestListMessage(WorldObject questgiver)
         {
             ObjectGuid guid = questgiver.GetGUID();
+
+            GetInteractionData().StartInteraction(guid, PlayerInteractionType.QuestGiver);
+
             Locale localeConstant = _session.GetSessionDbLocaleIndex();
 
             QuestGiverQuestListMessage questList = new();
@@ -382,6 +420,7 @@ namespace Game.Misc
                     text.QuestFlags = (uint)quest.Flags;
                     text.QuestFlagsEx = (uint)quest.FlagsEx;
                     text.QuestFlagsEx2 = (uint)quest.FlagsEx2;
+                    text.QuestFlagsEx3 = quest.FlagsEx3;
                     text.Repeatable = quest.IsTurnIn() && quest.IsRepeatable() && !quest.IsDailyOrWeekly() && !quest.IsMonthly();
                     text.ResetByScheduler = quest.IsResetByScheduler();
                     text.Important = quest.IsImportant();
@@ -413,15 +452,17 @@ namespace Game.Misc
 
         public void SendQuestGiverQuestDetails(Quest quest, ObjectGuid npcGUID, bool autoLaunched, bool displayPopup)
         {
+            GetInteractionData().StartInteraction(npcGUID, PlayerInteractionType.QuestGiver);
+
             QuestGiverQuestDetails packet = new();
 
-             packet.QuestTitle = quest.LogTitle;
-             packet.LogDescription = quest.LogDescription;
-             packet.DescriptionText = quest.QuestDescription;
-             packet.PortraitGiverText = quest.PortraitGiverText;
-             packet.PortraitGiverName = quest.PortraitGiverName;
-             packet.PortraitTurnInText = quest.PortraitTurnInText;
-             packet.PortraitTurnInName = quest.PortraitTurnInName;
+            packet.QuestTitle = quest.LogTitle;
+            packet.LogDescription = quest.LogDescription;
+            packet.DescriptionText = quest.QuestDescription;
+            packet.PortraitGiverText = quest.PortraitGiverText;
+            packet.PortraitGiverName = quest.PortraitGiverName;
+            packet.PortraitTurnInText = quest.PortraitTurnInText;
+            packet.PortraitTurnInName = quest.PortraitTurnInName;
 
             Locale locale = _session.GetSessionDbLocaleIndex();
 
@@ -463,6 +504,7 @@ namespace Game.Misc
             packet.QuestFlags[0] = (uint)(quest.Flags & (WorldConfig.GetBoolValue(WorldCfg.QuestIgnoreAutoAccept) ? ~QuestFlags.AutoAccept : ~QuestFlags.None));
             packet.QuestFlags[1] = (uint)quest.FlagsEx;
             packet.QuestFlags[2] = (uint)quest.FlagsEx2;
+            packet.QuestFlags[3] = quest.FlagsEx3;
             packet.SuggestedPartyMembers = quest.SuggestedPlayers;
 
             // Is there a better way? what about game objects?
@@ -515,6 +557,8 @@ namespace Game.Misc
 
         public void SendQuestGiverOfferReward(Quest quest, ObjectGuid npcGUID, bool autoLaunched)
         {
+            GetInteractionData().StartInteraction(npcGUID, PlayerInteractionType.QuestGiver);
+
             QuestGiverOfferRewardMessage packet = new();
 
             packet.QuestTitle = quest.LogTitle;
@@ -575,6 +619,7 @@ namespace Game.Misc
             offer.QuestFlags[0] = (uint)quest.Flags;
             offer.QuestFlags[1] = (uint)quest.FlagsEx;
             offer.QuestFlags[2] = (uint)quest.FlagsEx2;
+            offer.QuestFlags[3] = quest.FlagsEx3;
 
             packet.PortraitTurnIn = quest.QuestTurnInPortrait;
             packet.PortraitGiver = quest.QuestGiverPortrait;
@@ -597,6 +642,8 @@ namespace Game.Misc
                 SendQuestGiverOfferReward(quest, npcGUID, true);
                 return;
             }
+
+            GetInteractionData().StartInteraction(npcGUID, PlayerInteractionType.QuestGiver);
 
             QuestGiverRequestItems packet = new();
 
@@ -645,6 +692,7 @@ namespace Game.Misc
             packet.QuestFlags[0] = (uint)quest.Flags;
             packet.QuestFlags[1] = (uint)quest.FlagsEx;
             packet.QuestFlags[2] = (uint)quest.FlagsEx2;
+            packet.QuestFlags[3] = quest.FlagsEx3;
             packet.SuggestPartyMembers = quest.SuggestedPlayers;
             packet.QuestInfoID = (int)quest.QuestInfoID;
 
@@ -708,13 +756,9 @@ namespace Game.Misc
             _questMenuItems.Add(questMenuItem);
         }
 
-        bool HasItem(uint questId)
+        public bool HasItem(uint questId)
         {
-            foreach (var item in _questMenuItems)
-                if (item.QuestId == questId)
-                    return true;
-
-            return false;
+            return _questMenuItems.Any(p => p.QuestId == questId);
         }
 
         public void ClearMenu()
@@ -756,7 +800,7 @@ namespace Game.Misc
         public GossipOptionFlags Flags;
         public int? GossipNpcOptionID;
         public bool BoxCoded;
-        public uint BoxMoney;
+        public ulong BoxMoney;
         public string BoxText;
         public int? SpellID;
         public int? OverrideIconID;
@@ -800,7 +844,7 @@ namespace Game.Misc
         public uint ActionPoiID;
         public int? GossipNpcOptionID;
         public bool BoxCoded;
-        public uint BoxMoney;
+        public ulong BoxMoney;
         public string BoxText;
         public uint BoxBroadcastTextId;
         public int? SpellID;
@@ -827,7 +871,7 @@ namespace Game.Misc
 
     public class PointOfInterestLocale
     {
-        public StringArray Name = new((int)Locale.Total); 
+        public StringArray Name = new((int)Locale.Total);
     }
 
     public class GossipMenus
@@ -835,5 +879,41 @@ namespace Game.Misc
         public uint MenuId;
         public uint TextId;
         public ConditionsReference Conditions;
+    }
+
+    public class TrainerData
+    {
+        public uint Id;
+    }
+
+    public class PlayerChoiceData
+    {
+        uint _choiceId;
+        List<Response> _responses = new();
+        DateTime? _expireTime;
+
+        public uint? FindIdByClientIdentifier(ushort clientIdentifier)
+        {
+            var itr = _responses.Find(p => p.ClientIdentifier == clientIdentifier);
+            return itr != null ? itr.Id : null;
+        }
+
+        public void AddResponse(uint id, ushort clientIdentifier)
+        {
+            _responses.Add(new Response(id, clientIdentifier));
+        }
+
+        public uint GetChoiceId() { return _choiceId; }
+        public void SetChoiceId(uint choiceId) { _choiceId = choiceId; }
+
+        public DateTime? GetExpireTime() { return _expireTime; }
+        public void SetExpireTime(DateTime expireTime) { _expireTime = expireTime; }
+
+
+        public class Response(uint id, ushort clientIdentifier)
+        {
+            public uint Id = id;
+            public ushort ClientIdentifier = clientIdentifier;
+        }
     }
 }

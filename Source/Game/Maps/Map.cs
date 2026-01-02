@@ -3,7 +3,6 @@
 
 using Framework.Constants;
 using Framework.Database;
-using Framework.Dynamic;
 using Game.BattleGrounds;
 using Game.Collision;
 using Game.DataStorage;
@@ -15,7 +14,6 @@ using Game.Scenarios;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 
@@ -62,7 +60,7 @@ namespace Game.Maps
             _worldStateValues = Global.WorldStateMgr.GetInitialWorldStatesForMap(this);
         }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             // Delete all waiting spawns
             // This doesn't delete from database.
@@ -92,8 +90,8 @@ namespace Game.Maps
         public virtual void InitVisibilityDistance()
         {
             //init visibility for continents
-            m_VisibleDistance = Global.WorldMgr.GetMaxVisibleDistanceOnContinents();
-            m_VisibilityNotifyPeriod = Global.WorldMgr.GetVisibilityNotifyPeriodOnContinents();
+            m_VisibleDistance = WorldConfig.GetFloatValue(WorldCfg.MaxVisibilityDistanceContinent);
+            m_VisibilityNotifyPeriod = WorldConfig.GetIntValue(WorldCfg.VisibilityNotifyPeriodContinent);
         }
 
         public void AddToGrid<T>(T obj, Cell cell) where T : WorldObject
@@ -389,7 +387,6 @@ namespace Game.Maps
             }
         }
 
-
         public void AddInfiniteAOIVignette(VignetteData vignette)
         {
             _infiniteAOIVignettes.Add(vignette);
@@ -601,7 +598,7 @@ namespace Game.Maps
             // update active cells around players and active objects
             ResetMarkedCells();
 
-            var update = new UpdaterNotifier(diff);
+            var update = new ObjectUpdater(diff);
 
             var grid_object_update = new Visitor(update, GridMapTypeMask.AllGrid);
             var world_object_update = new Visitor(update, GridMapTypeMask.AllWorld);
@@ -1767,6 +1764,9 @@ namespace Game.Maps
             UpdateObject packet;
             data.BuildPacket(out packet);
             player.SendPacket(packet);
+
+            // client will respond to SMSG_UPDATE_OBJECT that contains ThisIsYou = true with CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE
+            player.GetSession().RegisterTimeSync(WorldSession.SPECIAL_INIT_ACTIVE_MOVER_TIME_SYNC_COUNTER);
         }
 
         void SendInitTransports(Player player)
@@ -4199,7 +4199,7 @@ namespace Game.Maps
                 {
                     switch (step.sourceGUID.GetHigh())
                     {
-                        case HighGuid.Item: // as well as HIGHGUID_CONTAINER
+                        case HighGuid.Item:
                             Player player = GetPlayer(step.ownerGUID);
                             if (player != null)
                                 source = player.GetItemByGuid(step.sourceGUID);
@@ -4902,17 +4902,21 @@ namespace Game.Maps
             }
         }
 
-        ~InstanceMap()
+        public override void Dispose()
         {
             if (i_instanceLock != null)
                 i_instanceLock.SetInUse(false);
+
+            i_owningGroupRef.Dispose();
+
+            base.Dispose();
         }
 
         public override void InitVisibilityDistance()
         {
             //init visibility distance for instances
-            m_VisibleDistance = Global.WorldMgr.GetMaxVisibleDistanceInInstances();
-            m_VisibilityNotifyPeriod = Global.WorldMgr.GetVisibilityNotifyPeriodInInstances();
+            m_VisibleDistance = WorldConfig.GetFloatValue(WorldCfg.MaxVisibilityDistanceInstance);
+            m_VisibilityNotifyPeriod = WorldConfig.GetIntValue(WorldCfg.VisibilityNotifyPeriodInstance);
         }
 
         public override TransferAbortParams CannotEnter(Player player)
@@ -5194,6 +5198,20 @@ namespace Game.Maps
             }
         }
 
+        public void SetInstanceScenario(InstanceScenario scenario)
+        {
+            i_scenario.Reset(); // sends exit packets to all players
+
+            if (scenario != null)
+            {
+                i_scenario = scenario;
+
+                scenario.LoadInstanceData();
+
+                DoOnPlayers(scenario.OnPlayerEnter);
+            }
+        }
+
         public void UpdateInstanceLock(UpdateAdditionalSaveDataEvent updateSaveDataEvent)
         {
             if (i_instanceLock != null)
@@ -5299,8 +5317,6 @@ namespace Game.Maps
 
         public InstanceScenario GetInstanceScenario() { return i_scenario; }
 
-        public void SetInstanceScenario(InstanceScenario scenario) { i_scenario = scenario; }
-
         public InstanceLock GetInstanceLock() { return i_instanceLock; }
 
         InstanceScript i_data;
@@ -5324,10 +5340,22 @@ namespace Game.Maps
             InitVisibilityDistance();
         }
 
+        public override void Dispose()
+        {
+            if (m_bg != null)
+            {
+                //unlink to prevent crash, always unlink all pointer reference before destruction
+                m_bg.SetBgMap(null);
+                m_bg.Dispose();
+            }
+
+            base.Dispose();
+        }
+
         public override void InitVisibilityDistance()
         {
-            m_VisibleDistance = IsBattleArena() ? Global.WorldMgr.GetMaxVisibleDistanceInArenas() : Global.WorldMgr.GetMaxVisibleDistanceInBG();
-            m_VisibilityNotifyPeriod = IsBattleArena() ? Global.WorldMgr.GetVisibilityNotifyPeriodInArenas() : Global.WorldMgr.GetVisibilityNotifyPeriodInBG();
+            m_VisibleDistance = WorldConfig.GetFloatValue(IsBattleArena() ? WorldCfg.MaxVisibilityDistanceArena : WorldCfg.MaxVisibilityDistanceBattleground);
+            m_VisibilityNotifyPeriod = WorldConfig.GetIntValue(IsBattleArena() ? WorldCfg.VisibilityNotifyPeriodArena : WorldCfg.VisibilityNotifyPeriodBattleground);
         }
 
         string GetScriptName()

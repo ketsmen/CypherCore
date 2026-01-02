@@ -92,6 +92,13 @@ namespace Framework.Constants
         ForgeMaster = 55,
         CharacterBanker = 56,
         AccountBanker = 57,
+        ProfessionRespec = 58,
+        Placeholder1 = 59,
+        Placeholder2 = 60,
+        Placeholder3 = 61,
+        GuildRename = 62,
+        Placeholder4 = 63,
+        ItemUpgrade = 64,
 
         Max
     }
@@ -168,7 +175,8 @@ namespace Framework.Constants
     {
         None = 0x0,
         QuestLabelPrepend = 0x1,
-        HideOptionIDFromClient = 0x2
+        HideOptionIDFromClient = 0x2,
+        PlayMovieLabelPrepend = 0x4,
     }
 
     [Flags]

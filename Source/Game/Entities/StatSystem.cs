@@ -177,7 +177,7 @@ namespace Game.Entities
             }
         }
 
-        int GetMinPower(PowerType power) { return power == PowerType.LunarPower ? -100 : 0; }
+        public int GetMinPower(PowerType power) { return power == PowerType.LunarPower ? -100 : 0; }
 
         // returns negative amount on power reduction
         public int ModifyPower(PowerType power, int dVal, bool withPowerUpdate = true)
@@ -764,6 +764,9 @@ namespace Game.Entities
                         if (effect.GetAuraType() == AuraType.TriggerSpellOnPowerPct)
                         {
                             int maxPower = GetMaxPower(power);
+                            if (maxPower == 0)
+                                continue;
+
                             oldValueCheck = MathFunctions.GetPctOf(oldVal, maxPower);
                             newValueCheck = MathFunctions.GetPctOf(newVal, maxPower);
                         }
@@ -914,7 +917,7 @@ namespace Game.Entities
             return Math.Max(missChance, 0f);
         }
 
-        float GetUnitCriticalChanceDone(WeaponAttackType attackType)
+        public float GetUnitCriticalChanceDone(WeaponAttackType attackType)
         {
             float chance = 0.0f;
             Player thisPlayer = ToPlayer();
@@ -1582,7 +1585,7 @@ namespace Game.Entities
                             ApplyAttackTimePercentMod(WeaponAttackType.OffAttack, oldVal, false);
                             ApplyAttackTimePercentMod(WeaponAttackType.BaseAttack, newVal, true);
                             ApplyAttackTimePercentMod(WeaponAttackType.OffAttack, newVal, true);
-                            if (GetClass() == Class.Deathknight)
+                            if (GetClass() == Class.DeathKnight)
                                 UpdateAllRunesRegen();
                             break;
                         case CombatRating.HasteRanged:
@@ -1637,19 +1640,13 @@ namespace Game.Entities
             if (chrSpec == null)
                 return;
 
-            foreach (uint masterySpellId in chrSpec.MasterySpellID)
+            foreach (var (_, aura) in GetOwnedAuras())
             {
-                Aura aura = GetAura(masterySpellId);
-                if (aura != null)
+                if (aura.GetCasterGUID() == GetGUID() && aura.GetSpellInfo().HasAttribute(SpellAttr8.MasteryAffectsPoints))
                 {
-                    foreach (var spellEffectInfo in aura.GetSpellInfo().GetEffects())
-                    {
-                        float mult = spellEffectInfo.BonusCoefficient;
-                        if (MathFunctions.fuzzyEq(mult, 0.0f))
-                            continue;
-
-                        aura.GetEffect(spellEffectInfo.EffectIndex).ChangeAmount((int)(value * mult));
-                    }
+                    foreach (var auraEff in aura.GetAuraEffects())
+                        if (auraEff != null && MathFunctions.fuzzyEq(auraEff.GetSpellEffectInfo().BonusCoefficient, 0.0f))
+                            auraEff.RecalculateAmount(this);
                 }
             }
         }
@@ -2002,10 +1999,10 @@ namespace Game.Entities
 
         Stats GetPrimaryStat()
         {
-            byte primaryStatPriority;
+            sbyte primaryStatPriority;
             var specialization = GetPrimarySpecializationEntry();
             if (specialization != null)
-                primaryStatPriority = (byte)specialization.PrimaryStatPriority;
+                primaryStatPriority = specialization.PrimaryStatPriority;
             else
                 primaryStatPriority = CliDB.ChrClassesStorage.LookupByKey(GetClass()).PrimaryStatPriority;
 

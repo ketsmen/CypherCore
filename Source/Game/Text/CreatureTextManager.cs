@@ -447,8 +447,12 @@ namespace Game
         Max = 2,
     }
 
-    public class CreatureTextLocalizer : IDoWork<Player>
+    public class CreatureTextLocalizer
     {
+        Dictionary<Locale, ChatPacketSender> _packetCache = new();
+        MessageBuilder _builder;
+        ChatMsg _msgType;
+
         public CreatureTextLocalizer(MessageBuilder builder, ChatMsg msgType)
         {
             _builder = builder;
@@ -484,9 +488,7 @@ namespace Game
             sender.Invoke(player);
         }
 
-        Dictionary<Locale, ChatPacketSender> _packetCache = new();
-        MessageBuilder _builder;
-        ChatMsg _msgType;
+        public static implicit operator IDoWork<Player>(CreatureTextLocalizer obj) => obj.Invoke;
     }
 
     public class CreatureTextBuilder : MessageBuilder
@@ -494,6 +496,7 @@ namespace Game
         public CreatureTextBuilder(WorldObject obj, WorldObject speaker, Gender gender, ChatMsg msgtype, byte textGroup, uint id, Language language, WorldObject target, uint broadcastTextId, ushort emoteId, uint soundKitId, SoundKitPlayType soundKitPlayType, uint playerConditionId)
         {
             _source = obj;
+            _talker = speaker;
             _gender = gender;
             _msgType = msgtype;
             _textGroup = textGroup;

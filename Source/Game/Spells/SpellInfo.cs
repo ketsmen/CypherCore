@@ -13,6 +13,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Framework.Collections;
+using System.Numerics;
 
 namespace Game.Spells
 {
@@ -62,6 +63,7 @@ namespace Game.Spells
                 RangeEntry = CliDB.SpellRangeStorage.LookupByKey(_misc.RangeIndex);
                 Speed = _misc.Speed;
                 LaunchDelay = _misc.LaunchDelay;
+                MinDuration = _misc.MinDuration;
                 SchoolMask = (SpellSchoolMask)_misc.SchoolMask;
                 IconFileDataId = _misc.SpellIconFileDataID;
                 ActiveIconFileDataId = _misc.ActiveIconFileDataID;
@@ -120,7 +122,7 @@ namespace Game.Spells
             if (_castreq != null)
             {
                 RequiresSpellFocus = _castreq.RequiresSpellFocus;
-                FacingCasterFlags = _castreq.FacingCasterFlags;
+                FacingCasterFlags = (uint)_castreq.FacingCasterFlags;
                 RequiredAreasID = _castreq.RequiredAreasID;
             }
 
@@ -645,31 +647,49 @@ namespace Game.Spells
             return true;
         }
 
-        bool IsAffectedBySpellMods()
+        public bool IsAffectedBySpellMods()
         {
             return !HasAttribute(SpellAttr3.IgnoreCasterModifiers);
         }
 
-        public bool IsAffectedBySpellMod(SpellModifier mod)
+        public int IsAffectedBySpellMod(SpellModifier mod)
         {
-            if (!IsAffectedBySpellMods())
-                return false;
-
             SpellInfo affectSpell = Global.SpellMgr.GetSpellInfo(mod.spellId, Difficulty);
             if (affectSpell == null)
-                return false;
+                return 0;
 
             switch (mod.type)
             {
                 case SpellModType.Flat:
                 case SpellModType.Pct:
+                {
                     // TEMP: dont use IsAffected - !familyName and !familyFlags are not valid options for spell mods
                     // TODO: investigate if the !familyName and !familyFlags conditions are even valid for all other (nonmod) uses of SpellInfo::IsAffected
-                    return affectSpell.SpellFamilyName == SpellFamilyName && (mod as SpellModifierByClassMask).mask & SpellFamilyFlags;
+                    if (affectSpell.SpellFamilyName != SpellFamilyName)
+                        return 0;
+
+                    // spell modifiers should apply as many times as number of matched SpellFamilyFlags bits (verified with spell 1218116 with modifier 384451 in patch 11.1.0 and client tooltip code since at least 3.3.5)
+                    // unknown if this is a bug or strange design choice...
+                    var matched = (mod as SpellModifierByClassMask).mask & SpellFamilyFlags;
+                    return BitOperations.PopCount(matched[0]) + BitOperations.PopCount(matched[1]) + BitOperations.PopCount(matched[2]) + BitOperations.PopCount(matched[3]);
+                }
                 case SpellModType.LabelFlat:
-                    return HasLabel((uint)(mod as SpellFlatModifierByLabel).value.LabelID);
+                    return HasLabel((uint)(mod as SpellFlatModifierByLabel).value.LabelID) ? 1 : 0;
                 case SpellModType.LabelPct:
-                    return HasLabel((uint)(mod as SpellPctModifierByLabel).value.LabelID);
+                    return HasLabel((uint)(mod as SpellPctModifierByLabel).value.LabelID) ? 1 : 0;
+                default:
+                    break;
+            }
+
+            return 0;
+        }
+
+        public bool IsUpdatingTemporaryAuraValuesBySpellMod()
+        {
+            switch (Id)
+            {
+                case 384669:    // Overflowing Maelstrom
+                    return true;
                 default:
                     break;
             }
@@ -975,8 +995,15 @@ namespace Game.Spells
             if (HasAttribute(SpellAttr1.ExcludeCaster) && caster == target)
                 return SpellCastResult.BadTargets;
 
-            // check visibility - ignore invisibility/stealth for implicit (area) targets
-            if (!HasAttribute(SpellAttr6.IgnorePhaseShift) && !caster.CanSeeOrDetect(target, Implicit))
+            // check visibility - Ignore invisibility/stealth for implicit (area) targets
+            CanSeeOrDetectExtraArgs canSeeOrDetectExtraArgs = new CanSeeOrDetectExtraArgs
+            {
+                ImplicitDetection = Implicit,
+                IgnorePhaseShift = HasAttribute(SpellAttr6.IgnorePhaseShift),
+                IncludeHiddenBySpawnTracking = HasAttribute(SpellAttr8.AllowTargetsHiddenBySpawnTracking),
+                IncludeAnyPrivateObject = HasAttribute(SpellCustomAttributes.CanTargetAnyPrivateObject)
+            };
+            if (!caster.CanSeeOrDetect(target, canSeeOrDetectExtraArgs))
                 return SpellCastResult.BadTargets;
 
             Unit unitTarget = target.ToUnit();
@@ -1149,6 +1176,12 @@ namespace Game.Spells
             if (ExcludeTargetAuraSpell != 0 && unitTarget.HasAura(ExcludeTargetAuraSpell))
                 return SpellCastResult.TargetAurastate;
 
+            if (TargetAuraType != 0 && !unitTarget.HasAuraType(TargetAuraType))
+                return SpellCastResult.TargetAurastate;
+
+            if (ExcludeTargetAuraType != 0 && unitTarget.HasAuraType(ExcludeTargetAuraType))
+                return SpellCastResult.TargetAurastate;
+
             if (unitTarget.HasAuraType(AuraType.PreventResurrection) && !HasAttribute(SpellAttr7.BypassNoResurrectAura))
                 if (HasEffect(SpellEffectName.SelfResurrect) || HasEffect(SpellEffectName.Resurrect))
                     return SpellCastResult.TargetCannotBeResurrected;
@@ -1174,7 +1207,7 @@ namespace Game.Spells
 
         public SpellCastResult CheckExplicitTarget(WorldObject caster, WorldObject target, Item itemTarget = null)
         {
-            SpellCastTargetFlags neededTargets = GetExplicitTargetMask();
+            SpellCastTargetFlags neededTargets = (SpellCastTargetFlags)RequiredExplicitTargetMask;
             if (target == null)
             {
                 if (Convert.ToBoolean(neededTargets & (SpellCastTargetFlags.UnitMask | SpellCastTargetFlags.GameobjectMask | SpellCastTargetFlags.CorpseMask)))
@@ -2259,35 +2292,48 @@ namespace Game.Spells
             }
         }
 
-        void _LoadSqrtTargetLimit(int maxTargets, int numNonDiminishedTargets, uint? maxTargetsEffectValueHolder, uint? numNonDiminishedTargetsEffectValueHolder)
+        public void _LoadSqrtTargetLimit(int maxTargets, int numNonDiminishedTargets, uint? maxTargetsValueHolderSpell, uint? maxTargetsValueHolderEffect,
+            uint? numNonDiminishedTargetsValueHolderSpell, uint? numNonDiminishedTargetsValueHolderEffect)
         {
             SqrtDamageAndHealingDiminishing.MaxTargets = maxTargets;
             SqrtDamageAndHealingDiminishing.NumNonDiminishedTargets = numNonDiminishedTargets;
 
-            if (maxTargetsEffectValueHolder.HasValue)
+            if (maxTargetsValueHolderEffect.HasValue)
             {
-                if (maxTargetsEffectValueHolder < GetEffects().Count)
+                SpellInfo maxTargetValueHolder = this;
+                if (maxTargetsValueHolderSpell.HasValue)
+                    maxTargetValueHolder = Global.SpellMgr.GetSpellInfo(maxTargetsValueHolderSpell.Value, Difficulty);
+
+                if (maxTargetValueHolder == null)
+                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {maxTargetsValueHolderSpell} does not exist");
+                else if (maxTargetsValueHolderEffect >= maxTargetValueHolder.GetEffects().Count)
+                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {maxTargetValueHolder.Id} does not have effect {maxTargetsValueHolderEffect.Value}");
+                else
                 {
-                    SpellEffectInfo valueHolder = GetEffect(maxTargetsEffectValueHolder.Value);
+                    SpellEffectInfo valueHolder = maxTargetValueHolder.GetEffect(maxTargetsValueHolderEffect.Value);
                     int expectedValue = valueHolder.CalcBaseValue(null, null, 0, -1);
                     if (maxTargets != expectedValue)
-                        Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {Id} has different value in effect {maxTargetsEffectValueHolder.Value} than expected, recheck target caps (expected {maxTargets}, got {expectedValue})");
+                        Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {maxTargetValueHolder.Id} has different value in effect {maxTargetsValueHolderEffect.Value} than expected, recheck target caps (expected {maxTargets}, got {expectedValue})");
                 }
-                else
-                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(maxTargets): Spell {Id} does not have effect {maxTargetsEffectValueHolder.Value}");
             }
 
-            if (numNonDiminishedTargetsEffectValueHolder.HasValue)
+            if (numNonDiminishedTargetsValueHolderEffect.HasValue)
             {
-                if (numNonDiminishedTargetsEffectValueHolder < GetEffects().Count)
+                SpellInfo numNonDiminishedTargetsValueHolder = this;
+                if (numNonDiminishedTargetsValueHolderSpell.HasValue)
+                    numNonDiminishedTargetsValueHolder = Global.SpellMgr.GetSpellInfo(numNonDiminishedTargetsValueHolderSpell.Value, Difficulty);
+
+                if (numNonDiminishedTargetsValueHolder == null)
+                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {maxTargetsValueHolderSpell} does not exist");
+                else if (numNonDiminishedTargetsValueHolderEffect >= numNonDiminishedTargetsValueHolder.GetEffects().Count)
+                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {numNonDiminishedTargetsValueHolder.Id} does not have effect {maxTargetsValueHolderEffect.Value}");
+                else
                 {
-                    SpellEffectInfo valueHolder = GetEffect(numNonDiminishedTargetsEffectValueHolder.Value);
+                    SpellEffectInfo valueHolder = numNonDiminishedTargetsValueHolder.GetEffect(numNonDiminishedTargetsValueHolderEffect.Value);
                     int expectedValue = valueHolder.CalcBaseValue(null, null, 0, -1);
                     if (numNonDiminishedTargets != expectedValue)
-                        Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {Id} has different value in effect {numNonDiminishedTargetsEffectValueHolder.Value} than expected, recheck target caps (expected {numNonDiminishedTargets}, got {expectedValue})");
+                        Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {numNonDiminishedTargetsValueHolder.Id} has different value in effect {numNonDiminishedTargetsValueHolderEffect.Value} than expected, recheck target caps (expected {numNonDiminishedTargets}, got {expectedValue})");
                 }
-                else
-                    Log.outError(LogFilter.Spells, $"SpellInfo::_LoadSqrtTargetLimit(numNonDiminishedTargets): Spell {Id} does not have effect {numNonDiminishedTargetsEffectValueHolder.Value}");
             }
         }
 
@@ -3043,6 +3089,12 @@ namespace Game.Spells
                             ppm *= 1.0f + mod.Coeff;
                         break;
                     }
+                    case SpellProcsPerMinuteModType.Aura:
+                    {
+                        if (caster.HasAura(mod.Param))
+                            ppm *= 1.0f + mod.Coeff;
+                        break;
+                    }
                     default:
                         break;
                 }
@@ -3189,31 +3241,39 @@ namespace Game.Spells
         {
             bool srcSet = false;
             bool dstSet = false;
-            SpellCastTargetFlags targetMask = Targets;
+
             // prepare target mask using effect target entries
             foreach (var effectInfo in GetEffects())
             {
                 if (!effectInfo.IsEffect())
                     continue;
 
+                SpellCastTargetFlags targetMask = 0;
                 targetMask |= effectInfo.TargetA.GetExplicitTargetMask(ref srcSet, ref dstSet);
                 targetMask |= effectInfo.TargetB.GetExplicitTargetMask(ref srcSet, ref dstSet);
 
                 // add explicit target flags based on spell effects which have SpellEffectImplicitTargetTypes.Explicit and no valid target provided
-                if (effectInfo.GetImplicitTargetType() != SpellEffectImplicitTargetTypes.Explicit)
-                    continue;
+                if (effectInfo.GetImplicitTargetType() == SpellEffectImplicitTargetTypes.Explicit)
+                {
 
-                // extend explicit target mask only if valid targets for effect could not be provided by target types
-                SpellCastTargetFlags effectTargetMask = effectInfo.GetMissingTargetMask(srcSet, dstSet, targetMask);
+                    // extend explicit target mask only if valid targets for effect could not be provided by target types
+                    SpellCastTargetFlags effectTargetMask = effectInfo.GetMissingTargetMask(srcSet, dstSet, targetMask);
 
-                // don't add explicit object/dest flags when spell has no max range
-                if (GetMaxRange(true) == 0.0f && GetMaxRange(false) == 0.0f)
-                    effectTargetMask &= ~(SpellCastTargetFlags.UnitMask | SpellCastTargetFlags.Gameobject | SpellCastTargetFlags.CorpseMask | SpellCastTargetFlags.DestLocation);
+                    // don't add explicit object/dest flags when spell has no max range
+                    if (GetMaxRange(true) == 0.0f && GetMaxRange(false) == 0.0f)
+                        effectTargetMask &= ~(SpellCastTargetFlags.UnitMask | SpellCastTargetFlags.Gameobject | SpellCastTargetFlags.CorpseMask | SpellCastTargetFlags.DestLocation);
 
-                targetMask |= effectTargetMask;
+                    targetMask |= effectTargetMask;
+                }
+
+                ExplicitTargetMask |= (uint)targetMask;
+                if (!effectInfo.EffectAttributes.HasFlag(SpellEffectAttributes.DontFailSpellOnTargetingFailure))
+                    RequiredExplicitTargetMask |= (uint)targetMask;
             }
 
-            ExplicitTargetMask = (uint)targetMask;
+            ExplicitTargetMask |= (uint)Targets;
+            if (!HasAttribute(SpellAttr13.DoNotFailIfNoTarget))
+                RequiredExplicitTargetMask |= (uint)Targets;
         }
 
         public bool _isPositiveTarget(SpellEffectInfo effect)
@@ -3552,7 +3612,7 @@ namespace Game.Spells
                     case AuraType.ModWeaponCritPercent:
                     case AuraType.PowerBurn:
                     case AuraType.ModCooldown:
-                    case AuraType.ModChargeCooldown:
+                    case AuraType.ModChargeRecoveryByTypeMask:
                     case AuraType.ModIncreaseSpeed:
                     case AuraType.ModParryPercent:
                     case AuraType.SetVehicleId:
@@ -3891,6 +3951,7 @@ namespace Game.Spells
         public SpellRangeRecord RangeEntry { get; set; }
         public float Speed { get; set; }
         public float LaunchDelay { get; set; }
+        public float MinDuration { get; set; }
         public uint StackAmount { get; set; }
         public uint[] Totem = new uint[SpellConst.MaxTotems];
         public uint[] TotemCategory = new uint[SpellConst.MaxTotems];
@@ -3922,6 +3983,7 @@ namespace Game.Spells
         // SpellScalingEntry
         public ScalingInfo Scaling;
         public uint ExplicitTargetMask { get; set; }
+        public uint RequiredExplicitTargetMask { get; set; }
         public SpellChainNode ChainEntry { get; set; }
 
         public SqrtDamageAndHealingDiminishingStruct SqrtDamageAndHealingDiminishing;
@@ -3960,7 +4022,7 @@ namespace Game.Spells
                 Effect = (SpellEffectName)effect.Effect;
                 ApplyAuraName = (AuraType)effect.EffectAura;
                 ApplyAuraPeriod = effect.EffectAuraPeriod;
-                BasePoints = (int)effect.EffectBasePoints;
+                BasePoints = effect.EffectBasePoints;
                 RealPointsPerLevel = effect.EffectRealPointsPerLevel;
                 PointsPerResource = effect.EffectPointsPerResource;
                 Amplitude = effect.EffectAmplitude;
@@ -4051,7 +4113,38 @@ namespace Game.Spells
 
             Unit casterUnit = null;
             if (caster != null)
+            {
                 casterUnit = caster.ToUnit();
+                Player playerCaster = caster.ToPlayer();
+                if (playerCaster != null)
+                {
+                    PlayerSpellTrait trait = playerCaster.GetTraitInfoForSpell(_spellInfo.Id);
+                    if (trait != null)
+                    {
+                        var traitDefinitionEffectPoints = TraitMgr.GetTraitDefinitionEffectPointModifiers(trait.DefinitionId);
+                        if (traitDefinitionEffectPoints != null)
+                        {
+                            var pointsOverride = traitDefinitionEffectPoints.Find(p => p.EffectIndex == EffectIndex);
+                            if (pointsOverride != null)
+                            {
+                                float traitBasePoints = Global.DB2Mgr.GetCurveValueAt((uint)pointsOverride.CurveID, trait.Rank);
+                                switch (pointsOverride.GetOperationType())
+                                {
+                                    case TraitPointsOperationType.Set:
+                                        value = traitBasePoints;
+                                        break;
+                                    case TraitPointsOperationType.Multiply:
+                                        value *= traitBasePoints;
+                                        break;
+                                    case TraitPointsOperationType.None:
+                                    default:
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if (Scaling.Variance != 0)
             {
@@ -4082,6 +4175,7 @@ namespace Game.Spells
                     value += level * basePointsPerLevel;
                 }
             }
+
             // random damage
             if (casterUnit != null)
             {
@@ -4092,10 +4186,18 @@ namespace Game.Spells
                     if (comboPoints != 0)
                         value += comboDamage * comboPoints;
                 }
-
-                if (caster != null)
-                    value = caster.ApplyEffectModifiers(_spellInfo, EffectIndex, value);
             }
+
+            if (_spellInfo.HasAttribute(SpellAttr8.MasteryAffectsPoints))
+            {
+                Player playerCaster = caster?.ToPlayer();
+                if (playerCaster != null)
+                    value += playerCaster.m_activePlayerData.Mastery * BonusCoefficient;
+            }
+
+            if (caster != null)
+                value = caster.ApplyEffectModifiers(_spellInfo, EffectIndex, value);
+
 
             return (int)Math.Round(value);
         }
@@ -4278,6 +4380,41 @@ namespace Game.Spells
             }
 
             return radius;
+        }
+
+        public (float, float) CalcRadiusBounds(WorldObject caster, SpellTargetIndex targetIndex, Spell spell)
+        {
+            // TargetA -> TargetARadiusEntry
+            // TargetB -> TargetBRadiusEntry
+            // Aura effects have TargetARadiusEntry == TargetBRadiusEntry (mostly)
+            SpellRadiusRecord entry = TargetARadiusEntry;
+            if (targetIndex == SpellTargetIndex.TargetB && HasRadius(targetIndex))
+                entry = TargetBRadiusEntry;
+
+            (float, float) bounds = default;
+            if (entry == null)
+                return bounds;
+
+            bounds = (entry.RadiusMin, entry.RadiusMax);
+
+            if (caster != null)
+            {
+                Player modOwner = caster.GetSpellModOwner();
+                if (modOwner != null)
+                    modOwner.ApplySpellMod(_spellInfo, SpellModOp.Radius, ref bounds.Item2, spell);
+
+                if (!_spellInfo.HasAttribute(SpellAttr9.NoMovementRadiusBonus))
+                {
+                    Unit casterUnit = caster.ToUnit(); ;
+                    if (casterUnit != null && Spell.CanIncreaseRangeByMovement(casterUnit))
+                    {
+                        bounds.Item1 = Math.Max(bounds.Item1 - 2.0f, 0.0f);
+                        bounds.Item2 += 2.0f;
+                    }
+                }
+            }
+
+            return bounds;
         }
 
         public SpellCastTargetFlags GetProvidedTargetMask()
@@ -4731,7 +4868,7 @@ namespace Game.Spells
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 303 SPELL_EFFECT_CREATE_TRAIT_TREE_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 304 SPELL_EFFECT_CHANGE_ACTIVE_COMBAT_TRAIT_CONFIG
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 305 SPELL_EFFECT_305
-            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 306 SPELL_EFFECT_UPDATE_INTERACTIONS
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 306 SPELL_EFFECT_UPDATE_INTERACTIONS
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 307 SPELL_EFFECT_307
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 308 SPELL_EFFECT_CANCEL_PRELOAD_WORLD
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 309 SPELL_EFFECT_PRELOAD_WORLD
@@ -4759,6 +4896,18 @@ namespace Game.Spells
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 331 SPELL_EFFECT_331
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 332 SPELL_EFFECT_332
             new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 333 SPELL_EFFECT_333
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 334 SPELL_EFFECT_334
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 335 SPELL_EFFECT_SET_PLAYER_DATA_ELEMENT_ACCOUNT
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 336 SPELL_EFFECT_SET_PLAYER_DATA_ELEMENT_CHARACTER
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 337 SPELL_EFFECT_SET_PLAYER_DATA_FLAG_ACCOUNT
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 338 SPELL_EFFECT_SET_PLAYER_DATA_FLAG_CHARACTER
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 339 SPELL_EFFECT_UI_ACTION
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 340 SPELL_EFFECT_340
+            new StaticData(SpellEffectImplicitTargetTypes.Explicit, SpellTargetObjectTypes.Unit), // 341 SPELL_EFFECT_LEARN_WARBAND_SCENE
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 342 SPELL_EFFECT_342
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 343 SPELL_EFFECT_343
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 344 SPELL_EFFECT_344
+            new StaticData(SpellEffectImplicitTargetTypes.None,     SpellTargetObjectTypes.None), // 345 SPELL_EFFECT_ASSIST_ACTION
         };
 
         #region Fields
@@ -5082,13 +5231,13 @@ namespace Game.Spells
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 101 TARGET_UNIT_PASSENGER_5
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 102 TARGET_UNIT_PASSENGER_6
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 103 TARGET_UNIT_PASSENGER_7
-            new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Enemy,    SpellTargetDirectionTypes.Front),       // 104 TARGET_UNIT_CONE_CASTER_TO_DEST_ENEMY
+            new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Enemy,    SpellTargetDirectionTypes.Front),       // 104 TARGET_UNIT_CONE_CASTER_TO_DEST_ENEMY
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Area,    SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 105 TARGET_UNIT_CASTER_AND_PASSENGERS
-            new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Channel, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 106 TARGET_DEST_CHANNEL_CASTER
+            new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 106 TARGET_DEST_NEARBY_DB
             new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Nearby,  SpellTargetCheckTypes.Entry,    SpellTargetDirectionTypes.None),        // 107 TARGET_DEST_NEARBY_ENTRY_2
-            new StaticData(SpellTargetObjectTypes.Gobj,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Enemy,    SpellTargetDirectionTypes.Front),       // 108 TARGET_GAMEOBJECT_CONE_CASTER_TO_DEST_ENEMY
-            new StaticData(SpellTargetObjectTypes.Gobj,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Ally,     SpellTargetDirectionTypes.Front),       // 109 TARGET_GAMEOBJECT_CONE_CASTER_TO_DEST_ALLY
-            new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Entry  ,  SpellTargetDirectionTypes.Front),       // 110 TARGET_UNIT_CONE_CASTER_TO_DEST_ENTRY
+            new StaticData(SpellTargetObjectTypes.Gobj,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Enemy,    SpellTargetDirectionTypes.Front),       // 108 TARGET_GAMEOBJECT_CONE_CASTER_TO_DEST_ENEMY
+            new StaticData(SpellTargetObjectTypes.Gobj,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Ally,     SpellTargetDirectionTypes.Front),       // 109 TARGET_GAMEOBJECT_CONE_CASTER_TO_DEST_ALLY
+            new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Entry  ,  SpellTargetDirectionTypes.Front),       // 110 TARGET_UNIT_CONE_CASTER_TO_DEST_ENTRY
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 111
             new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 112
             new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Target, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 113
@@ -5114,7 +5263,7 @@ namespace Game.Spells
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Line,    SpellTargetCheckTypes.Ally,     SpellTargetDirectionTypes.None),        // 133 TARGET_UNIT_LINE_CASTER_TO_DEST_ALLY
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Line,    SpellTargetCheckTypes.Enemy,    SpellTargetDirectionTypes.None),        // 134 TARGET_UNIT_LINE_CASTER_TO_DEST_ENEMY
             new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Line,    SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 135 TARGET_UNIT_LINE_CASTER_TO_DEST
-            new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Ally,     SpellTargetDirectionTypes.Front),       // 136 TARGET_UNIT_CONE_CASTER_TO_DEST_ALLY
+            new StaticData(SpellTargetObjectTypes.Unit,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Cone,    SpellTargetCheckTypes.Ally,     SpellTargetDirectionTypes.Front),       // 136 TARGET_UNIT_CONE_CASTER_TO_DEST_ALLY
             new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Caster, SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 137 TARGET_DEST_CASTER_MOVEMENT_DIRECTION
             new StaticData(SpellTargetObjectTypes.Dest,         SpellTargetReferenceTypes.Dest,   SpellTargetSelectionCategories.Default, SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 138 TARGET_DEST_DEST_GROUND
             new StaticData(SpellTargetObjectTypes.None,         SpellTargetReferenceTypes.None,   SpellTargetSelectionCategories.Nyi,     SpellTargetCheckTypes.Default,  SpellTargetDirectionTypes.None),        // 139

@@ -10,26 +10,30 @@ namespace Game.Networking.Packets
         public int BattlePetSpeciesID;
         public int TransmogSetID;
         public int ItemModifiedAppearanceID;
-        public int Field_14;
-        public int Field_18;
+        public int TransmogIllusionID;
+        public int ToyID;
+        public int WarbandSceneID;
         public int Price;
+        public int OriginalPrice;
         public long AvailableUntil;
         public bool Disabled;
-        public bool Field_41;
+        public bool DoesNotExpire;
 
         public void Write(WorldPacket data)
         {
+            data.WriteInt64(AvailableUntil);
             data.WriteInt32(VendorItemID);
             data.WriteInt32(MountID);
             data.WriteInt32(BattlePetSpeciesID);
             data.WriteInt32(TransmogSetID);
             data.WriteInt32(ItemModifiedAppearanceID);
-            data.WriteInt32(Field_14);
-            data.WriteInt32(Field_18);
+            data.WriteInt32(TransmogIllusionID);
+            data.WriteInt32(ToyID);
             data.WriteInt32(Price);
-            data.WriteInt64(AvailableUntil);
+            data.WriteInt32(OriginalPrice);
+            data.WriteInt32(WarbandSceneID);
             data.WriteBit(Disabled);
-            data.WriteBit(Field_41);
+            data.WriteBit(DoesNotExpire);
             data.FlushBits();
         }
     }

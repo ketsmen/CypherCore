@@ -104,6 +104,10 @@ namespace Game
             return m_motd;
         }
 
+        public void SetNewCharString(string str) { m_newCharString = str; }
+
+        public string GetNewCharString() { return m_newCharString; }
+
         public void TriggerGuidWarning()
         {
             // Lock this only to prevent multiple maps triggering at the same time
@@ -187,7 +191,7 @@ namespace Game
 
         public void AddInstanceSocket(WorldSocket sock, ulong connectToKey)
         {
-            _linkSocketQueue.Enqueue(Tuple.Create(sock, connectToKey));
+            _linkSocketQueue.Enqueue((sock, connectToKey));
         }
 
         void AddSession_(WorldSession s)
@@ -259,27 +263,6 @@ namespace Game
 
                 Log.outInfo(LogFilter.Server, $"Server Population ({popu}).");
             }
-        }
-
-        void ProcessLinkInstanceSocket(Tuple<WorldSocket, ulong> linkInfo)
-        {
-            if (!linkInfo.Item1.IsOpen())
-                return;
-
-            ConnectToKey key = new();
-            key.Raw = linkInfo.Item2;
-
-            WorldSession session = FindSession(key.AccountId);
-            if (session == null || session.GetConnectToInstanceKey() != linkInfo.Item2)
-            {
-                linkInfo.Item1.SendAuthResponseError(BattlenetRpcErrorCode.TimedOut);
-                linkInfo.Item1.CloseSocket();
-                return;
-            }
-
-            linkInfo.Item1.SetWorldSession(session);
-            session.AddInstanceConnection(linkInfo.Item1);
-            session.HandleContinuePlayerLogin();
         }
 
         bool HasRecentlyDisconnected(WorldSession session)
@@ -415,19 +398,19 @@ namespace Game
 
             DB.Login.Execute($"UPDATE realmlist SET icon = {(byte)server_type}, timezone = {realm_zone} WHERE id = '{Global.RealmMgr.GetCurrentRealmId().Index}'");      // One-time query
 
+            Log.outInfo(LogFilter.ServerLoading, "Loading GameObject models...");
+            if (!GameObjectModel.LoadGameObjectModelList())
+            {
+                Log.outFatal(LogFilter.ServerLoading, "Unable to load gameobject models (part of vmaps), objects using WMO models will crash the client - server shutting down!");
+                return false;
+            }
+
             Log.outInfo(LogFilter.ServerLoading, "Initialize DataStorage...");
             // Load DB2s
             m_availableDbcLocaleMask = CliDB.LoadStores(_dataPath, m_defaultDbcLocale);
             if (m_availableDbcLocaleMask == null || !m_availableDbcLocaleMask[(int)m_defaultDbcLocale])
             {
                 Log.outFatal(LogFilter.ServerLoading, $"Unable to load db2 files for {m_defaultDbcLocale} locale specified in DBC.Locale config!");
-                return false;
-            }
-
-            Log.outInfo(LogFilter.ServerLoading, "Loading GameObject models...");
-            if (!GameObjectModel.LoadGameObjectModelList())
-            {
-                Log.outFatal(LogFilter.ServerLoading, "Unable to load gameobject models (part of vmaps), objects using WMO models will crash the client - server shutting down!");
                 return false;
             }
 
@@ -439,6 +422,9 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading hotfix optional data...");
             Global.DB2Mgr.LoadHotfixOptionalData(m_availableDbcLocaleMask);
+
+            Log.outInfo(LogFilter.ServerLoading, "Indexing loaded data stores...");
+            Global.DB2Mgr.IndexLoadedStores();
 
             //- Load M2 fly by cameras
             M2Storage.LoadM2Cameras(_dataPath);
@@ -491,6 +477,9 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading SpellInfo immunity infos...");
             Global.SpellMgr.LoadSpellInfoImmunities();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading SpellInfo target caps...");
+            Global.SpellMgr.LoadSpellInfoTargetCaps();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading PetFamilySpellsStore Data...");
             Global.SpellMgr.LoadPetFamilySpellsStore();
@@ -713,6 +702,9 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Quest Pooling Data...");
             Global.QuestPoolMgr.LoadFromDB();                                // must be after quest templates
 
+            Log.outInfo(LogFilter.ServerLoading, "Loading World State templates...");
+            Global.WorldStateMgr.LoadFromDB();                                          // must be loaded before battleground, outdoor PvP, game events and conditions
+
             Log.outInfo(LogFilter.ServerLoading, "Loading Game Event Data...");               // must be after loading pools fully
             Global.GameEventMgr.LoadFromDB();
 
@@ -799,6 +791,18 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading Player Choices...");
             Global.ObjectMgr.LoadPlayerChoices();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading Spawn Tracking Templates...");
+            Global.ObjectMgr.LoadSpawnTrackingTemplates();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading Spawn Tracking Quest Objectives...");
+            Global.ObjectMgr.LoadSpawnTrackingQuestObjectives();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading Spawn Tracking Spawns...");
+            Global.ObjectMgr.LoadSpawnTrackings();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading Spawn Tracking Spawn States...");
+            Global.ObjectMgr.LoadSpawnTrackingStates();
 
             if (WorldConfig.GetBoolValue(WorldCfg.LoadLocales))
             {
@@ -889,7 +893,6 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Guilds...");
             Global.GuildMgr.LoadGuilds();
 
-
             Log.outInfo(LogFilter.ServerLoading, "Loading ArenaTeams...");
             Global.ArenaTeamMgr.LoadArenaTeams();
 
@@ -935,14 +938,8 @@ namespace Game
             Log.outInfo(LogFilter.ServerLoading, "Loading Creature Formations...");
             FormationMgr.LoadCreatureFormations();
 
-            Log.outInfo(LogFilter.ServerLoading, "Loading World State templates...");
-            Global.WorldStateMgr.LoadFromDB();                                          // must be loaded before battleground, outdoor PvP and conditions
-
             Log.outInfo(LogFilter.ServerLoading, "Loading Persistend World Variables...");              // must be loaded before Battleground, outdoor PvP and conditions
             LoadPersistentWorldVariables();
-
-            Global.WorldStateMgr.SetValue(WorldStates.CurrentPvpSeasonId, WorldConfig.GetBoolValue(WorldCfg.ArenaSeasonInProgress) ? WorldConfig.GetIntValue(WorldCfg.ArenaSeasonId) : 0, false, null);
-            Global.WorldStateMgr.SetValue(WorldStates.PreviousPvpSeasonId, WorldConfig.GetIntValue(WorldCfg.ArenaSeasonId) - (WorldConfig.GetBoolValue(WorldCfg.ArenaSeasonInProgress) ? 1 : 0), false, null);
 
             Global.ObjectMgr.LoadPhases();
 
@@ -969,6 +966,9 @@ namespace Game
 
             Log.outInfo(LogFilter.ServerLoading, "Loading mount definitions...");
             CollectionMgr.LoadMountDefinitions();
+
+            Log.outInfo(LogFilter.ServerLoading, "Loading warband scene definitions...");
+            CollectionMgr.LoadWarbandSceneDefinitions();
 
             Log.outInfo(LogFilter.ServerLoading, "Loading GM bugs...");
             Global.SupportMgr.LoadBugTickets();
@@ -1179,6 +1179,11 @@ namespace Game
             SetPlayerAmountLimit((uint)ConfigMgr.GetDefaultValue("PlayerLimit", 100));
             SetMotd(ConfigMgr.GetDefaultValue("Motd", "Welcome to a Cypher Core Server."));
 
+            _gameRules =
+            [
+                new() { Item1 = GameRule.TransmogEnabled, Item2 = true }
+            ];
+
             if (reload)
             {
                 Global.SupportMgr.SetSupportSystemStatus(WorldConfig.GetBoolValue(WorldCfg.SupportEnabled));
@@ -1199,68 +1204,19 @@ namespace Game
 
                 m_timers[WorldTimers.AutoBroadcast].SetInterval(WorldConfig.GetIntValue(WorldCfg.AutoBroadcastInterval));
                 m_timers[WorldTimers.AutoBroadcast].Reset();
+
+                Global.WorldStateMgr.SetValue(WorldStates.CurrentPvpSeasonId, WorldConfig.GetBoolValue(WorldCfg.ArenaSeasonInProgress) ? WorldConfig.GetIntValue(WorldCfg.ArenaSeasonId) : 0, false, null);
+                Global.WorldStateMgr.SetValue(WorldStates.PreviousPvpSeasonId, WorldConfig.GetIntValue(WorldCfg.ArenaSeasonId) - (WorldConfig.GetBoolValue(WorldCfg.ArenaSeasonInProgress) ? 1 : 0), false, null);
+
+                // call ScriptMgr if we're reloading the configuration
+                Global.ScriptMgr.OnConfigLoad(reload);
             }
+
+            // Get string for new logins (newly created characters)
+            SetNewCharString(ConfigMgr.GetDefaultValue("PlayerStart.String", ""));
 
             for (byte i = 0; i < (int)UnitMoveType.Max; ++i)
                 SharedConst.playerBaseMoveSpeed[i] = SharedConst.baseMoveSpeed[i] * WorldConfig.GetFloatValue(WorldCfg.RateMovespeed);
-
-            var rateCreatureAggro = WorldConfig.GetFloatValue(WorldCfg.RateCreatureAggro);
-            //visibility on continents
-            m_MaxVisibleDistanceOnContinents = ConfigMgr.GetDefaultValue("Visibility.Distance.Continents", SharedConst.DefaultVisibilityDistance);
-            if (m_MaxVisibleDistanceOnContinents < 45 * rateCreatureAggro)
-            {
-                Log.outError(LogFilter.ServerLoading, "Visibility.Distance.Continents can't be less max aggro radius {0}", 45 * rateCreatureAggro);
-                m_MaxVisibleDistanceOnContinents = 45 * rateCreatureAggro;
-            }
-            else if (m_MaxVisibleDistanceOnContinents > SharedConst.MaxVisibilityDistance)
-            {
-                Log.outError(LogFilter.ServerLoading, "Visibility.Distance.Continents can't be greater {0}", SharedConst.MaxVisibilityDistance);
-                m_MaxVisibleDistanceOnContinents = SharedConst.MaxVisibilityDistance;
-            }
-
-            //visibility in instances
-            m_MaxVisibleDistanceInInstances = ConfigMgr.GetDefaultValue("Visibility.Distance.Instances", SharedConst.DefaultVisibilityInstance);
-            if (m_MaxVisibleDistanceInInstances < 45 * rateCreatureAggro)
-            {
-                Log.outError(LogFilter.ServerLoading, "Visibility.Distance.Instances can't be less max aggro radius {0}", 45 * rateCreatureAggro);
-                m_MaxVisibleDistanceInInstances = 45 * rateCreatureAggro;
-            }
-            else if (m_MaxVisibleDistanceInInstances > SharedConst.MaxVisibilityDistance)
-            {
-                Log.outError(LogFilter.ServerLoading, "Visibility.Distance.Instances can't be greater {0}", SharedConst.MaxVisibilityDistance);
-                m_MaxVisibleDistanceInInstances = SharedConst.MaxVisibilityDistance;
-            }
-
-            //visibility in BG
-            m_MaxVisibleDistanceInBG = ConfigMgr.GetDefaultValue("Visibility.Distance.BG", SharedConst.DefaultVisibilityBGAreans);
-            if (m_MaxVisibleDistanceInBG < 45 * rateCreatureAggro)
-            {
-                Log.outError(LogFilter.ServerLoading, $"Visibility.Distance.BG can't be less max aggro radius {45 * rateCreatureAggro}");
-                m_MaxVisibleDistanceInBG = 45 * rateCreatureAggro;
-            }
-            else if (m_MaxVisibleDistanceInBG > SharedConst.MaxVisibilityDistance)
-            {
-                Log.outError(LogFilter.ServerLoading, $"Visibility.Distance.BG can't be greater {SharedConst.MaxVisibilityDistance}");
-                m_MaxVisibleDistanceInBG = SharedConst.MaxVisibilityDistance;
-            }
-
-            // Visibility in Arenas
-            m_MaxVisibleDistanceInArenas = ConfigMgr.GetDefaultValue("Visibility.Distance.Arenas", SharedConst.DefaultVisibilityBGAreans);
-            if (m_MaxVisibleDistanceInArenas < 45 * rateCreatureAggro)
-            {
-                Log.outError(LogFilter.ServerLoading, $"Visibility.Distance.Arenas can't be less max aggro radius {45 * rateCreatureAggro}");
-                m_MaxVisibleDistanceInArenas = 45 * rateCreatureAggro;
-            }
-            else if (m_MaxVisibleDistanceInArenas > SharedConst.MaxVisibilityDistance)
-            {
-                Log.outError(LogFilter.ServerLoading, $"Visibility.Distance.Arenas can't be greater {SharedConst.MaxVisibilityDistance}");
-                m_MaxVisibleDistanceInArenas = SharedConst.MaxVisibilityDistance;
-            }
-
-            m_visibility_notify_periodOnContinents = ConfigMgr.GetDefaultValue("Visibility.Notify.Period.OnContinents", SharedConst.DefaultVisibilityNotifyPeriod);
-            m_visibility_notify_periodInInstances = ConfigMgr.GetDefaultValue("Visibility.Notify.Period.InInstances", SharedConst.DefaultVisibilityNotifyPeriod);
-            m_visibility_notify_periodInBG = ConfigMgr.GetDefaultValue("Visibility.Notify.Period.InBG", SharedConst.DefaultVisibilityNotifyPeriod);
-            m_visibility_notify_periodInArenas = ConfigMgr.GetDefaultValue("Visibility.Notify.Period.InArenas", SharedConst.DefaultVisibilityNotifyPeriod);
 
             _guidWarningMsg = WorldConfig.GetDefaultValue("Respawn.WarningMessage", "There will be an unscheduled server restart at 03:00. The server will be available again shortly after.");
             _alertRestartReason = WorldConfig.GetDefaultValue("Respawn.AlertRestartReason", "Urgent Maintenance");
@@ -1959,14 +1915,16 @@ namespace Game
 
         public void UpdateSessions(uint diff)
         {
-            Tuple<WorldSocket, ulong> linkInfo;
-            while (_linkSocketQueue.TryDequeue(out linkInfo))
-                ProcessLinkInstanceSocket(linkInfo);
-
             // Add new sessions
             WorldSession sess;
             while (addSessQueue.TryDequeue(out sess))
                 AddSession_(sess);
+
+            while (_linkSocketQueue.TryDequeue(out (WorldSocket, ulong) linkInfo))
+            {
+                ConnectToKey key = new() { Raw = linkInfo.Item2 };
+                WorldSession.AddInstanceConnection(FindSession(key.AccountId), linkInfo.Item1, key);
+            }
 
             // Then send an update signal to remaining ones
             foreach (var pair in m_sessions)
@@ -2528,16 +2486,6 @@ namespace Game
             return Global.RealmMgr.GetCurrentRealmId().GetAddress();
         }
 
-        public float GetMaxVisibleDistanceOnContinents() { return m_MaxVisibleDistanceOnContinents; }
-        public float GetMaxVisibleDistanceInInstances() { return m_MaxVisibleDistanceInInstances; }
-        public float GetMaxVisibleDistanceInBG() { return m_MaxVisibleDistanceInBG; }
-        public float GetMaxVisibleDistanceInArenas() { return m_MaxVisibleDistanceInArenas; }
-
-        public int GetVisibilityNotifyPeriodOnContinents() { return m_visibility_notify_periodOnContinents; }
-        public int GetVisibilityNotifyPeriodInInstances() { return m_visibility_notify_periodInInstances; }
-        public int GetVisibilityNotifyPeriodInBG() { return m_visibility_notify_periodInBG; }
-        public int GetVisibilityNotifyPeriodInArenas() { return m_visibility_notify_periodInArenas; }
-
         public Locale GetAvailableDbcLocale(Locale locale)
         {
             if (m_availableDbcLocaleMask[(int)locale])
@@ -2554,6 +2502,11 @@ namespace Game
 
         public WorldUpdateTime GetWorldUpdateTime() { return _worldUpdateTime; }
 
+        public List<(GameRule, object)> GetGameRules()
+        {
+            return _gameRules;
+        }
+
         #region Fields
         uint m_ShutdownTimer;
         ShutdownMask m_ShutdownMask;
@@ -2563,16 +2516,6 @@ namespace Game
         Dictionary<byte, Autobroadcast> m_Autobroadcasts = new();
 
         CleaningFlags m_CleaningFlags;
-
-        float m_MaxVisibleDistanceOnContinents = SharedConst.DefaultVisibilityDistance;
-        float m_MaxVisibleDistanceInInstances = SharedConst.DefaultVisibilityInstance;
-        float m_MaxVisibleDistanceInBG = SharedConst.DefaultVisibilityBGAreans;
-        float m_MaxVisibleDistanceInArenas = SharedConst.DefaultVisibilityBGAreans;
-
-        int m_visibility_notify_periodOnContinents = SharedConst.DefaultVisibilityNotifyPeriod;
-        int m_visibility_notify_periodInInstances = SharedConst.DefaultVisibilityNotifyPeriod;
-        int m_visibility_notify_periodInBG = SharedConst.DefaultVisibilityNotifyPeriod;
-        int m_visibility_notify_periodInArenas = SharedConst.DefaultVisibilityNotifyPeriod;
 
         bool m_isClosed;
 
@@ -2595,6 +2538,7 @@ namespace Game
         Locale m_defaultDbcLocale;                     // from config for one from loaded DBC locales
         BitSet m_availableDbcLocaleMask;                       // by loaded DBC
         List<string> m_motd = new();
+        string m_newCharString;
 
         // scheduled reset times
         long m_NextDailyQuestReset;
@@ -2608,7 +2552,7 @@ namespace Game
         List<WorldSession> m_QueuedPlayer = new();
         ConcurrentQueue<WorldSession> addSessQueue = new();
 
-        ConcurrentQueue<Tuple<WorldSocket, ulong>> _linkSocketQueue = new();
+        ConcurrentQueue<(WorldSocket, ulong)> _linkSocketQueue = new();
 
         AsyncCallbackProcessor<QueryCallback> _queryProcessor = new();
 
@@ -2626,6 +2570,8 @@ namespace Game
         bool _guidAlert;
         uint _warnDiff;
         long _warnShutdownTime;
+
+        List<(GameRule, object)> _gameRules = new();
         #endregion
     }
 
@@ -2714,15 +2660,17 @@ namespace Game
         uint i_textId;
         object[] i_args;
 
-        public class MultiplePacketSender : IDoWork<Player>
+        public class MultiplePacketSender
         {
+            public List<ServerPacket> Packets = new();
+
             public void Invoke(Player receiver)
             {
                 foreach (var packet in Packets)
                     receiver.SendPacket(packet);
             }
 
-            public List<ServerPacket> Packets = new();
+            public static implicit operator IDoWork<Player>(MultiplePacketSender obj) => obj.Invoke;
         }
     }
 
